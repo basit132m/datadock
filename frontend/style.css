@@ -338,6 +338,60 @@ input[type="password"]:focus, input[type="text"]:focus { border-color: var(--pri
 }
 .landing-footer a { color: var(--primary); text-decoration: none; }
 
+/* ── Landing page – ad slots ── */
+.ad-slot { width: 100%; overflow: hidden; }
+.ad-slot-top    { border-bottom: 1px solid var(--border); background: var(--surface); padding: .6rem 1rem; }
+.ad-slot-bottom { border-top: 1px solid var(--border); background: var(--surface); padding: .6rem 1rem; }
+.ad-slot:empty  { display: none; }
+
+.ad-banner {
+  display: block; width: 100%; max-width: 728px; margin: .4rem auto;
+  border-radius: 8px; overflow: hidden; text-decoration: none;
+  transition: opacity .15s;
+}
+.ad-banner:hover { opacity: .88; }
+.ad-banner img { display: block; width: 100%; height: auto; border-radius: 8px; }
+.ad-banner-text {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--primary-lite); color: var(--primary); font-weight: 600;
+  padding: .65rem 1.5rem; border-radius: 8px; font-size: .9rem;
+}
+
+.ad-slot-buttons { display: flex; flex-direction: column; gap: .55rem; margin: .75rem 0; width: 100%; }
+.ad-btn {
+  display: block; width: 100%; text-align: center; text-decoration: none;
+  background: var(--bg); border: 1px solid var(--border-hi);
+  color: var(--text2); font-weight: 600; font-size: .9rem;
+  border-radius: 8px; padding: .65rem 1rem;
+  transition: background .15s, border-color .15s;
+}
+.ad-btn:hover { background: #e8edf5; border-color: var(--primary); color: var(--primary); }
+
+/* ── Ad manager – admin panel ── */
+.ad-form { padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: .9rem; }
+.ad-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.ad-form label { display: flex; flex-direction: column; gap: .35rem; font-size: .85rem; font-weight: 500; color: var(--text2); }
+.ad-form select, .ad-form input[type="text"], .ad-form input[type="url"], .ad-form input[type="number"] {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 7px;
+  color: var(--text); font-size: .9rem; padding: .55rem .8rem; outline: none;
+  transition: border-color .15s; font-family: var(--font);
+}
+.ad-form select:focus, .ad-form input:focus { border-color: var(--primary); }
+.ad-active-wrap { flex-direction: row !important; align-items: center; gap: .5rem !important; margin-top: 1.5rem; }
+.ad-active-wrap input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--primary); }
+.muted-label { color: var(--muted); font-weight: 400; }
+.ad-form-msg { font-size: .85rem; }
+
+.ad-type-badge {
+  display: inline-block; border-radius: 20px; padding: .2rem .65rem;
+  font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em;
+}
+.ad-type-banner { background: #fef3c7; color: #92400e; }
+.ad-type-button { background: var(--primary-lite); color: var(--primary); }
+.ad-status { font-size: .8rem; font-weight: 600; }
+.ad-on  { color: var(--success); }
+.ad-off { color: var(--muted); }
+
 /* ── Responsive ── */
 @media (max-width: 900px) {
   :root { --sidebar-w: 200px; }

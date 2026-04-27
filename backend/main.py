@@ -17,7 +17,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db, init_db
-from models import Part, Upload
+from models import Ad, Part, Upload
 from storage import B2Storage
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -372,6 +372,97 @@ async def download_file(share_id: str, db: Session = Depends(get_db)):
     db.commit()
 
     return RedirectResponse(url=storage.get_download_url(upload.b2_file_key))
+
+
+# ── Ads API ───────────────────────────────────────────────────────────────────
+
+
+class AdIn(BaseModel):
+    type: str           # "banner" or "button"
+    label: str
+    image_url: Optional[str] = None
+    link_url: str
+    active: int = 1
+    display_order: int = 0
+
+
+@app.get("/api/ads")
+async def list_ads_public(db: Session = Depends(get_db)):
+    """Public endpoint — returns only active ads ordered for display."""
+    rows = (
+        db.query(Ad)
+        .filter(Ad.active == 1)
+        .order_by(Ad.display_order.asc(), Ad.created_at.asc())
+        .all()
+    )
+    return [_ad_dict(a) for a in rows]
+
+
+@app.get("/api/admin/ads")
+async def list_ads_admin(db: Session = Depends(get_db), _=Depends(require_auth)):
+    rows = db.query(Ad).order_by(Ad.display_order.asc(), Ad.created_at.asc()).all()
+    return [_ad_dict(a) for a in rows]
+
+
+@app.post("/api/admin/ads")
+async def create_ad(body: AdIn, db: Session = Depends(get_db), _=Depends(require_auth)):
+    if body.type not in ("banner", "button"):
+        raise HTTPException(400, "type must be 'banner' or 'button'")
+    if not body.link_url.startswith(("http://", "https://")):
+        raise HTTPException(400, "link_url must be an http/https URL")
+    if body.type == "banner" and body.image_url and not body.image_url.startswith(("http://", "https://")):
+        raise HTTPException(400, "image_url must be an http/https URL")
+    ad = Ad(
+        id=str(uuid.uuid4()),
+        type=body.type,
+        label=body.label[:300],
+        image_url=body.image_url,
+        link_url=body.link_url,
+        active=body.active,
+        display_order=body.display_order,
+        created_at=datetime.utcnow(),
+    )
+    db.add(ad)
+    db.commit()
+    return _ad_dict(ad)
+
+
+@app.patch("/api/admin/ads/{ad_id}")
+async def update_ad(ad_id: str, body: AdIn, db: Session = Depends(get_db), _=Depends(require_auth)):
+    ad = db.query(Ad).filter(Ad.id == ad_id).first()
+    if not ad:
+        raise HTTPException(404, "Ad not found")
+    ad.type = body.type
+    ad.label = body.label[:300]
+    ad.image_url = body.image_url
+    ad.link_url = body.link_url
+    ad.active = body.active
+    ad.display_order = body.display_order
+    db.commit()
+    return _ad_dict(ad)
+
+
+@app.delete("/api/admin/ads/{ad_id}")
+async def delete_ad(ad_id: str, db: Session = Depends(get_db), _=Depends(require_auth)):
+    ad = db.query(Ad).filter(Ad.id == ad_id).first()
+    if not ad:
+        raise HTTPException(404, "Ad not found")
+    db.delete(ad)
+    db.commit()
+    return {"ok": True}
+
+
+def _ad_dict(a: Ad):
+    return {
+        "id": a.id,
+        "type": a.type,
+        "label": a.label,
+        "image_url": a.image_url,
+        "link_url": a.link_url,
+        "active": a.active,
+        "display_order": a.display_order,
+        "created_at": a.created_at.isoformat() if a.created_at else None,
+    }
 
 
 # ── Serve frontend ────────────────────────────────────────────────────────────

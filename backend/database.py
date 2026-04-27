@@ -37,6 +37,7 @@ def _migrate():
             "ALTER TABLE uploads ADD COLUMN share_id VARCHAR(12)",
             "ALTER TABLE uploads ADD COLUMN views INTEGER DEFAULT 0",
             "ALTER TABLE uploads ADD COLUMN downloads INTEGER DEFAULT 0",
+            # ads table handled by SQLAlchemy create_all; these are no-ops if already exist
         ]:
             try:
                 conn.execute(text(sql))

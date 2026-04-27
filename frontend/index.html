@@ -40,6 +40,9 @@
       <button class="nav-item" data-page="files">
         <span class="ni-icon">📁</span> My Files
       </button>
+      <button class="nav-item" data-page="ads">
+        <span class="ni-icon">📢</span> Ads
+      </button>
     </nav>
     <div class="sidebar-footer">
       <div id="key-badge" class="key-badge"></div>
@@ -121,6 +124,60 @@
       <div class="card">
         <div id="file-list">
           <p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">Loading...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Ads ── -->
+    <div id="page-ads" class="page">
+      <div class="page-header">
+        <h1>Ad Manager</h1>
+      </div>
+
+      <!-- Add ad form -->
+      <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-header">Add New Ad</div>
+        <form id="ad-form" class="ad-form">
+          <div class="ad-form-row">
+            <label>Type
+              <select id="ad-type" required>
+                <option value="banner">Banner (image)</option>
+                <option value="button">Button (text)</option>
+              </select>
+            </label>
+            <label>Label / Button Text
+              <input id="ad-label" type="text" placeholder="e.g. Download Now" required />
+            </label>
+          </div>
+          <div class="ad-form-row">
+            <label id="ad-image-wrap">Image URL <span class="muted-label">(banners only)</span>
+              <input id="ad-image-url" type="url" placeholder="https://…/banner.jpg" />
+            </label>
+            <label>Destination URL
+              <input id="ad-link-url" type="url" placeholder="https://example.com" required />
+            </label>
+          </div>
+          <div class="ad-form-row">
+            <label>Display Order <span class="muted-label">(lower = first)</span>
+              <input id="ad-order" type="number" value="0" min="0" />
+            </label>
+            <label class="ad-active-wrap">
+              <input id="ad-active" type="checkbox" checked />
+              Active (show on landing pages)
+            </label>
+          </div>
+          <div style="display:flex;gap:.75rem;align-items:center">
+            <button type="submit" class="btn-primary">Add Ad</button>
+            <span id="ad-form-msg" class="ad-form-msg"></span>
+          </div>
+        </form>
+      </div>
+
+      <!-- Ad list -->
+      <div class="card">
+        <div class="card-header">All Ads</div>
+        <div id="ad-list">
+          <p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">Loading…</p>
         </div>
       </div>
     </div>

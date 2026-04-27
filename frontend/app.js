@@ -465,6 +465,98 @@ async function loadFileList() {
   }
 }
 
+// ── Ad Manager ────────────────────────────────────────────────────────────────
+
+async function loadAdsPage() {
+  const list = document.getElementById('ad-list');
+  try {
+    const ads = await apiFetch('GET', '/api/admin/ads');
+    if (!ads.length) {
+      list.innerHTML = '<p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">No ads yet. Add one above.</p>';
+      return;
+    }
+    list.innerHTML = '';
+    const table = document.createElement('table');
+    table.className = 'files-table';
+    table.innerHTML = `
+      <thead>
+        <tr><th>Type</th><th>Label</th><th>Link</th><th>Order</th><th>Status</th><th>Actions</th></tr>
+      </thead>
+      <tbody></tbody>`;
+    list.appendChild(table);
+    const tbody = table.querySelector('tbody');
+
+    ads.forEach(ad => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><span class="ad-type-badge ad-type-${ad.type}">${ad.type}</span></td>
+        <td class="tf-name" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${ad.label}">${ad.label}</td>
+        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a href="${ad.link_url}" target="_blank" rel="noopener" style="color:var(--primary)">${ad.link_url}</a></td>
+        <td>${ad.display_order}</td>
+        <td><span class="ad-status ${ad.active ? 'ad-on' : 'ad-off'}">${ad.active ? 'Active' : 'Paused'}</span></td>
+        <td class="tf-actions">
+          <button class="btn-share toggle-btn">${ad.active ? 'Pause' : 'Enable'}</button>
+          <button class="btn-delete delete-btn">Delete</button>
+        </td>`;
+
+      tr.querySelector('.toggle-btn').addEventListener('click', async () => {
+        try {
+          await apiFetch('PATCH', `/api/admin/ads/${ad.id}`, { ...ad, active: ad.active ? 0 : 1 });
+          loadAdsPage();
+        } catch (e) { alert('Failed: ' + e.message); }
+      });
+
+      tr.querySelector('.delete-btn').addEventListener('click', async () => {
+        if (!confirm(`Delete ad "${ad.label}"?`)) return;
+        try {
+          await apiFetch('DELETE', `/api/admin/ads/${ad.id}`);
+          loadAdsPage();
+        } catch (e) { alert('Failed: ' + e.message); }
+      });
+
+      tbody.appendChild(tr);
+    });
+  } catch (e) {
+    list.innerHTML = `<p style="color:var(--danger);padding:1rem">Failed: ${e.message}</p>`;
+  }
+}
+
+function initAdForm() {
+  const form     = document.getElementById('ad-form');
+  const typeEl   = document.getElementById('ad-type');
+  const imageWrap = document.getElementById('ad-image-wrap');
+  const msgEl    = document.getElementById('ad-form-msg');
+
+  typeEl.addEventListener('change', () => {
+    imageWrap.style.opacity = typeEl.value === 'banner' ? '1' : '0.4';
+  });
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    msgEl.textContent = '';
+    const body = {
+      type:          document.getElementById('ad-type').value,
+      label:         document.getElementById('ad-label').value.trim(),
+      image_url:     document.getElementById('ad-image-url').value.trim() || null,
+      link_url:      document.getElementById('ad-link-url').value.trim(),
+      active:        document.getElementById('ad-active').checked ? 1 : 0,
+      display_order: parseInt(document.getElementById('ad-order').value, 10) || 0,
+    };
+    try {
+      await apiFetch('POST', '/api/admin/ads', body);
+      form.reset();
+      document.getElementById('ad-active').checked = true;
+      msgEl.style.color = 'var(--success)';
+      msgEl.textContent = 'Ad added!';
+      setTimeout(() => { msgEl.textContent = ''; }, 3000);
+      loadAdsPage();
+    } catch (err) {
+      msgEl.style.color = 'var(--danger)';
+      msgEl.textContent = err.message;
+    }
+  });
+}
+
 // ── Page navigation ───────────────────────────────────────────────────────────
 
 function showPage(page) {
@@ -474,6 +566,7 @@ function showPage(page) {
   document.querySelector(`[data-page="${page}"]`).classList.add('active');
   if (page === 'dashboard') loadDashboard();
   if (page === 'files')     loadFileList();
+  if (page === 'ads')       loadAdsPage();
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -526,6 +619,7 @@ function initApp() {
   document.querySelectorAll('.nav-item[data-page]').forEach(btn => {
     btn.addEventListener('click', () => showPage(btn.dataset.page));
   });
+  initAdForm();
 
   document.getElementById('upload-shortcut').addEventListener('click', () => showPage('upload'));
 

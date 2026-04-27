@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, BigInteger, DateTime
+from sqlalchemy import Column, String, Integer, BigInteger, DateTime, Text
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
@@ -30,3 +30,16 @@ class Part(Base):
     part_number = Column(Integer, nullable=False)
     etag = Column(String(200), nullable=False)
     uploaded_at = Column(DateTime, nullable=False)
+
+
+class Ad(Base):
+    __tablename__ = "ads"
+
+    id = Column(String(36), primary_key=True)
+    type = Column(String(20), nullable=False)          # "banner" or "button"
+    label = Column(String(300), nullable=False)        # button text or alt text
+    image_url = Column(Text, nullable=True)            # banners only
+    link_url = Column(Text, nullable=False)
+    active = Column(Integer, default=1, nullable=False)
+    display_order = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, nullable=False)
