@@ -1,0 +1,18 @@
+version: "3.9"
+
+services:
+  datadock:
+    build: .
+    restart: unless-stopped
+    env_file: backend/.env
+    volumes:
+      - ./data:/app/backend/data
+    environment:
+      DATABASE_URL: sqlite:////app/backend/data/datadock.db
+    ports:
+      - "127.0.0.1:8000:8000"   # only expose to localhost; nginx proxies externally
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

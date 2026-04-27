@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DataDock – Internal File Storage</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+
+<!-- ── Auth overlay ─────────────────────────────────────────────────────────── -->
+<div id="auth-overlay" style="display:none">
+  <div class="auth-box">
+    <div class="logo">Data<span>Dock</span></div>
+    <p>Enter your team API key to continue</p>
+    <form id="auth-form">
+      <input id="auth-input" type="password" placeholder="API key" autocomplete="current-password" autofocus />
+      <button id="auth-btn" class="btn-primary" type="submit">Unlock</button>
+    </form>
+    <div id="auth-error" class="err"></div>
+  </div>
+</div>
+
+<!-- ── App ──────────────────────────────────────────────────────────────────── -->
+<div id="app">
+
+  <header>
+    <div class="logo">Data<span>Dock</span></div>
+
+    <nav>
+      <button class="nav-btn active" data-tab="upload">Upload</button>
+      <button class="nav-btn" data-tab="files">Files</button>
+    </nav>
+
+    <div class="header-right">
+      <span id="key-badge" class="api-key-badge" hidden></span>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- Upload tab -->
+    <div id="upload-tab" class="tab-pane active">
+
+      <div id="drop-zone">
+        <div class="drop-icon">☁️</div>
+        <div class="drop-title">Drop files here or click to browse</div>
+        <div class="drop-sub">Chunks upload directly to Backblaze B2 — maximum speed, fully resumable</div>
+        <span class="drop-limit">Max 10 GB per file</span>
+        <input id="file-input" type="file" multiple />
+      </div>
+
+      <p id="upload-queue-title" class="section-title">Active uploads</p>
+      <div id="upload-queue"></div>
+
+    </div>
+
+    <!-- Files tab -->
+    <div id="files-tab" class="tab-pane">
+      <p class="section-title">Uploaded files</p>
+      <div id="file-list"></div>
+    </div>
+
+  </main>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
