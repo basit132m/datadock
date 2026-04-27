@@ -1,44 +1,45 @@
 'use strict';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const CHUNK_SIZE    = 10 * 1024 * 1024;  // 10 MB
-const MAX_BYTES     = 10 * 1024 * 1024 * 1024;  // 10 GB
-const MAX_CONC      = 3;   // parallel chunk uploads per file
-const MAX_RETRIES   = 4;
-const SAMPLE_BYTES  = 512 * 1024;  // fingerprint sample size
-const LS_KEY        = 'datadock_apikey';
+const CHUNK_SIZE   = 10 * 1024 * 1024;
+const MAX_BYTES    = 10 * 1024 * 1024 * 1024;
+const MAX_CONC     = 3;
+const MAX_RETRIES  = 4;
+const SAMPLE_BYTES = 512 * 1024;
+const LS_KEY       = 'datadock_apikey';
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let apiKey = localStorage.getItem(LS_KEY) || '';
-let activeUploaders = [];   // ChunkedUploader instances
+let activeUploaders = [];
+let uploadsChart = null;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatBytes(b) {
-  if (b < 1024)         return b + ' B';
-  if (b < 1048576)      return (b / 1024).toFixed(1) + ' KB';
-  if (b < 1073741824)   return (b / 1048576).toFixed(1) + ' MB';
+  if (!b || b === 0) return '0 B';
+  if (b < 1024)       return b + ' B';
+  if (b < 1048576)    return (b / 1024).toFixed(1) + ' KB';
+  if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
   return (b / 1073741824).toFixed(2) + ' GB';
 }
 
 function formatDate(iso) {
   if (!iso) return '';
-  const d = new Date(iso);
-  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 function fileIcon(name) {
-  const ext = name.split('.').pop().toLowerCase();
-  const icons = {
-    zip: '🗜️', rar: '🗜️', gz: '🗜️', tar: '🗜️',
-    mp4: '🎬', mkv: '🎬', avi: '🎬', mov: '🎬', webm: '🎬',
-    mp3: '🎵', wav: '🎵', flac: '🎵', aac: '🎵',
-    jpg: '🖼️', jpeg: '🖼️', png: '🖼️', gif: '🖼️', webp: '🖼️', svg: '🖼️',
-    pdf: '📄', doc: '📝', docx: '📝', xls: '📊', xlsx: '📊',
-    ppt: '📊', pptx: '📊', txt: '📄',
-    exe: '⚙️', msi: '⚙️', dmg: '💿', iso: '💿',
+  const ext = (name || '').split('.').pop().toLowerCase();
+  const m = {
+    zip:'🗜️', rar:'🗜️', gz:'🗜️', tar:'🗜️', '7z':'🗜️',
+    mp4:'🎬', mkv:'🎬', avi:'🎬', mov:'🎬', webm:'🎬',
+    mp3:'🎵', wav:'🎵', flac:'🎵', aac:'🎵',
+    jpg:'🖼️', jpeg:'🖼️', png:'🖼️', gif:'🖼️', webp:'🖼️',
+    pdf:'📄', doc:'📝', docx:'📝', xls:'📊', xlsx:'📊',
+    exe:'⚙️', msi:'⚙️', dmg:'💿', iso:'💿',
+    nsp:'🎮', xci:'🎮', rom:'🎮',
   };
-  return icons[ext] || '📦';
+  return m[ext] || '📦';
 }
 
 async function fingerprint(file) {
@@ -49,8 +50,7 @@ async function fingerprint(file) {
   ];
   const buf = await new Blob(parts).arrayBuffer();
   const hash = await crypto.subtle.digest('SHA-256', buf);
-  return Array.from(new Uint8Array(hash))
-    .map(b => b.toString(16).padStart(2, '0')).join('');
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 async function apiFetch(method, path, body = null) {
@@ -77,8 +77,8 @@ class ChunkedUploader extends EventTarget {
     this.file      = file;
     this.uploadId  = null;
     this.aborted   = false;
-    this.completedParts = new Map();  // partNumber → etag
-    this.chunkProgress  = new Map();  // partNumber → bytes in-flight
+    this.completedParts = new Map();
+    this.chunkProgress  = new Map();
     this._xhr      = null;
   }
 
@@ -86,10 +86,8 @@ class ChunkedUploader extends EventTarget {
     this.dispatchEvent(new CustomEvent(name, { detail }));
   }
 
-  // ── Main entry ────────────────────────────────────────────────────────────────
   async start() {
     this.emit('status', { status: 'hashing' });
-
     const hash = await fingerprint(this.file);
 
     this.emit('status', { status: 'initializing' });
@@ -101,17 +99,13 @@ class ChunkedUploader extends EventTarget {
     });
 
     this.uploadId = init.upload_id;
-
-    for (const p of init.completed_parts) {
+    for (const p of (init.completed_parts || [])) {
       this.completedParts.set(p.part_number, p.etag);
     }
 
     const totalParts = Math.ceil(this.file.size / CHUNK_SIZE);
     if (init.resuming && this.completedParts.size > 0) {
-      this.emit('resuming', {
-        done: this.completedParts.size,
-        total: totalParts,
-      });
+      this.emit('resuming', { done: this.completedParts.size, total: totalParts });
     }
 
     this.emit('status', { status: 'uploading' });
@@ -120,13 +114,10 @@ class ChunkedUploader extends EventTarget {
     if (this.aborted) return;
 
     this.emit('status', { status: 'completing' });
-
     const result = await apiFetch('POST', `/api/upload/${this.uploadId}/complete`);
-
     this.emit('done', result);
   }
 
-  // ── Upload all pending parts with concurrency ──────────────────────────────
   async _uploadAllParts(totalParts) {
     const pending = [];
     for (let i = 1; i <= totalParts; i++) {
@@ -162,7 +153,6 @@ class ChunkedUploader extends EventTarget {
     const end   = Math.min(start + CHUNK_SIZE, this.file.size);
     const blob  = this.file.slice(start, end);
 
-    // POST chunk directly to our backend — backend forwards to B2 (no CORS needed)
     const result = await this._xhrPost(
       `/api/upload/${this.uploadId}/chunk/${partNum}`,
       blob, partNum, totalParts
@@ -173,7 +163,6 @@ class ChunkedUploader extends EventTarget {
     this._emitProgress(totalParts);
   }
 
-  // ── XHR POST chunk to backend with progress events ────────────────────────
   _xhrPost(url, blob, partNum, totalParts) {
     return new Promise((resolve, reject) => {
       if (this.aborted) return reject(new Error('Aborted'));
@@ -191,11 +180,8 @@ class ChunkedUploader extends EventTarget {
       });
 
       xhr.addEventListener('load', () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve(JSON.parse(xhr.responseText));
-        } else {
-          reject(new Error(`HTTP ${xhr.status}`));
-        }
+        if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText));
+        else reject(new Error(`HTTP ${xhr.status}`));
       });
 
       xhr.addEventListener('error',  () => reject(new Error('Network error')));
@@ -212,38 +198,32 @@ class ChunkedUploader extends EventTarget {
       bytes += Math.min(s + CHUNK_SIZE, this.file.size) - s;
     }
     for (const [, b] of this.chunkProgress) bytes += b;
-
     this.emit('progress', {
       uploaded: bytes,
-      total: this.file.size,
-      percent: Math.min(100, Math.round((bytes / this.file.size) * 100)),
+      total:    this.file.size,
+      percent:  Math.min(100, Math.round((bytes / this.file.size) * 100)),
     });
   }
 
   abort() {
     this.aborted = true;
     if (this._xhr) this._xhr.abort();
-    if (this.uploadId) {
-      apiFetch('DELETE', `/api/upload/${this.uploadId}`).catch(() => {});
-    }
+    if (this.uploadId) apiFetch('DELETE', `/api/upload/${this.uploadId}`).catch(() => {});
     this.emit('status', { status: 'aborted' });
   }
 }
 
-// ── UI ─────────────────────────────────────────────────────────────────────────
+// ── Upload UI ─────────────────────────────────────────────────────────────────
 
 function buildUploadItem(file) {
-  const id = 'item-' + Math.random().toString(36).slice(2);
-
   const el = document.createElement('div');
   el.className = 'upload-item';
-  el.id = id;
   el.innerHTML = `
     <div class="upload-item-header">
-      <div class="file-icon">${fileIcon(file.name)}</div>
+      <div class="file-icon-badge">${fileIcon(file.name)}</div>
       <div class="file-meta">
         <div class="file-name" title="${file.name}">${file.name}</div>
-        <div class="file-size">${formatBytes(file.size)}</div>
+        <div class="file-size-label">${formatBytes(file.size)}</div>
       </div>
       <div class="item-actions">
         <span class="status-badge hashing">Hashing…</span>
@@ -252,19 +232,18 @@ function buildUploadItem(file) {
     </div>
     <div class="progress-wrap"><div class="progress-bar" style="width:0%"></div></div>
     <div class="progress-labels">
-      <span class="progress-text">0%</span>
-      <span class="speed-text"></span>
+      <span class="pct-text">0%</span>
+      <span class="spd-text"></span>
     </div>`;
-
-  return { el, id };
+  return el;
 }
 
 function attachUploaderEvents(uploader, el) {
-  const badge     = el.querySelector('.status-badge');
-  const bar       = el.querySelector('.progress-bar');
-  const pctText   = el.querySelector('.progress-text');
-  const speedText = el.querySelector('.speed-text');
-  const abortBtn  = el.querySelector('.abort-btn');
+  const badge    = el.querySelector('.status-badge');
+  const bar      = el.querySelector('.progress-bar');
+  const pctText  = el.querySelector('.pct-text');
+  const spdText  = el.querySelector('.spd-text');
+  const abortBtn = el.querySelector('.abort-btn');
   let lastBytes = 0, lastTime = Date.now();
 
   abortBtn.addEventListener('click', () => uploader.abort());
@@ -273,78 +252,71 @@ function attachUploaderEvents(uploader, el) {
     const s = e.detail.status;
     badge.className = `status-badge ${s}`;
     badge.textContent = {
-      hashing:      'Hashing…',
-      initializing: 'Starting…',
-      uploading:    'Uploading',
-      resuming:     'Resuming…',
-      completing:   'Finalizing…',
-      done:         'Done',
-      error:        'Error',
-      aborted:      'Cancelled',
+      hashing: 'Hashing…', initializing: 'Starting…', uploading: 'Uploading',
+      resuming: 'Resuming…', completing: 'Finalizing…', done: 'Done',
+      error: 'Error', aborted: 'Cancelled',
     }[s] || s;
-
-    if (s === 'aborted') {
-      abortBtn.remove();
-      bar.classList.add('error');
-    }
+    if (s === 'aborted') { abortBtn.remove(); bar.classList.add('error'); }
   });
 
   uploader.addEventListener('resuming', e => {
     badge.className = 'status-badge resuming';
-    badge.textContent = `Resuming (${e.detail.done}/${e.detail.total} parts done)`;
+    badge.textContent = `Resuming (${e.detail.done}/${e.detail.total} parts)`;
   });
 
   uploader.addEventListener('progress', e => {
-    const { uploaded, total, percent } = e.detail;
+    const { uploaded, percent } = e.detail;
     bar.style.width = percent + '%';
     pctText.textContent = percent + '%';
-
-    const now = Date.now();
-    const dt = (now - lastTime) / 1000;
+    const now = Date.now(), dt = (now - lastTime) / 1000;
     if (dt >= 1) {
-      const speed = (uploaded - lastBytes) / dt;
-      speedText.textContent = formatBytes(Math.max(0, speed)) + '/s';
-      lastBytes = uploaded;
-      lastTime  = now;
+      spdText.textContent = formatBytes(Math.max(0, (uploaded - lastBytes) / dt)) + '/s';
+      lastBytes = uploaded; lastTime = now;
     }
   });
 
   uploader.addEventListener('done', e => {
-    const { download_url, filename } = e.detail;
+    const { share_url, direct_url, filename } = e.detail;
     bar.style.width = '100%';
-    bar.classList.add('done');
+    bar.classList.add('success');
     badge.className = 'status-badge done';
     badge.textContent = 'Done';
     abortBtn.remove();
     pctText.textContent = '100%';
-    speedText.textContent = '';
+    spdText.textContent = '';
 
-    const doneDiv = document.createElement('div');
-    doneDiv.className = 'done-link';
-    doneDiv.innerHTML = `
-      <a href="${download_url}" target="_blank" rel="noopener">${filename}</a>
-      <button class="copy-btn">Copy link</button>`;
-    doneDiv.querySelector('.copy-btn').addEventListener('click', () => {
-      navigator.clipboard.writeText(download_url);
-      doneDiv.querySelector('.copy-btn').textContent = 'Copied!';
-      setTimeout(() => { doneDiv.querySelector('.copy-btn').textContent = 'Copy link'; }, 2000);
+    const doneRow = document.createElement('div');
+    doneRow.className = 'done-row';
+    doneRow.innerHTML = `
+      <button class="done-link-btn" data-url="${window.location.origin}${share_url}">🔗 Copy Share Link</button>
+      <button class="done-direct-btn" data-url="${direct_url}">⬇️ Copy Direct Link</button>`;
+
+    doneRow.querySelector('.done-link-btn').addEventListener('click', e => {
+      navigator.clipboard.writeText(e.target.dataset.url);
+      e.target.textContent = '✓ Copied!';
+      setTimeout(() => { e.target.textContent = '🔗 Copy Share Link'; }, 2000);
     });
-    el.appendChild(doneDiv);
+    doneRow.querySelector('.done-direct-btn').addEventListener('click', e => {
+      navigator.clipboard.writeText(e.target.dataset.url);
+      e.target.textContent = '✓ Copied!';
+      setTimeout(() => { e.target.textContent = '⬇️ Copy Direct Link'; }, 2000);
+    });
 
-    loadFileList();
+    el.appendChild(doneRow);
+    loadDashboard();
   });
 }
 
 async function startUpload(file) {
   if (file.size > MAX_BYTES) {
-    alert(`"${file.name}" is ${formatBytes(file.size)}, which exceeds the 10 GB limit.`);
+    alert(`"${file.name}" exceeds the 10 GB limit.`);
     return;
   }
-
   const queue = document.getElementById('upload-queue');
-  const { el } = buildUploadItem(file);
+  const wrap  = document.getElementById('upload-queue-wrap');
+  const el = buildUploadItem(file);
   queue.appendChild(el);
-  showUploadSection();
+  wrap.hidden = false;
 
   const uploader = new ChunkedUploader(file);
   activeUploaders.push(uploader);
@@ -354,18 +326,73 @@ async function startUpload(file) {
     await uploader.start();
   } catch (err) {
     if (!uploader.aborted) {
-      const badge = el.querySelector('.status-badge');
-      badge.className = 'status-badge error';
-      badge.textContent = 'Error';
-      const bar = el.querySelector('.progress-bar');
-      bar.classList.add('error');
-      const speedText = el.querySelector('.speed-text');
-      speedText.textContent = err.message;
+      el.querySelector('.status-badge').className = 'status-badge error';
+      el.querySelector('.status-badge').textContent = 'Error';
+      el.querySelector('.progress-bar').classList.add('error');
+      el.querySelector('.spd-text').textContent = err.message;
       el.querySelector('.abort-btn')?.remove();
     }
   } finally {
     activeUploaders = activeUploaders.filter(u => u !== uploader);
   }
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+
+async function loadDashboard() {
+  try {
+    const stats = await apiFetch('GET', '/api/stats');
+    document.getElementById('stat-files').textContent     = stats.total_files.toLocaleString();
+    document.getElementById('stat-storage').textContent   = formatBytes(stats.total_size);
+    document.getElementById('stat-downloads').textContent = stats.total_downloads.toLocaleString();
+    renderChart(stats.uploads_per_day);
+    await loadRecentFiles();
+  } catch (e) {
+    console.error('Dashboard error:', e);
+  }
+}
+
+function renderChart(data) {
+  const ctx = document.getElementById('uploads-chart').getContext('2d');
+  if (uploadsChart) uploadsChart.destroy();
+  uploadsChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: data.map(d => d.date),
+      datasets: [{
+        label: 'Files',
+        data: data.map(d => d.count),
+        backgroundColor: 'rgba(99,102,241,0.85)',
+        borderRadius: 6,
+        borderSkipped: false,
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 }, grid: { color: '#e2e8f0' } },
+        x: { grid: { display: false } },
+      },
+    },
+  });
+}
+
+async function loadRecentFiles() {
+  const el = document.getElementById('recent-files');
+  const files = await apiFetch('GET', '/api/files');
+  const recent = files.slice(0, 6);
+  if (!recent.length) {
+    el.innerHTML = '<p style="padding:1rem;color:var(--muted);font-size:.875rem">No files yet. Upload something!</p>';
+    return;
+  }
+  el.innerHTML = recent.map(f => `
+    <div class="recent-file-row">
+      <span class="rf-icon">${fileIcon(f.filename)}</span>
+      <span class="rf-name">${f.filename}</span>
+      <span class="rf-size">${formatBytes(f.file_size)}</span>
+      <span class="rf-date">${formatDate(f.completed_at)}</span>
+    </div>`).join('');
 }
 
 // ── File list ─────────────────────────────────────────────────────────────────
@@ -374,160 +401,151 @@ async function loadFileList() {
   const list = document.getElementById('file-list');
   try {
     const files = await apiFetch('GET', '/api/files');
-    list.innerHTML = '';
-    for (const f of files) {
-      const row = document.createElement('div');
-      row.className = 'file-row';
-      row.dataset.id = f.id;
-      row.innerHTML = `
-        <div class="file-icon">${fileIcon(f.filename)}</div>
-        <div class="file-meta">
-          <div class="file-name">${f.filename}</div>
-          <div class="file-date">${formatBytes(f.file_size)} · ${formatDate(f.completed_at)}</div>
-        </div>
-        <div class="file-row-actions">
-          <button class="btn-sm copy-dl-btn">Copy link</button>
-          <a href="${f.download_url}" download class="btn-sm" style="text-decoration:none">Download</a>
-          <button class="btn-sm danger del-btn">Delete</button>
-        </div>`;
+    if (!files.length) {
+      list.innerHTML = '<p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">No files yet.</p>';
+      return;
+    }
 
-      row.querySelector('.copy-dl-btn').addEventListener('click', () => {
-        navigator.clipboard.writeText(f.download_url);
-        row.querySelector('.copy-dl-btn').textContent = 'Copied!';
-        setTimeout(() => { row.querySelector('.copy-dl-btn').textContent = 'Copy link'; }, 2000);
+    const table = document.createElement('table');
+    table.className = 'files-table';
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th>File</th><th>Size</th><th>Date</th>
+          <th>Views</th><th>Downloads</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>`;
+    list.innerHTML = '';
+    list.appendChild(table);
+    const tbody = table.querySelector('tbody');
+
+    files.forEach(f => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><span class="tf-icon">${fileIcon(f.filename)}</span><span class="tf-name">${f.filename}</span></td>
+        <td>${formatBytes(f.file_size)}</td>
+        <td>${formatDate(f.completed_at)}</td>
+        <td>${(f.views || 0).toLocaleString()}</td>
+        <td>${(f.downloads || 0).toLocaleString()}</td>
+        <td class="tf-actions">
+          ${f.share_id ? `<button class="btn-share">Share</button>` : ''}
+          <button class="btn-direct">Direct</button>
+          <button class="btn-delete">Delete</button>
+        </td>`;
+
+      if (f.share_id) {
+        const shareUrl = `${window.location.origin}/f/${f.share_id}`;
+        tr.querySelector('.btn-share').addEventListener('click', e => {
+          navigator.clipboard.writeText(shareUrl);
+          e.target.textContent = 'Copied!';
+          setTimeout(() => { e.target.textContent = 'Share'; }, 2000);
+        });
+      }
+
+      tr.querySelector('.btn-direct').addEventListener('click', e => {
+        navigator.clipboard.writeText(f.direct_url);
+        e.target.textContent = 'Copied!';
+        setTimeout(() => { e.target.textContent = 'Direct'; }, 2000);
       });
 
-      row.querySelector('.del-btn').addEventListener('click', async () => {
+      tr.querySelector('.btn-delete').addEventListener('click', async e => {
         if (!confirm(`Delete "${f.filename}"?`)) return;
         try {
           await apiFetch('DELETE', `/api/files/${f.id}`);
-          row.remove();
-        } catch (e) {
-          alert('Delete failed: ' + e.message);
-        }
+          tr.remove();
+          loadDashboard();
+        } catch (err) { alert('Delete failed: ' + err.message); }
       });
 
-      list.appendChild(row);
-    }
+      tbody.appendChild(tr);
+    });
   } catch (e) {
-    list.innerHTML = `<p style="color:var(--danger);font-size:.85rem">Failed to load files: ${e.message}</p>`;
+    list.innerHTML = `<p style="color:var(--danger);padding:1rem">Failed: ${e.message}</p>`;
   }
 }
 
-// ── Tab switching ─────────────────────────────────────────────────────────────
+// ── Page navigation ───────────────────────────────────────────────────────────
 
-function showTab(tab) {
-  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById(tab + '-tab').classList.add('active');
-  document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
-  if (tab === 'files') loadFileList();
-}
-
-function showUploadSection() {
-  const queue = document.getElementById('upload-queue');
-  if (!document.getElementById('upload-queue-title').hidden) return;
-  document.getElementById('upload-queue-title').hidden = false;
+function showPage(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  document.getElementById(`page-${page}`).classList.add('active');
+  document.querySelector(`[data-page="${page}"]`).classList.add('active');
+  if (page === 'dashboard') loadDashboard();
+  if (page === 'files')     loadFileList();
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 async function checkAuth() {
-  try {
-    await apiFetch('POST', '/api/auth/verify');
-    return true;
-  } catch {
-    return false;
-  }
+  try { await apiFetch('POST', '/api/auth/verify'); return true; }
+  catch { return false; }
 }
 
 async function initAuth() {
   const overlay = document.getElementById('auth-overlay');
 
   if (apiKey) {
-    const ok = await checkAuth();
-    if (ok) {
-      overlay.style.display = 'none';
-      return;
-    }
+    if (await checkAuth()) { overlay.style.display = 'none'; return; }
     localStorage.removeItem(LS_KEY);
     apiKey = '';
   }
 
   overlay.style.display = 'flex';
 
-  const form    = document.getElementById('auth-form');
-  const input   = document.getElementById('auth-input');
-  const errEl   = document.getElementById('auth-error');
-  const btn     = document.getElementById('auth-btn');
+  const form  = document.getElementById('auth-form');
+  const input = document.getElementById('auth-input');
+  const errEl = document.getElementById('auth-error');
+  const btn   = document.getElementById('auth-btn');
 
   form.addEventListener('submit', async e => {
     e.preventDefault();
     const key = input.value.trim();
     if (!key) return;
-    btn.disabled = true;
-    btn.textContent = 'Verifying…';
-    errEl.textContent = '';
+    btn.disabled = true; btn.textContent = 'Verifying…'; errEl.textContent = '';
 
     apiKey = key;
-    const ok = await checkAuth();
-    if (ok) {
+    if (await checkAuth()) {
       localStorage.setItem(LS_KEY, key);
       overlay.style.display = 'none';
-      loadFileList();
+      initApp();
     } else {
       apiKey = '';
-      errEl.textContent = 'Invalid API key. Try again.';
+      errEl.textContent = 'Invalid API key.';
       input.select();
     }
-    btn.disabled = false;
-    btn.textContent = 'Unlock';
+    btn.disabled = false; btn.textContent = 'Unlock';
   });
+}
+
+function initApp() {
+  const badge = document.getElementById('key-badge');
+  if (badge) badge.textContent = 'Key: ' + apiKey.slice(0, 4) + '••••';
+
+  document.querySelectorAll('.nav-item[data-page]').forEach(btn => {
+    btn.addEventListener('click', () => showPage(btn.dataset.page));
+  });
+
+  document.getElementById('upload-shortcut').addEventListener('click', () => showPage('upload'));
+
+  const zone  = document.getElementById('drop-zone');
+  const input = document.getElementById('file-input');
+  zone.addEventListener('click', () => input.click());
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('drag-over');
+    [...e.dataTransfer.files].forEach(startUpload);
+  });
+  input.addEventListener('change', () => { [...input.files].forEach(startUpload); input.value = ''; });
+
+  showPage('dashboard');
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {
   await initAuth();
-
-  // Show API key hint
-  if (apiKey) {
-    const badge = document.getElementById('key-badge');
-    badge.textContent = 'Key: ' + apiKey.slice(0, 4) + '••••';
-    badge.hidden = false;
-  }
-
-  // Nav tabs
-  document.querySelectorAll('.nav-btn[data-tab]').forEach(btn => {
-    btn.addEventListener('click', () => showTab(btn.dataset.tab));
-  });
-
-  // Drop zone
-  const zone  = document.getElementById('drop-zone');
-  const input = document.getElementById('file-input');
-
-  zone.addEventListener('click', () => input.click());
-
-  zone.addEventListener('dragover', e => {
-    e.preventDefault();
-    zone.classList.add('drag-over');
-  });
-  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-  zone.addEventListener('drop', e => {
-    e.preventDefault();
-    zone.classList.remove('drag-over');
-    [...e.dataTransfer.files].forEach(startUpload);
-  });
-
-  input.addEventListener('change', () => {
-    [...input.files].forEach(startUpload);
-    input.value = '';
-  });
-
-  // Upload queue title hidden by default
-  document.getElementById('upload-queue-title').hidden = true;
-  document.getElementById('upload-queue').addEventListener('DOMSubtreeModified', () => {
-    const q = document.getElementById('upload-queue');
-    document.getElementById('upload-queue-title').hidden = q.children.length === 0;
-  });
+  if (apiKey) initApp();
 });

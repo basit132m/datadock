@@ -1,7 +1,9 @@
 import os
+import secrets
+import string
 import uuid
-from datetime import datetime
-from typing import List, Optional
+from datetime import datetime, timedelta
+from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -9,24 +11,24 @@ load_dotenv()
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db, init_db
 from models import Part, Upload
 from storage import B2Storage
 
-# ── Config ───────────────────────────────────────────────────────────────────────
+# ── Config ────────────────────────────────────────────────────────────────────
 
 MAX_BYTES = int(os.getenv("MAX_FILE_SIZE_GB", "10")) * 1_073_741_824
 API_KEY = os.getenv("API_KEY", "")
-FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
+FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
 
-# ── App ───────────────────────────────────────────────────────────────────────────
+# ── App ───────────────────────────────────────────────────────────────────────
 
-app = FastAPI(title="DataDock", version="1.0.0", docs_url=None, redoc_url=None)
+app = FastAPI(title="DataDock", version="2.0.0", docs_url=None, redoc_url=None)
 storage = B2Storage()
 
 app.add_middleware(
@@ -43,15 +45,19 @@ async def _startup():
     init_db()
 
 
-# ── Auth ─────────────────────────────────────────────────────────────────────────
+def _share_id() -> str:
+    return "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
+
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
 
 
 def require_auth(x_api_key: Optional[str] = Header(None)):
     if API_KEY and x_api_key != API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API key")
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
-# ── Schemas ───────────────────────────────────────────────────────────────────────
+# ── Schemas ───────────────────────────────────────────────────────────────────
 
 
 class InitUploadIn(BaseModel):
@@ -61,11 +67,7 @@ class InitUploadIn(BaseModel):
     content_type: str = "application/octet-stream"
 
 
-class CompleteUploadIn(BaseModel):
-    parts: List[dict]  # [{part_number: int, etag: str}]
-
-
-# ── Upload API ───────────────────────────────────────────────────────────────────
+# ── Upload API ────────────────────────────────────────────────────────────────
 
 
 @app.post("/api/upload/init")
@@ -75,64 +77,46 @@ async def init_upload(
     _=Depends(require_auth),
 ):
     if body.file_size > MAX_BYTES:
-        raise HTTPException(
-            400, f"File exceeds {os.getenv('MAX_FILE_SIZE_GB', 10)} GB limit"
-        )
+        raise HTTPException(400, f"File exceeds {os.getenv('MAX_FILE_SIZE_GB', 10)} GB limit")
     if body.file_size <= 0:
         raise HTTPException(400, "Invalid file size")
 
-    # ── Resume existing pending upload ────────────────────────────────────────────
     existing = (
         db.query(Upload)
         .filter(Upload.file_hash == body.file_hash, Upload.status == "pending")
         .first()
     )
     if existing:
-        # Sync DB parts with what B2 actually has (handles crashes mid-record)
         try:
-            b2_parts = storage.list_uploaded_parts(
-                existing.b2_file_key, existing.b2_upload_id
-            )
-            known = {
-                p.part_number
-                for p in db.query(Part)
-                .filter(Part.upload_id == existing.id)
-                .all()
-            }
+            b2_parts = storage.list_uploaded_parts(existing.b2_file_key, existing.b2_upload_id)
+            known = {p.part_number for p in db.query(Part).filter(Part.upload_id == existing.id).all()}
             for bp in b2_parts:
                 if bp["part_number"] not in known:
-                    db.add(
-                        Part(
-                            id=str(uuid.uuid4()),
-                            upload_id=existing.id,
-                            part_number=bp["part_number"],
-                            etag=bp["etag"],
-                            uploaded_at=datetime.utcnow(),
-                        )
-                    )
+                    db.add(Part(
+                        id=str(uuid.uuid4()),
+                        upload_id=existing.id,
+                        part_number=bp["part_number"],
+                        etag=bp["etag"],
+                        uploaded_at=datetime.utcnow(),
+                    ))
             db.commit()
         except Exception:
             pass
 
-        parts = (
-            db.query(Part).filter(Part.upload_id == existing.id).all()
-        )
+        parts = db.query(Part).filter(Part.upload_id == existing.id).all()
         return {
             "upload_id": existing.id,
             "resuming": True,
-            "completed_parts": [
-                {"part_number": p.part_number, "etag": p.etag} for p in parts
-            ],
+            "completed_parts": [{"part_number": p.part_number, "etag": p.etag} for p in parts],
         }
 
-    # ── New upload ────────────────────────────────────────────────────────────────
     safe_name = os.path.basename(body.filename).replace("\0", "") or "unnamed"
     file_key = f"uploads/{uuid.uuid4()}/{safe_name}"
-
     b2_upload_id = storage.create_multipart_upload(file_key, body.content_type)
 
     upload = Upload(
         id=str(uuid.uuid4()),
+        share_id=_share_id(),
         file_hash=body.file_hash,
         filename=safe_name,
         file_size=body.file_size,
@@ -140,67 +124,13 @@ async def init_upload(
         b2_upload_id=b2_upload_id,
         b2_file_key=file_key,
         status="pending",
+        views=0,
+        downloads=0,
         created_at=datetime.utcnow(),
     )
     db.add(upload)
     db.commit()
-
     return {"upload_id": upload.id, "resuming": False, "completed_parts": []}
-
-
-@app.get("/api/upload/{upload_id}/presign/{part_number}")
-async def presign_part(
-    upload_id: str,
-    part_number: int,
-    db: Session = Depends(get_db),
-    _=Depends(require_auth),
-):
-    if not (1 <= part_number <= 10_000):
-        raise HTTPException(400, "part_number must be 1–10000")
-
-    upload = db.query(Upload).filter(Upload.id == upload_id).first()
-    if not upload:
-        raise HTTPException(404, "Upload not found")
-    if upload.status != "pending":
-        raise HTTPException(400, f"Upload is {upload.status}")
-
-    url = storage.presign_part(upload.b2_file_key, upload.b2_upload_id, part_number)
-    return {"presigned_url": url}
-
-
-@app.post("/api/upload/{upload_id}/part/{part_number}")
-async def record_part(
-    upload_id: str,
-    part_number: int,
-    etag: str = Query(...),
-    db: Session = Depends(get_db),
-    _=Depends(require_auth),
-):
-    upload = db.query(Upload).filter(Upload.id == upload_id).first()
-    if not upload:
-        raise HTTPException(404, "Upload not found")
-
-    existing = (
-        db.query(Part)
-        .filter(Part.upload_id == upload_id, Part.part_number == part_number)
-        .first()
-    )
-    clean_etag = etag.strip('"')
-    if existing:
-        existing.etag = clean_etag
-        existing.uploaded_at = datetime.utcnow()
-    else:
-        db.add(
-            Part(
-                id=str(uuid.uuid4()),
-                upload_id=upload_id,
-                part_number=part_number,
-                etag=clean_etag,
-                uploaded_at=datetime.utcnow(),
-            )
-        )
-    db.commit()
-    return {"ok": True}
 
 
 @app.post("/api/upload/{upload_id}/chunk/{part_number}")
@@ -262,8 +192,10 @@ async def complete_upload(
     if not db_parts:
         raise HTTPException(400, "No parts uploaded yet")
 
-    parts = [{"part_number": p.part_number, "etag": p.etag} for p in db_parts]
+    if not upload.share_id:
+        upload.share_id = _share_id()
 
+    parts = [{"part_number": p.part_number, "etag": p.etag} for p in db_parts]
     upload.status = "completing"
     db.commit()
 
@@ -280,7 +212,8 @@ async def complete_upload(
 
     return {
         "ok": True,
-        "download_url": storage.get_download_url(upload.b2_file_key),
+        "share_url": f"/f/{upload.share_id}",
+        "direct_url": storage.get_download_url(upload.b2_file_key),
         "filename": upload.filename,
         "file_size": upload.file_size,
     }
@@ -295,23 +228,18 @@ async def abort_upload(
     upload = db.query(Upload).filter(Upload.id == upload_id).first()
     if not upload:
         raise HTTPException(404, "Upload not found")
-
     if upload.status == "pending":
         storage.abort_multipart_upload(upload.b2_file_key, upload.b2_upload_id)
-
     upload.status = "aborted"
     db.commit()
     return {"ok": True}
 
 
-# ── File manager API ──────────────────────────────────────────────────────────────
+# ── File manager API ──────────────────────────────────────────────────────────
 
 
 @app.get("/api/files")
-async def list_files(
-    db: Session = Depends(get_db),
-    _=Depends(require_auth),
-):
+async def list_files(db: Session = Depends(get_db), _=Depends(require_auth)):
     rows = (
         db.query(Upload)
         .filter(Upload.status == "completed")
@@ -322,9 +250,13 @@ async def list_files(
     return [
         {
             "id": f.id,
+            "share_id": f.share_id,
             "filename": f.filename,
             "file_size": f.file_size,
-            "download_url": storage.get_download_url(f.b2_file_key),
+            "direct_url": storage.get_download_url(f.b2_file_key),
+            "share_url": f"/f/{f.share_id}" if f.share_id else None,
+            "views": f.views or 0,
+            "downloads": f.downloads or 0,
             "completed_at": f.completed_at.isoformat() if f.completed_at else None,
         }
         for f in rows
@@ -332,11 +264,7 @@ async def list_files(
 
 
 @app.delete("/api/files/{file_id}")
-async def delete_file(
-    file_id: str,
-    db: Session = Depends(get_db),
-    _=Depends(require_auth),
-):
+async def delete_file(file_id: str, db: Session = Depends(get_db), _=Depends(require_auth)):
     upload = (
         db.query(Upload)
         .filter(Upload.id == file_id, Upload.status == "completed")
@@ -344,12 +272,10 @@ async def delete_file(
     )
     if not upload:
         raise HTTPException(404, "File not found")
-
     try:
         storage.delete_object(upload.b2_file_key)
     except Exception:
         pass
-
     db.delete(upload)
     db.commit()
     return {"ok": True}
@@ -360,21 +286,117 @@ async def verify_auth(_=Depends(require_auth)):
     return {"ok": True}
 
 
-# ── Serve frontend ────────────────────────────────────────────────────────────────
+# ── Dashboard stats ───────────────────────────────────────────────────────────
 
-_frontend = os.path.abspath(FRONTEND_DIR)
+
+@app.get("/api/stats")
+async def get_stats(db: Session = Depends(get_db), _=Depends(require_auth)):
+    total_files = (
+        db.query(func.count(Upload.id)).filter(Upload.status == "completed").scalar() or 0
+    )
+    total_size = (
+        db.query(func.coalesce(func.sum(Upload.file_size), 0))
+        .filter(Upload.status == "completed")
+        .scalar()
+    )
+    total_downloads = (
+        db.query(func.coalesce(func.sum(Upload.downloads), 0))
+        .filter(Upload.status == "completed")
+        .scalar()
+    )
+
+    uploads_per_day = []
+    today = datetime.utcnow().date()
+    for i in range(6, -1, -1):
+        day = today - timedelta(days=i)
+        day_start = datetime(day.year, day.month, day.day, 0, 0, 0)
+        day_end = datetime(day.year, day.month, day.day, 23, 59, 59)
+        count = (
+            db.query(func.count(Upload.id))
+            .filter(
+                Upload.status == "completed",
+                Upload.completed_at >= day_start,
+                Upload.completed_at <= day_end,
+            )
+            .scalar()
+            or 0
+        )
+        uploads_per_day.append({"date": day.strftime("%b %d"), "count": count})
+
+    return {
+        "total_files": total_files,
+        "total_size": total_size,
+        "total_downloads": total_downloads,
+        "uploads_per_day": uploads_per_day,
+    }
+
+
+# ── Public share / download ───────────────────────────────────────────────────
+
+
+@app.get("/api/f/{share_id}")
+async def get_share_info(share_id: str, db: Session = Depends(get_db)):
+    upload = (
+        db.query(Upload)
+        .filter(Upload.share_id == share_id, Upload.status == "completed")
+        .first()
+    )
+    if not upload:
+        raise HTTPException(404, "File not found")
+
+    upload.views = (upload.views or 0) + 1
+    db.commit()
+
+    return {
+        "share_id": share_id,
+        "filename": upload.filename,
+        "file_size": upload.file_size,
+        "content_type": upload.content_type,
+        "views": upload.views,
+        "downloads": upload.downloads or 0,
+        "completed_at": upload.completed_at.isoformat() if upload.completed_at else None,
+    }
+
+
+@app.get("/api/f/{share_id}/download")
+async def download_file(share_id: str, db: Session = Depends(get_db)):
+    upload = (
+        db.query(Upload)
+        .filter(Upload.share_id == share_id, Upload.status == "completed")
+        .first()
+    )
+    if not upload:
+        raise HTTPException(404, "File not found")
+
+    upload.downloads = (upload.downloads or 0) + 1
+    db.commit()
+
+    return RedirectResponse(url=storage.get_download_url(upload.b2_file_key))
+
+
+# ── Serve frontend ────────────────────────────────────────────────────────────
+
+
+@app.get("/f/{share_id}", include_in_schema=False)
+async def share_page(share_id: str):
+    return FileResponse(os.path.join(FRONTEND_DIR, "landing.html"))
 
 
 @app.get("/", include_in_schema=False)
 async def serve_index():
-    return FileResponse(os.path.join(_frontend, "index.html"))
+    return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 
 
 @app.get("/app.js", include_in_schema=False)
 async def serve_js():
-    return FileResponse(os.path.join(_frontend, "app.js"))
+    return FileResponse(os.path.join(FRONTEND_DIR, "app.js"))
 
 
 @app.get("/style.css", include_in_schema=False)
 async def serve_css():
-    return FileResponse(os.path.join(_frontend, "style.css"))
+    return FileResponse(os.path.join(FRONTEND_DIR, "style.css"))
+
+
+@app.get("/landing.js", include_in_schema=False)
+async def serve_landing_js():
+    return FileResponse(os.path.join(FRONTEND_DIR, "landing.js"))

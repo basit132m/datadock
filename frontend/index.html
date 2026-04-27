@@ -11,62 +11,124 @@
 </head>
 <body>
 
-<!-- ── Auth overlay ─────────────────────────────────────────────────────────── -->
+<!-- ── Auth overlay ── -->
 <div id="auth-overlay" style="display:none">
   <div class="auth-box">
-    <div class="logo">Data<span>Dock</span></div>
-    <p>Enter your team API key to continue</p>
+    <div class="auth-logo">Data<span>Dock</span></div>
+    <p>Enter your team API key to access the platform</p>
     <form id="auth-form">
-      <input id="auth-input" type="password" placeholder="API key" autocomplete="current-password" autofocus />
+      <input id="auth-input" type="password" placeholder="API Key" autocomplete="current-password" autofocus />
       <button id="auth-btn" class="btn-primary" type="submit">Unlock</button>
     </form>
     <div id="auth-error" class="err"></div>
   </div>
 </div>
 
-<!-- ── App ──────────────────────────────────────────────────────────────────── -->
+<!-- ── App ── -->
 <div id="app">
 
-  <header>
-    <div class="logo">Data<span>Dock</span></div>
-
-    <nav>
-      <button class="nav-btn active" data-tab="upload">Upload</button>
-      <button class="nav-btn" data-tab="files">Files</button>
+  <!-- Sidebar -->
+  <aside id="sidebar">
+    <div class="sidebar-logo">Data<span>Dock</span></div>
+    <nav class="sidebar-nav">
+      <button class="nav-item active" data-page="dashboard">
+        <span class="ni-icon">📊</span> Dashboard
+      </button>
+      <button class="nav-item" data-page="upload">
+        <span class="ni-icon">☁️</span> Upload Files
+      </button>
+      <button class="nav-item" data-page="files">
+        <span class="ni-icon">📁</span> My Files
+      </button>
     </nav>
-
-    <div class="header-right">
-      <span id="key-badge" class="api-key-badge" hidden></span>
+    <div class="sidebar-footer">
+      <div id="key-badge" class="key-badge"></div>
     </div>
-  </header>
+  </aside>
 
-  <main>
+  <!-- Main content -->
+  <main id="main">
 
-    <!-- Upload tab -->
-    <div id="upload-tab" class="tab-pane active">
+    <!-- ── Dashboard ── -->
+    <div id="page-dashboard" class="page active">
+      <div class="page-header">
+        <h1>Dashboard</h1>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon">📁</div>
+          <div>
+            <div class="stat-label">Total Files</div>
+            <div class="stat-value" id="stat-files">—</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">💾</div>
+          <div>
+            <div class="stat-label">Storage Used</div>
+            <div class="stat-value" id="stat-storage">—</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">⬇️</div>
+          <div>
+            <div class="stat-label">Total Downloads</div>
+            <div class="stat-value" id="stat-downloads">—</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card chart-card">
+        <div class="card-header">Uploads — Last 7 Days</div>
+        <canvas id="uploads-chart" height="80"></canvas>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Recent Files</div>
+        <div id="recent-files">
+          <p style="padding:1rem;color:var(--muted);font-size:.875rem">Loading...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Upload ── -->
+    <div id="page-upload" class="page">
+      <div class="page-header">
+        <h1>Upload Files</h1>
+      </div>
 
       <div id="drop-zone">
         <div class="drop-icon">☁️</div>
         <div class="drop-title">Drop files here or click to browse</div>
-        <div class="drop-sub">Chunks upload directly to Backblaze B2 — maximum speed, fully resumable</div>
+        <div class="drop-sub">Chunks upload directly to B2 at full speed · Fully resumable</div>
         <span class="drop-limit">Max 10 GB per file</span>
         <input id="file-input" type="file" multiple />
       </div>
 
-      <p id="upload-queue-title" class="section-title">Active uploads</p>
-      <div id="upload-queue"></div>
-
+      <div id="upload-queue-wrap" hidden>
+        <p class="section-title">Active Uploads</p>
+        <div id="upload-queue"></div>
+      </div>
     </div>
 
-    <!-- Files tab -->
-    <div id="files-tab" class="tab-pane">
-      <p class="section-title">Uploaded files</p>
-      <div id="file-list"></div>
+    <!-- ── Files ── -->
+    <div id="page-files" class="page">
+      <div class="page-header">
+        <h1>My Files</h1>
+        <button class="btn-primary-sm" id="upload-shortcut">+ Upload</button>
+      </div>
+      <div class="card">
+        <div id="file-list">
+          <p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">Loading...</p>
+        </div>
+      </div>
     </div>
 
   </main>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

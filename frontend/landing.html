@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DataDock – Download</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body class="landing-body">
+
+<header class="landing-header">
+  <a href="/" class="landing-logo">Data<span>Dock</span></a>
+</header>
+
+<main class="landing-main">
+
+  <div id="lc-loading" style="text-align:center;padding:3rem;color:var(--muted)">
+    <div class="lc-icon">⏳</div>
+    <p>Loading…</p>
+  </div>
+
+  <div id="lc-error" hidden style="text-align:center;padding:3rem">
+    <div class="lc-icon">❌</div>
+    <h2 style="margin-bottom:.5rem">File not found</h2>
+    <p style="color:var(--muted);margin-bottom:1.5rem">This link may have expired or the file was deleted.</p>
+    <a href="/" class="lc-download">Go to DataDock</a>
+  </div>
+
+  <div id="lc-card" class="lc-card" hidden>
+    <div class="lc-icon" id="lc-icon">📄</div>
+    <div class="lc-name" id="lc-filename">filename.zip</div>
+
+    <div class="lc-badges">
+      <span class="lc-badge" id="lc-size">—</span>
+      <span class="lc-badge" id="lc-date">—</span>
+    </div>
+
+    <div class="lc-stats">
+      <span id="lc-views">— views</span>
+      <span>·</span>
+      <span id="lc-downloads">— downloads</span>
+    </div>
+
+    <a id="lc-download-btn" href="#" class="lc-download">⬇ Download File</a>
+
+    <p class="lc-hint">Your download will start immediately via a secure link.</p>
+  </div>
+
+</main>
+
+<footer class="landing-footer">
+  <span>Powered by <a href="/">DataDock</a></span>
+</footer>
+
+<script src="/landing.js"></script>
+</body>
+</html>
