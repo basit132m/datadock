@@ -59,6 +59,16 @@ class B2Storage:
             },
         )
 
+    def upload_part(self, key: str, upload_id: str, part_number: int, data: bytes) -> str:
+        resp = self.s3.upload_part(
+            Bucket=self.bucket,
+            Key=key,
+            UploadId=upload_id,
+            PartNumber=part_number,
+            Body=data,
+        )
+        return resp["ETag"].strip('"')
+
     def abort_multipart_upload(self, key: str, upload_id: str) -> None:
         try:
             self.s3.abort_multipart_upload(

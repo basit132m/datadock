@@ -121,12 +121,7 @@ class ChunkedUploader extends EventTarget {
 
     this.emit('status', { status: 'completing' });
 
-    const parts = Array.from(this.completedParts.entries()).map(([pn, etag]) => ({
-      part_number: pn,
-      etag,
-    }));
-
-    const result = await apiFetch('POST', `/api/upload/${this.uploadId}/complete`, { parts });
+    const result = await apiFetch('POST', `/api/upload/${this.uploadId}/complete`);
 
     this.emit('done', result);
   }
@@ -163,33 +158,29 @@ class ChunkedUploader extends EventTarget {
   }
 
   async _uploadPart(partNum, totalParts) {
-    const { presigned_url } = await apiFetch(
-      'GET', `/api/upload/${this.uploadId}/presign/${partNum}`
-    );
-
     const start = (partNum - 1) * CHUNK_SIZE;
     const end   = Math.min(start + CHUNK_SIZE, this.file.size);
     const blob  = this.file.slice(start, end);
 
-    const etag = await this._xhrPut(presigned_url, blob, partNum, totalParts);
-
-    await apiFetch(
-      'POST',
-      `/api/upload/${this.uploadId}/part/${partNum}?etag=${encodeURIComponent(etag)}`
+    // POST chunk directly to our backend — backend forwards to B2 (no CORS needed)
+    const result = await this._xhrPost(
+      `/api/upload/${this.uploadId}/chunk/${partNum}`,
+      blob, partNum, totalParts
     );
 
-    this.completedParts.set(partNum, etag);
+    this.completedParts.set(partNum, result.etag);
     this.chunkProgress.delete(partNum);
     this._emitProgress(totalParts);
   }
 
-  // ── XHR PUT with progress events ──────────────────────────────────────────
-  _xhrPut(url, blob, partNum, totalParts) {
+  // ── XHR POST chunk to backend with progress events ────────────────────────
+  _xhrPost(url, blob, partNum, totalParts) {
     return new Promise((resolve, reject) => {
       if (this.aborted) return reject(new Error('Aborted'));
 
       const xhr = new XMLHttpRequest();
-      xhr.open('PUT', url);
+      xhr.open('POST', url);
+      xhr.setRequestHeader('X-API-Key', apiKey);
       xhr.setRequestHeader('Content-Type', 'application/octet-stream');
 
       xhr.upload.addEventListener('progress', e => {
@@ -201,8 +192,7 @@ class ChunkedUploader extends EventTarget {
 
       xhr.addEventListener('load', () => {
         if (xhr.status >= 200 && xhr.status < 300) {
-          const raw = xhr.getResponseHeader('ETag') || xhr.getResponseHeader('etag') || '';
-          resolve(raw.replace(/"/g, ''));
+          resolve(JSON.parse(xhr.responseText));
         } else {
           reject(new Error(`HTTP ${xhr.status}`));
         }

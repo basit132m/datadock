@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -203,10 +203,52 @@ async def record_part(
     return {"ok": True}
 
 
+@app.post("/api/upload/{upload_id}/chunk/{part_number}")
+async def upload_chunk(
+    upload_id: str,
+    part_number: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    _=Depends(require_auth),
+):
+    if not (1 <= part_number <= 10_000):
+        raise HTTPException(400, "part_number must be 1–10000")
+
+    upload = db.query(Upload).filter(Upload.id == upload_id).first()
+    if not upload:
+        raise HTTPException(404, "Upload not found")
+    if upload.status != "pending":
+        raise HTTPException(400, f"Upload is {upload.status}")
+
+    data = await request.body()
+    if not data:
+        raise HTTPException(400, "Empty chunk")
+
+    etag = storage.upload_part(upload.b2_file_key, upload.b2_upload_id, part_number, data)
+
+    existing = (
+        db.query(Part)
+        .filter(Part.upload_id == upload_id, Part.part_number == part_number)
+        .first()
+    )
+    if existing:
+        existing.etag = etag
+        existing.uploaded_at = datetime.utcnow()
+    else:
+        db.add(Part(
+            id=str(uuid.uuid4()),
+            upload_id=upload_id,
+            part_number=part_number,
+            etag=etag,
+            uploaded_at=datetime.utcnow(),
+        ))
+    db.commit()
+    return {"ok": True, "etag": etag}
+
+
 @app.post("/api/upload/{upload_id}/complete")
 async def complete_upload(
     upload_id: str,
-    body: CompleteUploadIn,
     db: Session = Depends(get_db),
     _=Depends(require_auth),
 ):
@@ -215,16 +257,18 @@ async def complete_upload(
         raise HTTPException(404, "Upload not found")
     if upload.status != "pending":
         raise HTTPException(400, f"Upload is already {upload.status}")
-    if not body.parts:
-        raise HTTPException(400, "No parts provided")
+
+    db_parts = db.query(Part).filter(Part.upload_id == upload_id).all()
+    if not db_parts:
+        raise HTTPException(400, "No parts uploaded yet")
+
+    parts = [{"part_number": p.part_number, "etag": p.etag} for p in db_parts]
 
     upload.status = "completing"
     db.commit()
 
     try:
-        storage.complete_multipart_upload(
-            upload.b2_file_key, upload.b2_upload_id, body.parts
-        )
+        storage.complete_multipart_upload(upload.b2_file_key, upload.b2_upload_id, parts)
     except Exception as exc:
         upload.status = "failed"
         db.commit()
