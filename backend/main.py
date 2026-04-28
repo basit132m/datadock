@@ -398,28 +398,30 @@ async def import_from_url(
     if not body.url.startswith(("http://", "https://")):
         raise HTTPException(400, "URL must start with http:// or https://")
 
-    # HEAD request to discover filename, size, content-type
+    # Resolve redirects and sniff metadata.
+    # Strategy: try HEAD first (fast, no body); if the server blocks HEAD (405/403)
+    # fall back to a Range GET for the first byte — that still resolves all redirects
+    # and returns headers without downloading the whole file.
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=20.0) as client:
-            head = await client.head(body.url)
+        meta, final_url = await _resolve_url_meta(body.url)
     except Exception as exc:
         raise HTTPException(400, f"Cannot reach URL: {exc}")
 
-    content_length = int(head.headers.get("content-length", 0) or 0)
-    content_type = (head.headers.get("content-type", "application/octet-stream")
+    content_length = int(meta.get("content-length", 0) or 0)
+    content_type = (meta.get("content-type", "application/octet-stream")
                     .split(";")[0].strip() or "application/octet-stream")
 
     if content_length and content_length > MAX_BYTES:
         raise HTTPException(400, f"Remote file exceeds {os.getenv('MAX_FILE_SIZE_GB', 10)} GB limit")
 
-    # Determine filename
+    # Determine filename (user override → Content-Disposition → final URL path)
     filename = (body.filename or "").strip()
     if not filename:
-        cd = head.headers.get("content-disposition", "")
+        cd = meta.get("content-disposition", "")
         if "filename=" in cd:
             filename = cd.split("filename=")[-1].strip().strip('"\'')
         if not filename:
-            filename = body.url.split("?")[0].rstrip("/").split("/")[-1]
+            filename = final_url.split("?")[0].rstrip("/").split("/")[-1]
         if not filename:
             filename = "imported_file"
 
@@ -456,8 +458,9 @@ async def import_from_url(
         "error": None,
     }
 
+    # Pass the already-resolved final_url so the background task skips re-resolving
     background_tasks.add_task(
-        _do_import, upload.id, body.url, file_key, b2_upload_id
+        _do_import, upload.id, final_url, file_key, b2_upload_id
     )
 
     return {
@@ -491,7 +494,54 @@ async def import_status(
     return result
 
 
+_REDIRECT_STATUSES = {301, 302, 303, 307, 308}
+_MAX_REDIRECTS = 20
+_META_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; DataDock/2.0)",
+    "Accept": "*/*",
+}
+
+
+async def _resolve_url_meta(url: str) -> tuple[dict, str]:
+    """Follow all redirects and return (headers-dict, final-url).
+
+    Tries HEAD first; if the server rejects HEAD (405/403/501) or returns
+    no useful Content-Length, retries with a Range GET so we still don't
+    download the whole file but resolve the complete redirect chain.
+    """
+    client_kwargs = dict(
+        follow_redirects=True,
+        max_redirects=_MAX_REDIRECTS,
+        timeout=20.0,
+        headers=_META_HEADERS,
+    )
+    async with httpx.AsyncClient(**client_kwargs) as client:
+        # 1. Try HEAD
+        try:
+            resp = await client.head(url)
+            if resp.status_code not in (405, 403, 501):
+                resp.raise_for_status()
+                return dict(resp.headers), str(resp.url)
+        except httpx.HTTPStatusError:
+            pass  # fall through to GET fallback
+
+        # 2. HEAD blocked — use a Range GET for byte 0 only
+        resp = await client.get(url, headers={**_META_HEADERS, "Range": "bytes=0-0"})
+        # A proper range response is 206; a 200 also works (server ignored Range)
+        if resp.status_code not in (200, 206):
+            resp.raise_for_status()
+
+        # For 200 responses the server is sending the full body — close immediately
+        await resp.aclose()
+        return dict(resp.headers), str(resp.url)
+
+
 async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str):
+    """Stream a remote file directly into B2 multipart upload.
+
+    `url` is already the fully-resolved final URL (no re-resolution needed),
+    but follow_redirects=True is kept as a safety net for any late redirects.
+    """
     from database import SessionLocal
     loop = asyncio.get_event_loop()
     db = SessionLocal()
@@ -505,7 +555,9 @@ async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str)
 
         async with httpx.AsyncClient(
             follow_redirects=True,
+            max_redirects=_MAX_REDIRECTS,
             timeout=httpx.Timeout(30.0, read=600.0),
+            headers=_META_HEADERS,
         ) as client:
             async with client.stream("GET", url) as resp:
                 resp.raise_for_status()
