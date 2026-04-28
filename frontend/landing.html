@@ -7,61 +7,99 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <link rel="stylesheet" href="/style.css" />
 </head>
-<body class="landing-body">
+<body class="lp-body">
 
-<header class="landing-header">
-  <a href="/" class="landing-logo">Data<span>Dock</span></a>
+<!-- Header -->
+<header class="lp-header">
+  <a href="/" class="lp-logo">Data<span>Dock</span></a>
+  <span class="lp-tagline"><i class="fa-solid fa-shield-halved"></i> Fast &amp; Private File Sharing</span>
 </header>
 
-<!-- Banner ads – top slot -->
+<!-- Top banner ads -->
 <div id="ads-top" class="ad-slot ad-slot-top"></div>
 
-<main class="landing-main">
+<main class="lp-main">
 
-  <div id="lc-loading" style="text-align:center;padding:3rem;color:var(--muted)">
-    <div class="lc-icon">⏳</div>
-    <p>Loading…</p>
+  <!-- Loading -->
+  <div id="lc-loading" class="lp-state">
+    <div class="lp-spinner"></div>
+    <p>Loading file…</p>
   </div>
 
-  <div id="lc-error" hidden style="text-align:center;padding:3rem">
-    <div class="lc-icon">❌</div>
-    <h2 style="margin-bottom:.5rem">File not found</h2>
-    <p style="color:var(--muted);margin-bottom:1.5rem">This link may have expired or the file was deleted.</p>
-    <a href="/" class="lc-download">Go to DataDock</a>
+  <!-- Error -->
+  <div id="lc-error" class="lp-state" hidden>
+    <div class="lp-err-icon"><i class="fa-solid fa-circle-exclamation"></i></div>
+    <h2>File not found</h2>
+    <p>This link may have expired or the file has been removed.</p>
+    <a href="/" class="lp-go-home"><i class="fa-solid fa-house"></i> Go to DataDock</a>
   </div>
 
-  <div id="lc-card" class="lc-card" hidden>
-    <div class="lc-icon" id="lc-icon">📄</div>
-    <div class="lc-name" id="lc-filename">filename.zip</div>
+  <!-- File card -->
+  <div id="lc-card" class="lp-card" hidden>
 
-    <div class="lc-badges">
-      <span class="lc-badge" id="lc-size">—</span>
-      <span class="lc-badge" id="lc-date">—</span>
+    <!-- Icon circle -->
+    <div class="lp-icon-wrap" id="lp-icon-wrap">
+      <i class="fa-solid fa-file lp-file-icon" id="lp-file-icon"></i>
     </div>
 
-    <div class="lc-stats">
-      <span id="lc-views">— views</span>
-      <span>·</span>
-      <span id="lc-downloads">— downloads</span>
+    <!-- Filename -->
+    <h1 class="lp-filename" id="lp-filename">filename.zip</h1>
+
+    <!-- Metadata pills -->
+    <div class="lp-badges" id="lp-badges">
+      <span class="lp-badge">
+        <i class="fa-solid fa-weight-hanging"></i>
+        <span id="lp-size">—</span>
+      </span>
+      <span class="lp-badge">
+        <i class="fa-regular fa-calendar"></i>
+        <span id="lp-date">—</span>
+      </span>
+      <span class="lp-badge lp-badge-type" id="lp-type">—</span>
     </div>
 
-    <a id="lc-download-btn" href="#" class="lc-download">⬇ Download File</a>
+    <!-- Stats row -->
+    <div class="lp-stats">
+      <div class="lp-stat">
+        <i class="fa-regular fa-eye"></i>
+        <span class="lp-stat-val" id="lp-views">0</span>
+        <span class="lp-stat-label">Views</span>
+      </div>
+      <div class="lp-divider"></div>
+      <div class="lp-stat">
+        <i class="fa-solid fa-download"></i>
+        <span class="lp-stat-val" id="lp-downloads">0</span>
+        <span class="lp-stat-label">Downloads</span>
+      </div>
+    </div>
 
-    <!-- Button ads injected here by landing.js -->
+    <!-- Primary download button -->
+    <a id="lp-download-btn" href="#" class="lp-download-btn">
+      <i class="fa-solid fa-download"></i>
+      Download File
+    </a>
+
+    <!-- Button ads injected here -->
     <div id="ads-buttons" class="ad-slot-buttons"></div>
 
-    <p class="lc-hint">Your download will start immediately via a secure link.</p>
-  </div>
+    <p class="lp-secure-note">
+      <i class="fa-solid fa-lock"></i>
+      Served securely · No account required
+    </p>
 
+  </div>
 </main>
 
-<!-- Banner ads – bottom slot -->
+<!-- Bottom banner ads -->
 <div id="ads-bottom" class="ad-slot ad-slot-bottom"></div>
 
-<footer class="landing-footer">
+<footer class="lp-footer">
   <span>Powered by <a href="/">DataDock</a></span>
+  <span class="lp-footer-dot">·</span>
+  <span>Fast &amp; Private File Sharing</span>
 </footer>
 
 <script src="/landing.js"></script>

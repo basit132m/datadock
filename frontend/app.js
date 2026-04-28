@@ -28,18 +28,57 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+const FILE_TYPES = {
+  zip:  { fa: 'fa-file-zipper',     color: '#f59e0b' },
+  rar:  { fa: 'fa-file-zipper',     color: '#f59e0b' },
+  gz:   { fa: 'fa-file-zipper',     color: '#f59e0b' },
+  tar:  { fa: 'fa-file-zipper',     color: '#f59e0b' },
+  '7z': { fa: 'fa-file-zipper',     color: '#f59e0b' },
+  mp4:  { fa: 'fa-file-video',      color: '#ef4444' },
+  mkv:  { fa: 'fa-file-video',      color: '#ef4444' },
+  avi:  { fa: 'fa-file-video',      color: '#ef4444' },
+  mov:  { fa: 'fa-file-video',      color: '#ef4444' },
+  webm: { fa: 'fa-file-video',      color: '#ef4444' },
+  mp3:  { fa: 'fa-file-audio',      color: '#8b5cf6' },
+  wav:  { fa: 'fa-file-audio',      color: '#8b5cf6' },
+  flac: { fa: 'fa-file-audio',      color: '#8b5cf6' },
+  aac:  { fa: 'fa-file-audio',      color: '#8b5cf6' },
+  jpg:  { fa: 'fa-file-image',      color: '#0ea5e9' },
+  jpeg: { fa: 'fa-file-image',      color: '#0ea5e9' },
+  png:  { fa: 'fa-file-image',      color: '#0ea5e9' },
+  gif:  { fa: 'fa-file-image',      color: '#0ea5e9' },
+  webp: { fa: 'fa-file-image',      color: '#0ea5e9' },
+  svg:  { fa: 'fa-file-image',      color: '#0ea5e9' },
+  pdf:  { fa: 'fa-file-pdf',        color: '#dc2626' },
+  doc:  { fa: 'fa-file-word',       color: '#2563eb' },
+  docx: { fa: 'fa-file-word',       color: '#2563eb' },
+  xls:  { fa: 'fa-file-excel',      color: '#16a34a' },
+  xlsx: { fa: 'fa-file-excel',      color: '#16a34a' },
+  csv:  { fa: 'fa-file-csv',        color: '#16a34a' },
+  ppt:  { fa: 'fa-file-powerpoint', color: '#ea580c' },
+  pptx: { fa: 'fa-file-powerpoint', color: '#ea580c' },
+  txt:  { fa: 'fa-file-lines',      color: '#64748b' },
+  md:   { fa: 'fa-file-lines',      color: '#64748b' },
+  js:   { fa: 'fa-file-code',       color: '#6366f1' },
+  ts:   { fa: 'fa-file-code',       color: '#6366f1' },
+  py:   { fa: 'fa-file-code',       color: '#6366f1' },
+  html: { fa: 'fa-file-code',       color: '#6366f1' },
+  css:  { fa: 'fa-file-code',       color: '#6366f1' },
+  json: { fa: 'fa-file-code',       color: '#6366f1' },
+  exe:  { fa: 'fa-gear',            color: '#4b5563' },
+  msi:  { fa: 'fa-gear',            color: '#4b5563' },
+  dmg:  { fa: 'fa-compact-disc',    color: '#4b5563' },
+  iso:  { fa: 'fa-compact-disc',    color: '#4b5563' },
+  apk:  { fa: 'fa-mobile-screen',   color: '#16a34a' },
+  nsp:  { fa: 'fa-gamepad',         color: '#dc2626' },
+  xci:  { fa: 'fa-gamepad',         color: '#dc2626' },
+  rom:  { fa: 'fa-gamepad',         color: '#dc2626' },
+};
+
 function fileIcon(name) {
   const ext = (name || '').split('.').pop().toLowerCase();
-  const m = {
-    zip:'🗜️', rar:'🗜️', gz:'🗜️', tar:'🗜️', '7z':'🗜️',
-    mp4:'🎬', mkv:'🎬', avi:'🎬', mov:'🎬', webm:'🎬',
-    mp3:'🎵', wav:'🎵', flac:'🎵', aac:'🎵',
-    jpg:'🖼️', jpeg:'🖼️', png:'🖼️', gif:'🖼️', webp:'🖼️',
-    pdf:'📄', doc:'📝', docx:'📝', xls:'📊', xlsx:'📊',
-    exe:'⚙️', msi:'⚙️', dmg:'💿', iso:'💿',
-    nsp:'🎮', xci:'🎮', rom:'🎮',
-  };
-  return m[ext] || '📦';
+  const t = FILE_TYPES[ext] || { fa: 'fa-file', color: '#64748b' };
+  return `<i class="fa-solid ${t.fa}" style="color:${t.color}"></i>`;
 }
 
 async function fingerprint(file) {
@@ -472,7 +511,7 @@ function buildImportItem(filename, total) {
   el.className = 'upload-item';
   el.innerHTML = `
     <div class="upload-item-header">
-      <div class="file-icon-badge">🌐</div>
+      <div class="file-icon-badge"><i class="fa-solid fa-link" style="color:#6366f1"></i></div>
       <div class="file-meta">
         <div class="file-name" title="${filename}">${filename}</div>
         <div class="file-size-label">${total ? formatBytes(total) : 'Size unknown'}</div>
@@ -739,8 +778,8 @@ async function initAuth() {
 }
 
 function initApp() {
-  const badge = document.getElementById('key-badge');
-  if (badge) badge.textContent = 'Key: ' + apiKey.slice(0, 4) + '••••';
+  const badgeText = document.getElementById('key-badge-text');
+  if (badgeText) badgeText.textContent = apiKey.slice(0, 4) + '••••';
 
   document.querySelectorAll('.nav-item[data-page]').forEach(btn => {
     btn.addEventListener('click', () => showPage(btn.dataset.page));

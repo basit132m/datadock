@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
@@ -18,7 +19,9 @@
     <p>Enter your team API key to access the platform</p>
     <form id="auth-form">
       <input id="auth-input" type="password" placeholder="API Key" autocomplete="current-password" autofocus />
-      <button id="auth-btn" class="btn-primary" type="submit">Unlock</button>
+      <button id="auth-btn" class="btn-primary" type="submit">
+        <i class="fa-solid fa-unlock"></i> Unlock
+      </button>
     </form>
     <div id="auth-error" class="err"></div>
   </div>
@@ -32,20 +35,22 @@
     <div class="sidebar-logo">Data<span>Dock</span></div>
     <nav class="sidebar-nav">
       <button class="nav-item active" data-page="dashboard">
-        <span class="ni-icon">📊</span> Dashboard
+        <i class="fa-solid fa-chart-line ni-icon"></i> Dashboard
       </button>
       <button class="nav-item" data-page="upload">
-        <span class="ni-icon">☁️</span> Upload Files
+        <i class="fa-solid fa-cloud-arrow-up ni-icon"></i> Upload Files
       </button>
       <button class="nav-item" data-page="files">
-        <span class="ni-icon">📁</span> My Files
+        <i class="fa-solid fa-folder-open ni-icon"></i> My Files
       </button>
       <button class="nav-item" data-page="ads">
-        <span class="ni-icon">📢</span> Ads
+        <i class="fa-solid fa-bullhorn ni-icon"></i> Ads
       </button>
     </nav>
     <div class="sidebar-footer">
-      <div id="key-badge" class="key-badge"></div>
+      <div id="key-badge" class="key-badge">
+        <i class="fa-solid fa-key"></i> <span id="key-badge-text"></span>
+      </div>
     </div>
   </aside>
 
@@ -60,21 +65,21 @@
 
       <div class="stats-grid">
         <div class="stat-card">
-          <div class="stat-icon">📁</div>
+          <div class="stat-icon stat-icon-files"><i class="fa-solid fa-folder-open"></i></div>
           <div>
             <div class="stat-label">Total Files</div>
             <div class="stat-value" id="stat-files">—</div>
           </div>
         </div>
         <div class="stat-card">
-          <div class="stat-icon">💾</div>
+          <div class="stat-icon stat-icon-storage"><i class="fa-solid fa-hard-drive"></i></div>
           <div>
             <div class="stat-label">Storage Used</div>
             <div class="stat-value" id="stat-storage">—</div>
           </div>
         </div>
         <div class="stat-card">
-          <div class="stat-icon">⬇️</div>
+          <div class="stat-icon stat-icon-downloads"><i class="fa-solid fa-download"></i></div>
           <div>
             <div class="stat-label">Total Downloads</div>
             <div class="stat-value" id="stat-downloads">—</div>
@@ -102,10 +107,10 @@
       </div>
 
       <div id="drop-zone">
-        <div class="drop-icon">☁️</div>
+        <div class="drop-icon"><i class="fa-solid fa-cloud-arrow-up"></i></div>
         <div class="drop-title">Drop files here or click to browse</div>
-        <div class="drop-sub">Chunks upload directly to B2 at full speed · Fully resumable</div>
-        <span class="drop-limit">Max 10 GB per file</span>
+        <div class="drop-sub">Chunked upload directly to B2 · Fully resumable</div>
+        <span class="drop-limit"><i class="fa-solid fa-circle-info"></i> Max 10 GB per file</span>
         <input id="file-input" type="file" multiple />
       </div>
 
@@ -115,12 +120,12 @@
       </div>
 
       <div class="url-import-box">
-        <p class="section-title">Import from URL</p>
+        <p class="section-title"><i class="fa-solid fa-link"></i> Import from URL</p>
         <p class="url-import-sub">Paste a direct download link — we fetch it straight into storage, no re-upload needed.</p>
         <div class="url-import-form">
           <input id="import-url-input" type="url" placeholder="https://example.com/file.zip" />
           <input id="import-name-input" type="text" placeholder="Filename (auto-detected)" />
-          <button id="import-btn" class="btn-primary">Import</button>
+          <button id="import-btn" class="btn-primary"><i class="fa-solid fa-cloud-arrow-down"></i> Import</button>
         </div>
         <div id="import-error" class="url-import-error"></div>
         <div id="import-queue"></div>
@@ -131,7 +136,9 @@
     <div id="page-files" class="page">
       <div class="page-header">
         <h1>My Files</h1>
-        <button class="btn-primary-sm" id="upload-shortcut">+ Upload</button>
+        <button class="btn-primary-sm" id="upload-shortcut">
+          <i class="fa-solid fa-plus"></i> Upload
+        </button>
       </div>
       <div class="card">
         <div id="file-list">
@@ -146,7 +153,6 @@
         <h1>Ad Manager</h1>
       </div>
 
-      <!-- Add ad form -->
       <div class="card" style="margin-bottom:1.5rem">
         <div class="card-header">Add New Ad</div>
         <form id="ad-form" class="ad-form">
@@ -179,13 +185,12 @@
             </label>
           </div>
           <div style="display:flex;gap:.75rem;align-items:center">
-            <button type="submit" class="btn-primary">Add Ad</button>
+            <button type="submit" class="btn-primary"><i class="fa-solid fa-plus"></i> Add Ad</button>
             <span id="ad-form-msg" class="ad-form-msg"></span>
           </div>
         </form>
       </div>
 
-      <!-- Ad list -->
       <div class="card">
         <div class="card-header">All Ads</div>
         <div id="ad-list">
