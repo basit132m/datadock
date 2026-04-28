@@ -1,3 +1,4 @@
+import asyncio
 import os
 import secrets
 import string
@@ -5,11 +6,12 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Optional
 
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
@@ -25,6 +27,10 @@ from storage import B2Storage
 MAX_BYTES = int(os.getenv("MAX_FILE_SIZE_GB", "10")) * 1_073_741_824
 API_KEY = os.getenv("API_KEY", "")
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
+IMPORT_CHUNK = 10 * 1024 * 1024  # 10 MB per B2 part
+
+# In-memory import progress store (single-server; fine for this use case)
+_import_progress: dict = {}
 
 # ── App ───────────────────────────────────────────────────────────────────────
 
@@ -372,6 +378,200 @@ async def download_file(share_id: str, db: Session = Depends(get_db)):
     db.commit()
 
     return RedirectResponse(url=storage.get_download_url(upload.b2_file_key))
+
+
+# ── URL Import API ────────────────────────────────────────────────────────────
+
+
+class ImportIn(BaseModel):
+    url: str
+    filename: Optional[str] = None
+
+
+@app.post("/api/import")
+async def import_from_url(
+    body: ImportIn,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    _=Depends(require_auth),
+):
+    if not body.url.startswith(("http://", "https://")):
+        raise HTTPException(400, "URL must start with http:// or https://")
+
+    # HEAD request to discover filename, size, content-type
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=20.0) as client:
+            head = await client.head(body.url)
+    except Exception as exc:
+        raise HTTPException(400, f"Cannot reach URL: {exc}")
+
+    content_length = int(head.headers.get("content-length", 0) or 0)
+    content_type = (head.headers.get("content-type", "application/octet-stream")
+                    .split(";")[0].strip() or "application/octet-stream")
+
+    if content_length and content_length > MAX_BYTES:
+        raise HTTPException(400, f"Remote file exceeds {os.getenv('MAX_FILE_SIZE_GB', 10)} GB limit")
+
+    # Determine filename
+    filename = (body.filename or "").strip()
+    if not filename:
+        cd = head.headers.get("content-disposition", "")
+        if "filename=" in cd:
+            filename = cd.split("filename=")[-1].strip().strip('"\'')
+        if not filename:
+            filename = body.url.split("?")[0].rstrip("/").split("/")[-1]
+        if not filename:
+            filename = "imported_file"
+
+    filename = os.path.basename(filename).replace("\0", "") or "imported_file"
+
+    # Create B2 multipart upload + DB record
+    file_key = f"uploads/{uuid.uuid4()}/{filename}"
+    try:
+        b2_upload_id = storage.create_multipart_upload(file_key, content_type)
+    except Exception as exc:
+        raise HTTPException(500, f"Storage error: {exc}")
+
+    upload = Upload(
+        id=str(uuid.uuid4()),
+        share_id=_share_id(),
+        file_hash="",
+        filename=filename,
+        file_size=content_length,
+        content_type=content_type,
+        b2_upload_id=b2_upload_id,
+        b2_file_key=file_key,
+        status="importing",
+        views=0,
+        downloads=0,
+        created_at=datetime.utcnow(),
+    )
+    db.add(upload)
+    db.commit()
+
+    _import_progress[upload.id] = {
+        "status": "importing",
+        "bytes_done": 0,
+        "total": content_length,
+        "error": None,
+    }
+
+    background_tasks.add_task(
+        _do_import, upload.id, body.url, file_key, b2_upload_id
+    )
+
+    return {
+        "upload_id": upload.id,
+        "filename": filename,
+        "total": content_length,
+    }
+
+
+@app.get("/api/import/{upload_id}/status")
+async def import_status(
+    upload_id: str,
+    db: Session = Depends(get_db),
+    _=Depends(require_auth),
+):
+    prog = _import_progress.get(upload_id)
+    if not prog:
+        upload = db.query(Upload).filter(Upload.id == upload_id).first()
+        if not upload:
+            raise HTTPException(404, "Import job not found")
+        prog = {"status": upload.status, "bytes_done": upload.file_size, "total": upload.file_size, "error": None}
+
+    result = dict(prog)
+    if prog.get("status") == "completed":
+        upload = db.query(Upload).filter(Upload.id == upload_id).first()
+        if upload:
+            result["share_url"] = f"/f/{upload.share_id}"
+            result["direct_url"] = storage.get_download_url(upload.b2_file_key)
+            result["filename"] = upload.filename
+            result["file_size"] = upload.file_size
+    return result
+
+
+async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str):
+    from database import SessionLocal
+    loop = asyncio.get_event_loop()
+    db = SessionLocal()
+    prog = _import_progress[upload_id]
+
+    try:
+        parts: list = []
+        part_number = 0
+        buf = bytearray()
+        total_bytes = 0
+
+        async with httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=httpx.Timeout(30.0, read=600.0),
+        ) as client:
+            async with client.stream("GET", url) as resp:
+                resp.raise_for_status()
+                async for chunk in resp.aiter_bytes(65_536):  # 64 KB network reads
+                    buf.extend(chunk)
+                    total_bytes += len(chunk)
+                    prog["bytes_done"] = total_bytes
+
+                    # Flush full 10 MB parts to B2 as they accumulate
+                    while len(buf) >= IMPORT_CHUNK:
+                        part_number += 1
+                        data = bytes(buf[:IMPORT_CHUNK])
+                        del buf[:IMPORT_CHUNK]
+                        pn = part_number
+                        etag = await loop.run_in_executor(
+                            None,
+                            lambda d=data, p=pn: storage.upload_part(file_key, b2_upload_id, p, d),
+                        )
+                        parts.append({"part_number": pn, "etag": etag})
+
+        # Upload any remaining bytes as the final part
+        if buf:
+            part_number += 1
+            pn = part_number
+            data = bytes(buf)
+            etag = await loop.run_in_executor(
+                None,
+                lambda d=data, p=pn: storage.upload_part(file_key, b2_upload_id, p, d),
+            )
+            parts.append({"part_number": pn, "etag": etag})
+
+        if not parts:
+            raise ValueError("Remote file was empty")
+
+        prog["status"] = "completing"
+        await loop.run_in_executor(
+            None,
+            lambda: storage.complete_multipart_upload(file_key, b2_upload_id, parts),
+        )
+
+        upload = db.query(Upload).filter(Upload.id == upload_id).first()
+        if upload:
+            upload.status = "completed"
+            upload.file_size = total_bytes
+            upload.completed_at = datetime.utcnow()
+            db.commit()
+
+        prog["status"] = "completed"
+        prog["bytes_done"] = total_bytes
+        prog["total"] = total_bytes
+
+    except Exception as exc:
+        prog["status"] = "failed"
+        prog["error"] = str(exc)[:300]
+
+        upload = db.query(Upload).filter(Upload.id == upload_id).first()
+        if upload:
+            upload.status = "failed"
+            db.commit()
+
+        try:
+            storage.abort_multipart_upload(file_key, b2_upload_id)
+        except Exception:
+            pass
+    finally:
+        db.close()
 
 
 # ── Ads API ───────────────────────────────────────────────────────────────────

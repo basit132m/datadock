@@ -465,6 +465,132 @@ async function loadFileList() {
   }
 }
 
+// ── URL Import ────────────────────────────────────────────────────────────────
+
+function buildImportItem(filename, total) {
+  const el = document.createElement('div');
+  el.className = 'upload-item';
+  el.innerHTML = `
+    <div class="upload-item-header">
+      <div class="file-icon-badge">🌐</div>
+      <div class="file-meta">
+        <div class="file-name" title="${filename}">${filename}</div>
+        <div class="file-size-label">${total ? formatBytes(total) : 'Size unknown'}</div>
+      </div>
+      <div class="item-actions">
+        <span class="status-badge initializing">Connecting…</span>
+      </div>
+    </div>
+    <div class="progress-wrap"><div class="progress-bar" style="width:0%"></div></div>
+    <div class="progress-labels">
+      <span class="pct-text">0%</span>
+      <span class="spd-text"></span>
+    </div>`;
+  return el;
+}
+
+async function startImport(url, filename) {
+  const errEl  = document.getElementById('import-error');
+  const queue  = document.getElementById('import-queue');
+  errEl.textContent = '';
+
+  let initData;
+  try {
+    initData = await apiFetch('POST', '/api/import', { url, filename: filename || null });
+  } catch (e) {
+    errEl.textContent = e.message;
+    return;
+  }
+
+  const { upload_id, filename: detectedName, total } = initData;
+  const el    = buildImportItem(detectedName, total);
+  const badge = el.querySelector('.status-badge');
+  const bar   = el.querySelector('.progress-bar');
+  const pct   = el.querySelector('.pct-text');
+  const spd   = el.querySelector('.spd-text');
+  queue.prepend(el);
+
+  let lastBytes = 0, lastTime = Date.now();
+
+  const poll = setInterval(async () => {
+    let prog;
+    try { prog = await apiFetch('GET', `/api/import/${upload_id}/status`); }
+    catch { return; }
+
+    const { status, bytes_done = 0, total: tot = total, error } = prog;
+
+    // Update progress bar
+    const pctVal = tot ? Math.min(100, Math.round((bytes_done / tot) * 100)) : 0;
+    bar.style.width = pctVal + '%';
+    pct.textContent = tot ? pctVal + '%' : formatBytes(bytes_done);
+
+    // Speed
+    const now = Date.now(), dt = (now - lastTime) / 1000;
+    if (dt >= 1 && bytes_done > lastBytes) {
+      spd.textContent = formatBytes((bytes_done - lastBytes) / dt) + '/s';
+      lastBytes = bytes_done; lastTime = now;
+    }
+
+    if (status === 'importing') {
+      badge.className = 'status-badge uploading';
+      badge.textContent = 'Downloading…';
+    } else if (status === 'completing') {
+      badge.className = 'status-badge completing';
+      badge.textContent = 'Finalizing…';
+      bar.style.width = '98%';
+    } else if (status === 'completed') {
+      clearInterval(poll);
+      bar.style.width = '100%';
+      bar.classList.add('success');
+      badge.className = 'status-badge done';
+      badge.textContent = 'Done';
+      pct.textContent = '100%';
+      spd.textContent = '';
+
+      const doneRow = document.createElement('div');
+      doneRow.className = 'done-row';
+      doneRow.innerHTML = `
+        <button class="done-link-btn" data-url="${window.location.origin}${prog.share_url}">🔗 Copy Share Link</button>
+        <button class="done-direct-btn" data-url="${prog.direct_url}">⬇️ Copy Direct Link</button>`;
+      doneRow.querySelector('.done-link-btn').addEventListener('click', e => {
+        navigator.clipboard.writeText(e.target.dataset.url);
+        e.target.textContent = '✓ Copied!';
+        setTimeout(() => { e.target.textContent = '🔗 Copy Share Link'; }, 2000);
+      });
+      doneRow.querySelector('.done-direct-btn').addEventListener('click', e => {
+        navigator.clipboard.writeText(e.target.dataset.url);
+        e.target.textContent = '✓ Copied!';
+        setTimeout(() => { e.target.textContent = '⬇️ Copy Direct Link'; }, 2000);
+      });
+      el.appendChild(doneRow);
+      loadDashboard();
+    } else if (status === 'failed') {
+      clearInterval(poll);
+      bar.classList.add('error');
+      badge.className = 'status-badge error';
+      badge.textContent = 'Failed';
+      spd.textContent = error || 'Unknown error';
+    }
+  }, 2000);
+}
+
+function initImportForm() {
+  document.getElementById('import-btn').addEventListener('click', () => {
+    const url      = document.getElementById('import-url-input').value.trim();
+    const filename = document.getElementById('import-name-input').value.trim();
+    if (!url) {
+      document.getElementById('import-error').textContent = 'Please enter a URL.';
+      return;
+    }
+    document.getElementById('import-url-input').value  = '';
+    document.getElementById('import-name-input').value = '';
+    startImport(url, filename);
+  });
+  document.getElementById('import-url-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('import-btn').click();
+  });
+}
+
 // ── Ad Manager ────────────────────────────────────────────────────────────────
 
 async function loadAdsPage() {
@@ -619,6 +745,7 @@ function initApp() {
   document.querySelectorAll('.nav-item[data-page]').forEach(btn => {
     btn.addEventListener('click', () => showPage(btn.dataset.page));
   });
+  initImportForm();
   initAdForm();
 
   document.getElementById('upload-shortcut').addEventListener('click', () => showPage('upload'));

@@ -113,6 +113,18 @@
         <p class="section-title">Active Uploads</p>
         <div id="upload-queue"></div>
       </div>
+
+      <div class="url-import-box">
+        <p class="section-title">Import from URL</p>
+        <p class="url-import-sub">Paste a direct download link — we fetch it straight into storage, no re-upload needed.</p>
+        <div class="url-import-form">
+          <input id="import-url-input" type="url" placeholder="https://example.com/file.zip" />
+          <input id="import-name-input" type="text" placeholder="Filename (auto-detected)" />
+          <button id="import-btn" class="btn-primary">Import</button>
+        </div>
+        <div id="import-error" class="url-import-error"></div>
+        <div id="import-queue"></div>
+      </div>
     </div>
 
     <!-- ── Files ── -->
