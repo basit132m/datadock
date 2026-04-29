@@ -102,6 +102,15 @@ class InitUploadIn(BaseModel):
     content_type: str = "application/octet-stream"
 
 
+class BrowserRelayInitIn(BaseModel):
+    filename: str
+    content_type: str = "application/octet-stream"
+
+
+class CompleteUploadIn(BaseModel):
+    actual_size: Optional[int] = None
+
+
 # ── Upload API ────────────────────────────────────────────────────────────────
 
 
@@ -175,6 +184,43 @@ async def init_upload(
     return {"upload_id": upload.id, "resuming": False, "completed_parts": []}
 
 
+@app.post("/api/upload/relay-init")
+async def relay_init(
+    body: BrowserRelayInitIn,
+    db: Session = Depends(get_db),
+    _=Depends(require_auth),
+):
+    """Create an upload slot for browser-side relay (no file_size required)."""
+    safe_name = os.path.basename(body.filename).replace("\0", "") or "unnamed"
+    file_key = f"uploads/{uuid.uuid4()}/{safe_name}"
+    default_prov = _get_default_provider(db)
+    provider_id = default_prov.id if default_prov else None
+    file_storage = _get_storage(provider_id, db)
+    try:
+        b2_upload_id = file_storage.create_multipart_upload(file_key, body.content_type)
+    except Exception as exc:
+        raise HTTPException(500, f"Storage error: {exc}")
+
+    upload = Upload(
+        id=str(uuid.uuid4()),
+        share_id=_share_id(),
+        file_hash="",
+        filename=safe_name,
+        file_size=0,
+        content_type=body.content_type,
+        b2_upload_id=b2_upload_id,
+        b2_file_key=file_key,
+        status="pending",
+        views=0,
+        downloads=0,
+        storage_provider_id=provider_id,
+        created_at=datetime.utcnow(),
+    )
+    db.add(upload)
+    db.commit()
+    return {"upload_id": upload.id}
+
+
 @app.post("/api/upload/{upload_id}/chunk/{part_number}")
 async def upload_chunk(
     upload_id: str,
@@ -223,6 +269,7 @@ async def upload_chunk(
 @app.post("/api/upload/{upload_id}/complete")
 async def complete_upload(
     upload_id: str,
+    body: Optional[CompleteUploadIn] = None,
     db: Session = Depends(get_db),
     _=Depends(require_auth),
 ):
@@ -253,6 +300,8 @@ async def complete_upload(
 
     upload.status = "completed"
     upload.completed_at = datetime.utcnow()
+    if body and body.actual_size:
+        upload.file_size = body.actual_size
     db.commit()
 
     return {

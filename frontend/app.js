@@ -615,8 +615,179 @@ async function startImport(url, filename) {
       errDiv.className = 'import-fail-msg';
       errDiv.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> ${error || 'Unknown error'}`;
       el.appendChild(errDiv);
+
+      if (error && (error.includes('IP-locked') || error.includes('403'))) {
+        const relayBtn = document.createElement('button');
+        relayBtn.className = 'btn-primary relay-btn';
+        relayBtn.innerHTML = '<i class="fa-solid fa-share-nodes"></i> Try Browser Fetch';
+        relayBtn.addEventListener('click', () => {
+          errDiv.remove();
+          relayBtn.remove();
+          bar.classList.remove('error');
+          startBrowserRelay(url, detectedName, el);
+        });
+        el.appendChild(relayBtn);
+      }
     }
   }, 2000);
+}
+
+async function startBrowserRelay(url, filename, el) {
+  const badge = el.querySelector('.status-badge');
+  const bar   = el.querySelector('.progress-bar');
+  const pct   = el.querySelector('.pct-text');
+  const spd   = el.querySelector('.spd-text');
+
+  badge.className = 'status-badge uploading';
+  badge.textContent = 'Browser Fetch…';
+  bar.style.width = '0%';
+  spd.textContent = '';
+
+  let resp;
+  try {
+    resp = await fetch(url);
+    if (!resp.ok) throw new Error(`Server returned HTTP ${resp.status}`);
+  } catch (e) {
+    badge.className = 'status-badge error';
+    badge.textContent = 'Failed';
+    bar.classList.add('error');
+    const errDiv = document.createElement('div');
+    errDiv.className = 'import-fail-msg';
+    const msg = e.toString().toLowerCase();
+    if (msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('cors')) {
+      errDiv.innerHTML = `<i class="fa-solid fa-ban"></i> CORS blocked: The CDN doesn't allow browser direct access. Please download the file manually and re-upload it here.`;
+    } else {
+      errDiv.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> ${e.message}`;
+    }
+    el.appendChild(errDiv);
+    return;
+  }
+
+  const ct = (resp.headers.get('content-type') || 'application/octet-stream').split(';')[0].trim();
+  const relayFilename = filename ||
+    (resp.headers.get('content-disposition') || '').match(/filename="?([^";\r\n]+)"?/i)?.[1] ||
+    url.split('?')[0].split('/').pop() || 'downloaded_file';
+  const contentLength = parseInt(resp.headers.get('content-length') || '0') || 0;
+
+  let initData;
+  try {
+    initData = await apiFetch('POST', '/api/upload/relay-init', { filename: relayFilename, content_type: ct });
+  } catch (e) {
+    badge.className = 'status-badge error';
+    badge.textContent = 'Failed';
+    bar.classList.add('error');
+    const errDiv = document.createElement('div');
+    errDiv.className = 'import-fail-msg';
+    errDiv.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> ${e.message}`;
+    el.appendChild(errDiv);
+    return;
+  }
+
+  const { upload_id } = initData;
+  const reader = resp.body.getReader();
+  let buf = new Uint8Array(0);
+  let partNumber = 0;
+  let totalBytes = 0;
+  let lastTime = Date.now(), lastBytes = 0;
+
+  const uploadPart = async (data, pn) => {
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        const r = await fetch(`/api/upload/${upload_id}/chunk/${pn}`, {
+          method: 'POST',
+          headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/octet-stream' },
+          body: data,
+        });
+        if (!r.ok) throw new Error(`Chunk ${pn} failed: HTTP ${r.status}`);
+        return;
+      } catch (e) {
+        if (attempt === MAX_RETRIES - 1) throw e;
+        await sleep(1000 * (attempt + 1));
+      }
+    }
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (value) {
+        const merged = new Uint8Array(buf.length + value.length);
+        merged.set(buf);
+        merged.set(value, buf.length);
+        buf = merged;
+        totalBytes += value.length;
+
+        const now = Date.now();
+        if (contentLength) {
+          const pctVal = Math.min(99, Math.round((totalBytes / contentLength) * 100));
+          bar.style.width = pctVal + '%';
+          pct.textContent = pctVal + '%';
+        } else {
+          pct.textContent = formatBytes(totalBytes);
+        }
+        const dt = (now - lastTime) / 1000;
+        if (dt >= 1 && totalBytes > lastBytes) {
+          spd.textContent = formatBytes((totalBytes - lastBytes) / dt) + '/s';
+          lastBytes = totalBytes; lastTime = now;
+        }
+
+        while (buf.length >= CHUNK_SIZE) {
+          partNumber++;
+          const chunk = buf.slice(0, CHUNK_SIZE);
+          buf = buf.slice(CHUNK_SIZE);
+          await uploadPart(chunk, partNumber);
+        }
+      }
+      if (done) break;
+    }
+
+    if (buf.length > 0) {
+      partNumber++;
+      await uploadPart(buf, partNumber);
+    }
+
+    if (partNumber === 0) throw new Error('Downloaded file was empty');
+
+    badge.className = 'status-badge completing';
+    badge.textContent = 'Finalizing…';
+    bar.style.width = '98%';
+
+    const result = await apiFetch('POST', `/api/upload/${upload_id}/complete`, { actual_size: totalBytes });
+
+    bar.style.width = '100%';
+    bar.classList.add('success');
+    badge.className = 'status-badge done';
+    badge.textContent = 'Done';
+    pct.textContent = '100%';
+    spd.textContent = '';
+
+    const doneRow = document.createElement('div');
+    doneRow.className = 'done-row';
+    doneRow.innerHTML = `
+      <button class="done-link-btn" data-url="${window.location.origin}${result.share_url}"><i class="fa-solid fa-link"></i> Copy Share Link</button>
+      <button class="done-direct-btn" data-url="${result.direct_url}"><i class="fa-solid fa-download"></i> Copy Direct Link</button>`;
+    doneRow.querySelector('.done-link-btn').addEventListener('click', e => {
+      navigator.clipboard.writeText(e.currentTarget.dataset.url);
+      e.currentTarget.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
+      setTimeout(() => { e.currentTarget.innerHTML = '<i class="fa-solid fa-link"></i> Copy Share Link'; }, 2000);
+    });
+    doneRow.querySelector('.done-direct-btn').addEventListener('click', e => {
+      navigator.clipboard.writeText(e.currentTarget.dataset.url);
+      e.currentTarget.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
+      setTimeout(() => { e.currentTarget.innerHTML = '<i class="fa-solid fa-download"></i> Copy Direct Link'; }, 2000);
+    });
+    el.appendChild(doneRow);
+    loadDashboard();
+
+  } catch (e) {
+    badge.className = 'status-badge error';
+    badge.textContent = 'Failed';
+    bar.classList.add('error');
+    const errDiv = document.createElement('div');
+    errDiv.className = 'import-fail-msg';
+    errDiv.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> ${e.message}`;
+    el.appendChild(errDiv);
+  }
 }
 
 function initImportForm() {

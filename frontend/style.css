@@ -476,6 +476,7 @@ input[type="password"]:focus, input[type="text"]:focus { border-color: var(--pri
   display: flex; gap: .5rem; align-items: flex-start;
 }
 .import-fail-msg i { flex-shrink: 0; margin-top: .15rem; }
+.relay-btn { margin-top: .65rem; font-size: .8rem; padding: .4rem 1rem; }
 #import-queue { margin-top: 1rem; display: flex; flex-direction: column; gap: .75rem; }
 @media (max-width: 700px) {
   .url-import-form { grid-template-columns: 1fr; }
