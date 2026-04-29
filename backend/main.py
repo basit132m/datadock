@@ -696,6 +696,34 @@ async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str,
         prog["bytes_done"] = total_bytes
         prog["total"] = total_bytes
 
+    except httpx.HTTPStatusError as exc:
+        code = exc.response.status_code
+        if code == 403:
+            msg = (
+                "Access denied (403). This URL has an IP-locked token — it was "
+                "generated for your browser's IP and cannot be used from our server. "
+                "Solution: download the file to your computer first, then upload it here."
+            )
+        elif code == 401:
+            msg = "Authentication required (401). The link requires a login or has expired."
+        elif code == 404:
+            msg = "File not found (404). The link may have expired or been removed."
+        else:
+            msg = f"Server returned HTTP {code}. The remote server rejected our request."
+
+        prog["status"] = "failed"
+        prog["error"] = msg
+
+        upload = db.query(Upload).filter(Upload.id == upload_id).first()
+        if upload:
+            upload.status = "failed"
+            db.commit()
+
+        try:
+            file_storage.abort_multipart_upload(file_key, b2_upload_id)
+        except Exception:
+            pass
+
     except Exception as exc:
         prog["status"] = "failed"
         prog["error"] = str(exc)[:300]

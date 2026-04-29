@@ -610,7 +610,11 @@ async function startImport(url, filename) {
       bar.classList.add('error');
       badge.className = 'status-badge error';
       badge.textContent = 'Failed';
-      spd.textContent = error || 'Unknown error';
+      spd.textContent = '';
+      const errDiv = document.createElement('div');
+      errDiv.className = 'import-fail-msg';
+      errDiv.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> ${error || 'Unknown error'}`;
+      el.appendChild(errDiv);
     }
   }, 2000);
 }
