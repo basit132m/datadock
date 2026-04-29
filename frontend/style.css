@@ -439,6 +439,13 @@ input[type="password"]:focus, input[type="text"]:focus { border-color: var(--pri
 .sp-btn-delete:hover { border-color: var(--danger); color: var(--danger); background: var(--danger-lite); }
 .sp-btn-default:hover { border-color: #f59e0b; color: #92400e; background: #fef3c7; }
 
+.sp-bw-wrap { margin-top: .6rem; }
+.sp-bw-bar-bg { height: 6px; background: var(--border); border-radius: 99px; overflow: hidden; margin-bottom: .3rem; }
+.sp-bw-bar { height: 100%; background: var(--primary); border-radius: 99px; transition: width .4s; }
+.sp-bw-bar.sp-bw-exceeded { background: var(--danger); }
+.sp-bw-label { font-size: .73rem; color: var(--muted); }
+.sp-bw-exceeded-txt { color: var(--danger); font-weight: 600; }
+
 .sp-empty { text-align: center; padding: 3rem 1rem; color: var(--muted); }
 .sp-empty i { font-size: 2.5rem; margin-bottom: .75rem; display: block; }
 .sp-empty p { font-size: .95rem; font-weight: 500; color: var(--text2); }

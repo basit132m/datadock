@@ -234,6 +234,14 @@
               <input id="sp-public-url" type="url" placeholder="https://cdn.example.com" />
             </label>
           </div>
+          <div class="ad-form-row">
+            <label>Monthly Bandwidth Cap (GB) <span class="muted-label">(optional — triggers CDN failover)</span>
+              <input id="sp-bw-cap" type="number" min="0" step="0.1" placeholder="e.g. 10" />
+            </label>
+            <label>Fallback CDN URL <span class="muted-label">(served when cap is exceeded)</span>
+              <input id="sp-fallback-url" type="url" placeholder="https://pullzone.b-cdn.net" />
+            </label>
+          </div>
           <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
             <label class="ad-active-wrap" style="margin-top:0">
               <input id="sp-default" type="checkbox" /> Set as default for new uploads

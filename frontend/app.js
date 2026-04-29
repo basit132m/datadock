@@ -855,6 +855,15 @@ function buildProviderCard(p) {
         </div>
         <div class="sp-detail"><i class="fa-solid fa-link"></i> ${p.endpoint_url}</div>
         <div class="sp-detail"><i class="fa-solid fa-box-archive"></i> ${p.bucket_name} · <span class="sp-type">${meta.label}</span> · <strong>${p.file_count || 0}</strong> files</div>
+        ${p.bandwidth_cap_gb ? `
+        <div class="sp-bw-wrap">
+          <div class="sp-bw-bar-bg"><div class="sp-bw-bar${p.cap_exceeded ? ' sp-bw-exceeded' : ''}" style="width:${Math.min(100, p.bandwidth_pct || 0)}%"></div></div>
+          <span class="sp-bw-label ${p.cap_exceeded ? 'sp-bw-exceeded-txt' : ''}">
+            ${p.cap_exceeded
+              ? `<i class="fa-solid fa-triangle-exclamation"></i> Cap exceeded — routing via fallback CDN`
+              : `${p.bandwidth_used_gb} GB / ${p.bandwidth_cap_gb} GB used this month`}
+          </span>
+        </div>` : ''}
       </div>
     </div>
     <div class="sp-actions">
@@ -906,6 +915,8 @@ function fillEditForm(p) {
   document.getElementById('sp-app-key').value        = p.application_key;
   document.getElementById('sp-bucket').value         = p.bucket_name;
   document.getElementById('sp-public-url').value     = p.public_base_url || '';
+  document.getElementById('sp-bw-cap').value         = p.bandwidth_cap_gb || '';
+  document.getElementById('sp-fallback-url').value   = p.fallback_base_url || '';
   document.getElementById('sp-default').checked      = !!p.is_default;
   document.getElementById('storage-form-title').textContent = 'Edit Storage Provider';
   document.getElementById('storage-submit-btn').innerHTML   = '<i class="fa-solid fa-floppy-disk"></i> Save Changes';
@@ -937,8 +948,10 @@ function initStorageForm() {
       key_id:          document.getElementById('sp-key-id').value.trim(),
       application_key: document.getElementById('sp-app-key').value.trim(),
       bucket_name:     document.getElementById('sp-bucket').value.trim(),
-      public_base_url: document.getElementById('sp-public-url').value.trim() || null,
-      is_default:      document.getElementById('sp-default').checked ? 1 : 0,
+      public_base_url:   document.getElementById('sp-public-url').value.trim() || null,
+      bandwidth_cap_gb:  parseFloat(document.getElementById('sp-bw-cap').value) || null,
+      fallback_base_url: document.getElementById('sp-fallback-url').value.trim() || null,
+      is_default:        document.getElementById('sp-default').checked ? 1 : 0,
       active: 1,
     };
     try {

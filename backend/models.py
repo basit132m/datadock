@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, BigInteger, DateTime, Text
+from sqlalchemy import Column, String, Integer, BigInteger, DateTime, Text, Float
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
@@ -46,6 +46,10 @@ class StorageProvider(Base):
     is_default = Column(Integer, default=0, nullable=False)
     active = Column(Integer, default=1, nullable=False)
     created_at = Column(DateTime, nullable=False)
+    bandwidth_cap_gb = Column(Float, nullable=True)          # monthly cap; NULL = unlimited
+    fallback_base_url = Column(String(500), nullable=True)   # CDN URL when cap exceeded
+    monthly_bandwidth_used = Column(BigInteger, default=0, nullable=False)
+    bandwidth_reset_month = Column(String(7), nullable=True) # "YYYY-MM" of last reset
 
 
 class Ad(Base):

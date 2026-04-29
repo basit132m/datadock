@@ -485,9 +485,34 @@ async def download_file(share_id: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "File not found")
 
     upload.downloads = (upload.downloads or 0) + 1
-    db.commit()
 
-    return RedirectResponse(url=_get_storage(upload.storage_provider_id, db).get_download_url(upload.b2_file_key))
+    # ── Bandwidth cap + CDN failover ─────────────────────────────────────────
+    download_url = _get_storage(upload.storage_provider_id, db).get_download_url(upload.b2_file_key)
+
+    if upload.storage_provider_id:
+        provider = db.query(StorageProvider).filter(
+            StorageProvider.id == upload.storage_provider_id
+        ).first()
+        if provider and provider.bandwidth_cap_gb:
+            current_month = datetime.utcnow().strftime("%Y-%m")
+            # Reset counter at the start of a new month
+            if provider.bandwidth_reset_month != current_month:
+                provider.monthly_bandwidth_used = 0
+                provider.bandwidth_reset_month = current_month
+
+            cap_bytes = int(provider.bandwidth_cap_gb * 1_073_741_824)
+            used = provider.monthly_bandwidth_used or 0
+
+            if used >= cap_bytes and provider.fallback_base_url:
+                # Cap exceeded — serve via fallback CDN
+                base = provider.fallback_base_url.rstrip("/")
+                download_url = f"{base}/{upload.b2_file_key}"
+            else:
+                # Still under cap — count this download's bytes
+                provider.monthly_bandwidth_used = used + (upload.file_size or 0)
+
+    db.commit()
+    return RedirectResponse(url=download_url)
 
 
 # ── URL Import API ────────────────────────────────────────────────────────────
@@ -1000,9 +1025,13 @@ class StorageProviderIn(BaseModel):
     public_base_url: Optional[str] = None
     is_default: int = 0
     active: int = 1
+    bandwidth_cap_gb: Optional[float] = None
+    fallback_base_url: Optional[str] = None
 
 
 def _provider_dict(p: StorageProvider) -> dict:
+    used = p.monthly_bandwidth_used or 0
+    cap  = p.bandwidth_cap_gb
     return {
         "id": p.id,
         "name": p.name,
@@ -1014,6 +1043,13 @@ def _provider_dict(p: StorageProvider) -> dict:
         "is_default": p.is_default,
         "active": p.active,
         "created_at": p.created_at.isoformat() if p.created_at else None,
+        "bandwidth_cap_gb": cap,
+        "fallback_base_url": p.fallback_base_url or "",
+        "monthly_bandwidth_used": used,
+        "bandwidth_used_gb": round(used / 1_073_741_824, 2),
+        "bandwidth_pct": round(used / (cap * 1_073_741_824) * 100, 1) if cap else None,
+        "cap_exceeded": bool(cap and used >= cap * 1_073_741_824),
+        "bandwidth_reset_month": p.bandwidth_reset_month or "",
     }
 
 
@@ -1052,6 +1088,10 @@ async def create_storage_provider(
         public_base_url=(body.public_base_url or "").rstrip("/") or None,
         is_default=body.is_default,
         active=body.active,
+        bandwidth_cap_gb=body.bandwidth_cap_gb or None,
+        fallback_base_url=(body.fallback_base_url or "").rstrip("/") or None,
+        monthly_bandwidth_used=0,
+        bandwidth_reset_month=datetime.utcnow().strftime("%Y-%m"),
         created_at=datetime.utcnow(),
     )
     db.add(provider)
@@ -1081,6 +1121,8 @@ async def update_storage_provider(
     provider.public_base_url = (body.public_base_url or "").rstrip("/") or None
     provider.is_default = body.is_default
     provider.active = body.active
+    provider.bandwidth_cap_gb = body.bandwidth_cap_gb or None
+    provider.fallback_base_url = (body.fallback_base_url or "").rstrip("/") or None
     db.commit()
     _storage_cache.pop(provider_id, None)
     return _provider_dict(provider)
