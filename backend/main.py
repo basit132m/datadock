@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db, init_db
 from models import Ad, Part, StorageProvider, Upload
-from storage import B2Storage, S3Storage
+from storage import B2Storage, BunnyStorage, S3Storage
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -43,13 +43,25 @@ def _get_storage(provider_id: Optional[str], db: Session) -> S3Storage:
     p = db.query(StorageProvider).filter(StorageProvider.id == provider_id).first()
     if not p:
         return storage
-    inst = S3Storage(
-        endpoint_url=p.endpoint_url,
-        key_id=p.key_id,
-        application_key=p.application_key,
-        bucket_name=p.bucket_name,
-        public_base_url=p.public_base_url or "",
-    )
+
+    from urllib.parse import urlparse as _urlparse
+    _ep = p.endpoint_url.lower()
+    if "bunnycdn.com" in _ep or "b-cdn.net" in _ep:
+        region = _urlparse(p.endpoint_url).hostname or p.endpoint_url
+        inst = BunnyStorage(
+            zone=p.bucket_name,
+            api_key=p.application_key,
+            region=region,
+            public_base_url=p.public_base_url or "",
+        )
+    else:
+        inst = S3Storage(
+            endpoint_url=p.endpoint_url,
+            key_id=p.key_id,
+            application_key=p.application_key,
+            bucket_name=p.bucket_name,
+            public_base_url=p.public_base_url or "",
+        )
     _storage_cache[provider_id] = inst
     return inst
 
