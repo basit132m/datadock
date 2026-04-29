@@ -540,7 +540,7 @@ async def import_status(
         upload = db.query(Upload).filter(Upload.id == upload_id).first()
         if upload:
             result["share_url"] = f"/f/{upload.share_id}"
-            result["direct_url"] = storage.get_download_url(upload.b2_file_key)
+            result["direct_url"] = _get_storage(upload.storage_provider_id, db).get_download_url(upload.b2_file_key)
             result["filename"] = upload.filename
             result["file_size"] = upload.file_size
     return result
@@ -549,17 +549,26 @@ async def import_status(
 _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 _MAX_REDIRECTS = 20
 _META_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; DataDock/2.0)",
-    "Accept": "*/*",
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+    "Accept-Encoding": "identity",   # keep off so Content-Length stays accurate
 }
 
 
 async def _resolve_url_meta(url: str) -> tuple[dict, str]:
     """Follow all redirects and return (headers-dict, final-url).
 
-    Tries HEAD first; if the server rejects HEAD (405/403/501) or returns
-    no useful Content-Length, retries with a Range GET so we still don't
-    download the whole file but resolve the complete redirect chain.
+    Strategy (each step falls through on failure):
+    1. HEAD  — fast, no body
+    2. Range GET bytes=0-0 — resolves redirects without downloading the file
+    3. Give up on metadata — return empty headers + original URL so the actual
+       download can still proceed (token-protected servers often block HEAD/Range
+       but serve the full GET just fine).
     """
     client_kwargs = dict(
         follow_redirects=True,
@@ -571,21 +580,26 @@ async def _resolve_url_meta(url: str) -> tuple[dict, str]:
         # 1. Try HEAD
         try:
             resp = await client.head(url)
-            if resp.status_code not in (405, 403, 501):
+            if resp.status_code not in (403, 405, 501):
                 resp.raise_for_status()
                 return dict(resp.headers), str(resp.url)
-        except httpx.HTTPStatusError:
-            pass  # fall through to GET fallback
+        except (httpx.HTTPStatusError, httpx.RequestError):
+            pass
 
-        # 2. HEAD blocked — use a Range GET for byte 0 only
-        resp = await client.get(url, headers={**_META_HEADERS, "Range": "bytes=0-0"})
-        # A proper range response is 206; a 200 also works (server ignored Range)
-        if resp.status_code not in (200, 206):
-            resp.raise_for_status()
+        # 2. Range GET — single byte, cheap
+        try:
+            resp = await client.get(url, headers={**_META_HEADERS, "Range": "bytes=0-0"})
+            if resp.status_code in (200, 206):
+                await resp.aclose()
+                return dict(resp.headers), str(resp.url)
+            await resp.aclose()
+        except (httpx.HTTPStatusError, httpx.RequestError):
+            pass
 
-        # For 200 responses the server is sending the full body — close immediately
-        await resp.aclose()
-        return dict(resp.headers), str(resp.url)
+        # 3. Server blocks all pre-flight requests (token-protected URLs, etc.)
+        # Return empty metadata — filename will be parsed from the URL and the
+        # actual streaming GET will carry the token and succeed.
+        return {}, url
 
 
 async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str,
