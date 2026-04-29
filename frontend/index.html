@@ -46,6 +46,9 @@
       <button class="nav-item" data-page="ads">
         <i class="fa-solid fa-bullhorn ni-icon"></i> Ads
       </button>
+      <button class="nav-item" data-page="storage">
+        <i class="fa-solid fa-database ni-icon"></i> Storage
+      </button>
     </nav>
     <div class="sidebar-footer">
       <div id="key-badge" class="key-badge">
@@ -196,6 +199,58 @@
         <div id="ad-list">
           <p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">Loading…</p>
         </div>
+      </div>
+    </div>
+
+    <!-- ── Storage ── -->
+    <div id="page-storage" class="page">
+      <div class="page-header"><h1>Storage Providers</h1></div>
+
+      <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-header" id="storage-form-title">Add Storage Provider</div>
+        <form id="storage-form" class="ad-form">
+          <input type="hidden" id="storage-edit-id" value="" />
+          <div class="ad-form-row">
+            <label>Display Name
+              <input id="sp-name" type="text" placeholder="e.g. Cloudflare R2 Main" required />
+            </label>
+            <label>Endpoint URL
+              <input id="sp-endpoint" type="url" placeholder="https://xxx.r2.cloudflarestorage.com" required />
+            </label>
+          </div>
+          <div class="ad-form-row">
+            <label>Access Key ID
+              <input id="sp-key-id" type="text" placeholder="Key ID" required />
+            </label>
+            <label>Secret Access Key
+              <input id="sp-app-key" type="password" placeholder="Secret key" required />
+            </label>
+          </div>
+          <div class="ad-form-row">
+            <label>Bucket Name
+              <input id="sp-bucket" type="text" placeholder="my-bucket" required />
+            </label>
+            <label>Public Base URL <span class="muted-label">(optional, for public buckets)</span>
+              <input id="sp-public-url" type="url" placeholder="https://cdn.example.com" />
+            </label>
+          </div>
+          <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
+            <label class="ad-active-wrap" style="margin-top:0">
+              <input id="sp-default" type="checkbox" /> Set as default for new uploads
+            </label>
+            <button type="submit" class="btn-primary" id="storage-submit-btn">
+              <i class="fa-solid fa-plus"></i> Add Provider
+            </button>
+            <button type="button" class="btn-sm" id="storage-cancel-btn" style="display:none">
+              Cancel
+            </button>
+            <span id="storage-form-msg" class="ad-form-msg"></span>
+          </div>
+        </form>
+      </div>
+
+      <div id="storage-list">
+        <p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">Loading…</p>
       </div>
     </div>
 

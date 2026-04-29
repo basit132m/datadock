@@ -18,6 +18,7 @@ class Upload(Base):
     status = Column(String(20), default="pending", nullable=False)
     views = Column(Integer, default=0)
     downloads = Column(Integer, default=0)
+    storage_provider_id = Column(String(36), nullable=True, index=True)
     created_at = Column(DateTime, nullable=False)
     completed_at = Column(DateTime, nullable=True)
 
@@ -30,6 +31,21 @@ class Part(Base):
     part_number = Column(Integer, nullable=False)
     etag = Column(String(200), nullable=False)
     uploaded_at = Column(DateTime, nullable=False)
+
+
+class StorageProvider(Base):
+    __tablename__ = "storage_providers"
+
+    id = Column(String(36), primary_key=True)
+    name = Column(String(200), nullable=False)
+    endpoint_url = Column(String(500), nullable=False)
+    key_id = Column(String(500), nullable=False)
+    application_key = Column(String(500), nullable=False)
+    bucket_name = Column(String(200), nullable=False)
+    public_base_url = Column(String(500), nullable=True)
+    is_default = Column(Integer, default=0, nullable=False)
+    active = Column(Integer, default=1, nullable=False)
+    created_at = Column(DateTime, nullable=False)
 
 
 class Ad(Base):

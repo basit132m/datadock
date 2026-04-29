@@ -19,8 +19,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db, init_db
-from models import Ad, Part, Upload
-from storage import B2Storage
+from models import Ad, Part, StorageProvider, Upload
+from storage import B2Storage, S3Storage
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -29,8 +29,37 @@ API_KEY = os.getenv("API_KEY", "")
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
 IMPORT_CHUNK = 10 * 1024 * 1024  # 10 MB per B2 part
 
-# In-memory import progress store (single-server; fine for this use case)
-_import_progress: dict = {}
+_import_progress: dict = {}    # upload_id -> progress dict
+_storage_cache:   dict = {}    # provider_id -> S3Storage instance
+
+
+def _get_storage(provider_id: Optional[str], db: Session) -> S3Storage:
+    """Return the correct S3Storage for a given provider_id.
+    Falls back to the env-based storage when provider_id is None (legacy uploads)."""
+    if not provider_id:
+        return storage
+    if provider_id in _storage_cache:
+        return _storage_cache[provider_id]
+    p = db.query(StorageProvider).filter(StorageProvider.id == provider_id).first()
+    if not p:
+        return storage
+    inst = S3Storage(
+        endpoint_url=p.endpoint_url,
+        key_id=p.key_id,
+        application_key=p.application_key,
+        bucket_name=p.bucket_name,
+        public_base_url=p.public_base_url or "",
+    )
+    _storage_cache[provider_id] = inst
+    return inst
+
+
+def _get_default_provider(db: Session) -> Optional[StorageProvider]:
+    return (
+        db.query(StorageProvider)
+        .filter(StorageProvider.is_default == 1, StorageProvider.active == 1)
+        .first()
+    )
 
 # ── App ───────────────────────────────────────────────────────────────────────
 
@@ -94,7 +123,9 @@ async def init_upload(
     )
     if existing:
         try:
-            b2_parts = storage.list_uploaded_parts(existing.b2_file_key, existing.b2_upload_id)
+            b2_parts = _get_storage(existing.storage_provider_id, db).list_uploaded_parts(
+                existing.b2_file_key, existing.b2_upload_id
+            )
             known = {p.part_number for p in db.query(Part).filter(Part.upload_id == existing.id).all()}
             for bp in b2_parts:
                 if bp["part_number"] not in known:
@@ -118,7 +149,11 @@ async def init_upload(
 
     safe_name = os.path.basename(body.filename).replace("\0", "") or "unnamed"
     file_key = f"uploads/{uuid.uuid4()}/{safe_name}"
-    b2_upload_id = storage.create_multipart_upload(file_key, body.content_type)
+
+    default_prov = _get_default_provider(db)
+    provider_id  = default_prov.id if default_prov else None
+    file_storage = _get_storage(provider_id, db)
+    b2_upload_id = file_storage.create_multipart_upload(file_key, body.content_type)
 
     upload = Upload(
         id=str(uuid.uuid4()),
@@ -132,6 +167,7 @@ async def init_upload(
         status="pending",
         views=0,
         downloads=0,
+        storage_provider_id=provider_id,
         created_at=datetime.utcnow(),
     )
     db.add(upload)
@@ -160,7 +196,9 @@ async def upload_chunk(
     if not data:
         raise HTTPException(400, "Empty chunk")
 
-    etag = storage.upload_part(upload.b2_file_key, upload.b2_upload_id, part_number, data)
+    etag = _get_storage(upload.storage_provider_id, db).upload_part(
+        upload.b2_file_key, upload.b2_upload_id, part_number, data
+    )
 
     existing = (
         db.query(Part)
@@ -205,12 +243,13 @@ async def complete_upload(
     upload.status = "completing"
     db.commit()
 
+    file_storage = _get_storage(upload.storage_provider_id, db)
     try:
-        storage.complete_multipart_upload(upload.b2_file_key, upload.b2_upload_id, parts)
+        file_storage.complete_multipart_upload(upload.b2_file_key, upload.b2_upload_id, parts)
     except Exception as exc:
         upload.status = "failed"
         db.commit()
-        raise HTTPException(500, f"B2 complete failed: {exc}") from exc
+        raise HTTPException(500, f"Storage complete failed: {exc}") from exc
 
     upload.status = "completed"
     upload.completed_at = datetime.utcnow()
@@ -219,7 +258,7 @@ async def complete_upload(
     return {
         "ok": True,
         "share_url": f"/f/{upload.share_id}",
-        "direct_url": storage.get_download_url(upload.b2_file_key),
+        "direct_url": file_storage.get_download_url(upload.b2_file_key),
         "filename": upload.filename,
         "file_size": upload.file_size,
     }
@@ -235,7 +274,9 @@ async def abort_upload(
     if not upload:
         raise HTTPException(404, "Upload not found")
     if upload.status == "pending":
-        storage.abort_multipart_upload(upload.b2_file_key, upload.b2_upload_id)
+        _get_storage(upload.storage_provider_id, db).abort_multipart_upload(
+            upload.b2_file_key, upload.b2_upload_id
+        )
     upload.status = "aborted"
     db.commit()
     return {"ok": True}
@@ -253,16 +294,24 @@ async def list_files(db: Session = Depends(get_db), _=Depends(require_auth)):
         .limit(200)
         .all()
     )
+    # Build provider name lookup in one query
+    pids = {f.storage_provider_id for f in rows if f.storage_provider_id}
+    providers = {}
+    if pids:
+        for p in db.query(StorageProvider).filter(StorageProvider.id.in_(pids)).all():
+            providers[p.id] = p.name
+
     return [
         {
             "id": f.id,
             "share_id": f.share_id,
             "filename": f.filename,
             "file_size": f.file_size,
-            "direct_url": storage.get_download_url(f.b2_file_key),
+            "direct_url": _get_storage(f.storage_provider_id, db).get_download_url(f.b2_file_key),
             "share_url": f"/f/{f.share_id}" if f.share_id else None,
             "views": f.views or 0,
             "downloads": f.downloads or 0,
+            "storage_name": providers.get(f.storage_provider_id, "Default (env)"),
             "completed_at": f.completed_at.isoformat() if f.completed_at else None,
         }
         for f in rows
@@ -279,7 +328,7 @@ async def delete_file(file_id: str, db: Session = Depends(get_db), _=Depends(req
     if not upload:
         raise HTTPException(404, "File not found")
     try:
-        storage.delete_object(upload.b2_file_key)
+        _get_storage(upload.storage_provider_id, db).delete_object(upload.b2_file_key)
     except Exception:
         pass
     db.delete(upload)
@@ -377,7 +426,7 @@ async def download_file(share_id: str, db: Session = Depends(get_db)):
     upload.downloads = (upload.downloads or 0) + 1
     db.commit()
 
-    return RedirectResponse(url=storage.get_download_url(upload.b2_file_key))
+    return RedirectResponse(url=_get_storage(upload.storage_provider_id, db).get_download_url(upload.b2_file_key))
 
 
 # ── URL Import API ────────────────────────────────────────────────────────────
@@ -427,10 +476,13 @@ async def import_from_url(
 
     filename = os.path.basename(filename).replace("\0", "") or "imported_file"
 
-    # Create B2 multipart upload + DB record
+    # Create multipart upload on the default storage provider
     file_key = f"uploads/{uuid.uuid4()}/{filename}"
+    default_prov = _get_default_provider(db)
+    provider_id  = default_prov.id if default_prov else None
+    file_storage = _get_storage(provider_id, db)
     try:
-        b2_upload_id = storage.create_multipart_upload(file_key, content_type)
+        b2_upload_id = file_storage.create_multipart_upload(file_key, content_type)
     except Exception as exc:
         raise HTTPException(500, f"Storage error: {exc}")
 
@@ -446,6 +498,7 @@ async def import_from_url(
         status="importing",
         views=0,
         downloads=0,
+        storage_provider_id=provider_id,
         created_at=datetime.utcnow(),
     )
     db.add(upload)
@@ -458,9 +511,8 @@ async def import_from_url(
         "error": None,
     }
 
-    # Pass the already-resolved final_url so the background task skips re-resolving
     background_tasks.add_task(
-        _do_import, upload.id, final_url, file_key, b2_upload_id
+        _do_import, upload.id, final_url, file_key, b2_upload_id, provider_id
     )
 
     return {
@@ -536,18 +588,16 @@ async def _resolve_url_meta(url: str) -> tuple[dict, str]:
         return dict(resp.headers), str(resp.url)
 
 
-async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str):
-    """Stream a remote file directly into B2 multipart upload.
-
-    `url` is already the fully-resolved final URL (no re-resolution needed),
-    but follow_redirects=True is kept as a safety net for any late redirects.
-    """
+async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str,
+                     provider_id: Optional[str] = None):
+    """Stream a remote file directly into the target storage provider."""
     from database import SessionLocal
     loop = asyncio.get_event_loop()
     db = SessionLocal()
     prog = _import_progress[upload_id]
 
     try:
+        file_storage = _get_storage(provider_id, db)
         parts: list = []
         part_number = 0
         buf = bytearray()
@@ -561,12 +611,11 @@ async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str)
         ) as client:
             async with client.stream("GET", url) as resp:
                 resp.raise_for_status()
-                async for chunk in resp.aiter_bytes(65_536):  # 64 KB network reads
+                async for chunk in resp.aiter_bytes(65_536):
                     buf.extend(chunk)
                     total_bytes += len(chunk)
                     prog["bytes_done"] = total_bytes
 
-                    # Flush full 10 MB parts to B2 as they accumulate
                     while len(buf) >= IMPORT_CHUNK:
                         part_number += 1
                         data = bytes(buf[:IMPORT_CHUNK])
@@ -574,7 +623,7 @@ async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str)
                         pn = part_number
                         etag = await loop.run_in_executor(
                             None,
-                            lambda d=data, p=pn: storage.upload_part(file_key, b2_upload_id, p, d),
+                            lambda d=data, p=pn: file_storage.upload_part(file_key, b2_upload_id, p, d),
                         )
                         parts.append({"part_number": pn, "etag": etag})
 
@@ -585,7 +634,7 @@ async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str)
             data = bytes(buf)
             etag = await loop.run_in_executor(
                 None,
-                lambda d=data, p=pn: storage.upload_part(file_key, b2_upload_id, p, d),
+                lambda d=data, p=pn: file_storage.upload_part(file_key, b2_upload_id, p, d),
             )
             parts.append({"part_number": pn, "etag": etag})
 
@@ -595,7 +644,7 @@ async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str)
         prog["status"] = "completing"
         await loop.run_in_executor(
             None,
-            lambda: storage.complete_multipart_upload(file_key, b2_upload_id, parts),
+            lambda: file_storage.complete_multipart_upload(file_key, b2_upload_id, parts),
         )
 
         upload = db.query(Upload).filter(Upload.id == upload_id).first()
@@ -619,11 +668,168 @@ async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str)
             db.commit()
 
         try:
-            storage.abort_multipart_upload(file_key, b2_upload_id)
+            file_storage.abort_multipart_upload(file_key, b2_upload_id)
         except Exception:
             pass
     finally:
         db.close()
+
+
+# ── Storage Provider API ──────────────────────────────────────────────────────
+
+
+class StorageProviderIn(BaseModel):
+    name: str
+    endpoint_url: str
+    key_id: str
+    application_key: str
+    bucket_name: str
+    public_base_url: Optional[str] = None
+    is_default: int = 0
+    active: int = 1
+
+
+def _provider_dict(p: StorageProvider) -> dict:
+    return {
+        "id": p.id,
+        "name": p.name,
+        "endpoint_url": p.endpoint_url,
+        "key_id": p.key_id,
+        "application_key": p.application_key,
+        "bucket_name": p.bucket_name,
+        "public_base_url": p.public_base_url or "",
+        "is_default": p.is_default,
+        "active": p.active,
+        "created_at": p.created_at.isoformat() if p.created_at else None,
+    }
+
+
+@app.get("/api/admin/storage")
+async def list_storage_providers(db: Session = Depends(get_db), _=Depends(require_auth)):
+    rows = db.query(StorageProvider).order_by(StorageProvider.created_at).all()
+    result = []
+    for p in rows:
+        d = _provider_dict(p)
+        d["file_count"] = (
+            db.query(func.count(Upload.id))
+            .filter(Upload.storage_provider_id == p.id, Upload.status == "completed")
+            .scalar() or 0
+        )
+        result.append(d)
+    return result
+
+
+@app.post("/api/admin/storage")
+async def create_storage_provider(
+    body: StorageProviderIn,
+    db: Session = Depends(get_db),
+    _=Depends(require_auth),
+):
+    if not body.endpoint_url.startswith(("http://", "https://")):
+        raise HTTPException(400, "endpoint_url must start with http:// or https://")
+    if body.is_default:
+        db.query(StorageProvider).update({StorageProvider.is_default: 0})
+    provider = StorageProvider(
+        id=str(uuid.uuid4()),
+        name=body.name,
+        endpoint_url=body.endpoint_url.rstrip("/"),
+        key_id=body.key_id,
+        application_key=body.application_key,
+        bucket_name=body.bucket_name,
+        public_base_url=(body.public_base_url or "").rstrip("/") or None,
+        is_default=body.is_default,
+        active=body.active,
+        created_at=datetime.utcnow(),
+    )
+    db.add(provider)
+    db.commit()
+    return _provider_dict(provider)
+
+
+@app.patch("/api/admin/storage/{provider_id}")
+async def update_storage_provider(
+    provider_id: str,
+    body: StorageProviderIn,
+    db: Session = Depends(get_db),
+    _=Depends(require_auth),
+):
+    provider = db.query(StorageProvider).filter(StorageProvider.id == provider_id).first()
+    if not provider:
+        raise HTTPException(404, "Provider not found")
+    if body.is_default:
+        db.query(StorageProvider).filter(StorageProvider.id != provider_id).update(
+            {StorageProvider.is_default: 0}
+        )
+    provider.name = body.name
+    provider.endpoint_url = body.endpoint_url.rstrip("/")
+    provider.key_id = body.key_id
+    provider.application_key = body.application_key
+    provider.bucket_name = body.bucket_name
+    provider.public_base_url = (body.public_base_url or "").rstrip("/") or None
+    provider.is_default = body.is_default
+    provider.active = body.active
+    db.commit()
+    _storage_cache.pop(provider_id, None)
+    return _provider_dict(provider)
+
+
+@app.delete("/api/admin/storage/{provider_id}")
+async def delete_storage_provider(
+    provider_id: str,
+    db: Session = Depends(get_db),
+    _=Depends(require_auth),
+):
+    provider = db.query(StorageProvider).filter(StorageProvider.id == provider_id).first()
+    if not provider:
+        raise HTTPException(404, "Provider not found")
+    file_count = (
+        db.query(func.count(Upload.id))
+        .filter(Upload.storage_provider_id == provider_id)
+        .scalar() or 0
+    )
+    if file_count:
+        raise HTTPException(400, f"Cannot delete: {file_count} file(s) are stored here. Delete those files first.")
+    db.delete(provider)
+    db.commit()
+    _storage_cache.pop(provider_id, None)
+    return {"ok": True}
+
+
+@app.post("/api/admin/storage/{provider_id}/set-default")
+async def set_default_storage(
+    provider_id: str,
+    db: Session = Depends(get_db),
+    _=Depends(require_auth),
+):
+    provider = db.query(StorageProvider).filter(StorageProvider.id == provider_id).first()
+    if not provider:
+        raise HTTPException(404, "Provider not found")
+    db.query(StorageProvider).update({StorageProvider.is_default: 0})
+    provider.is_default = 1
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/api/admin/storage/{provider_id}/test")
+async def test_storage_provider(
+    provider_id: str,
+    db: Session = Depends(get_db),
+    _=Depends(require_auth),
+):
+    provider = db.query(StorageProvider).filter(StorageProvider.id == provider_id).first()
+    if not provider:
+        raise HTTPException(404, "Provider not found")
+    try:
+        inst = S3Storage(
+            endpoint_url=provider.endpoint_url,
+            key_id=provider.key_id,
+            application_key=provider.application_key,
+            bucket_name=provider.bucket_name,
+        )
+        inst.test_connection()
+        return {"ok": True}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
 
 
 # ── Ads API ───────────────────────────────────────────────────────────────────

@@ -450,8 +450,8 @@ async function loadFileList() {
     table.innerHTML = `
       <thead>
         <tr>
-          <th>File</th><th>Size</th><th>Date</th>
-          <th>Views</th><th>Downloads</th><th>Actions</th>
+          <th>File</th><th>Size</th><th>Storage</th><th>Date</th>
+          <th>Views</th><th>DLs</th><th>Actions</th>
         </tr>
       </thead>
       <tbody></tbody>`;
@@ -460,10 +460,12 @@ async function loadFileList() {
     const tbody = table.querySelector('tbody');
 
     files.forEach(f => {
+      const meta = providerMeta(f.storage_name || '');
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td><span class="tf-icon">${fileIcon(f.filename)}</span><span class="tf-name">${f.filename}</span></td>
         <td>${formatBytes(f.file_size)}</td>
+        <td><span class="sp-chip" title="${f.storage_name || 'Default (env)'}"><i class="fa-solid ${meta.icon}" style="color:${meta.color}"></i> ${f.storage_name || 'Default'}</span></td>
         <td>${formatDate(f.completed_at)}</td>
         <td>${(f.views || 0).toLocaleString()}</td>
         <td>${(f.downloads || 0).toLocaleString()}</td>
@@ -630,6 +632,156 @@ function initImportForm() {
   });
 }
 
+// ── Storage Providers ─────────────────────────────────────────────────────────
+
+function providerMeta(endpointUrl) {
+  const u = (endpointUrl || '').toLowerCase();
+  if (u.includes('backblazeb2'))          return { label: 'Backblaze B2',  icon: 'fa-database',  color: '#f59e0b' };
+  if (u.includes('r2.cloudflarestorage')) return { label: 'Cloudflare R2', icon: 'fa-cloud',     color: '#f97316' };
+  if (u.includes('wasabisys'))            return { label: 'Wasabi',        icon: 'fa-droplet',   color: '#16a34a' };
+  if (u.includes('amazonaws'))            return { label: 'Amazon S3',     icon: 'fa-server',    color: '#f59e0b' };
+  if (u.includes('bunnycdn') || u.includes('b-cdn.net')) return { label: 'Bunny CDN', icon: 'fa-bolt', color: '#8b5cf6' };
+  return { label: 'Custom S3', icon: 'fa-server', color: '#64748b' };
+}
+
+async function loadStoragePage() {
+  const list = document.getElementById('storage-list');
+  try {
+    const providers = await apiFetch('GET', '/api/admin/storage');
+    if (!providers.length) {
+      list.innerHTML = `<div class="sp-empty"><i class="fa-solid fa-database"></i><p>No storage providers added yet.</p><p class="sp-empty-sub">Add one above — all new uploads will use the default provider. Existing files using environment variables continue to work.</p></div>`;
+      return;
+    }
+    list.innerHTML = '';
+    providers.forEach(p => list.appendChild(buildProviderCard(p)));
+  } catch (e) {
+    list.innerHTML = `<p style="color:var(--danger);padding:1rem">Failed: ${e.message}</p>`;
+  }
+}
+
+function buildProviderCard(p) {
+  const meta = providerMeta(p.endpoint_url);
+  const card = document.createElement('div');
+  card.className = 'sp-card';
+  card.innerHTML = `
+    <div class="sp-card-header">
+      <div class="sp-icon" style="color:${meta.color};background:${meta.color}18">
+        <i class="fa-solid ${meta.icon}"></i>
+      </div>
+      <div class="sp-info">
+        <div class="sp-name">${p.name}
+          ${p.is_default ? '<span class="sp-badge sp-default-badge"><i class="fa-solid fa-star"></i> Default</span>' : ''}
+          ${!p.active ? '<span class="sp-badge sp-inactive-badge">Inactive</span>' : ''}
+        </div>
+        <div class="sp-detail"><i class="fa-solid fa-link"></i> ${p.endpoint_url}</div>
+        <div class="sp-detail"><i class="fa-solid fa-box-archive"></i> ${p.bucket_name} · <span class="sp-type">${meta.label}</span> · <strong>${p.file_count || 0}</strong> files</div>
+      </div>
+    </div>
+    <div class="sp-actions">
+      <button class="sp-btn sp-btn-test"><i class="fa-solid fa-plug-circle-check"></i> Test</button>
+      ${!p.is_default ? `<button class="sp-btn sp-btn-default"><i class="fa-solid fa-star"></i> Set Default</button>` : ''}
+      <button class="sp-btn sp-btn-edit"><i class="fa-solid fa-pen"></i> Edit</button>
+      <button class="sp-btn sp-btn-delete"><i class="fa-solid fa-trash"></i> Delete</button>
+    </div>`;
+
+  card.querySelector('.sp-btn-test').addEventListener('click', async btn => {
+    const b = card.querySelector('.sp-btn-test');
+    b.disabled = true; b.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Testing…';
+    try {
+      const res = await apiFetch('POST', `/api/admin/storage/${p.id}/test`);
+      b.innerHTML = res.ok
+        ? '<i class="fa-solid fa-circle-check"></i> Connected!'
+        : `<i class="fa-solid fa-circle-xmark"></i> Failed`;
+      b.style.color = res.ok ? 'var(--success)' : 'var(--danger)';
+      if (!res.ok) alert('Connection failed: ' + res.error);
+    } catch (e) { b.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> Error'; }
+    setTimeout(() => { b.disabled = false; b.style.color = ''; b.innerHTML = '<i class="fa-solid fa-plug-circle-check"></i> Test'; }, 3000);
+  });
+
+  card.querySelector('.sp-btn-edit').addEventListener('click', () => fillEditForm(p));
+
+  if (!p.is_default) {
+    card.querySelector('.sp-btn-default').addEventListener('click', async () => {
+      await apiFetch('POST', `/api/admin/storage/${p.id}/set-default`);
+      loadStoragePage();
+    });
+  }
+
+  card.querySelector('.sp-btn-delete').addEventListener('click', async () => {
+    if (!confirm(`Delete "${p.name}"? This cannot be undone.`)) return;
+    try {
+      await apiFetch('DELETE', `/api/admin/storage/${p.id}`);
+      loadStoragePage();
+    } catch (e) { alert(e.message); }
+  });
+
+  return card;
+}
+
+function fillEditForm(p) {
+  document.getElementById('storage-edit-id').value   = p.id;
+  document.getElementById('sp-name').value           = p.name;
+  document.getElementById('sp-endpoint').value       = p.endpoint_url;
+  document.getElementById('sp-key-id').value         = p.key_id;
+  document.getElementById('sp-app-key').value        = p.application_key;
+  document.getElementById('sp-bucket').value         = p.bucket_name;
+  document.getElementById('sp-public-url').value     = p.public_base_url || '';
+  document.getElementById('sp-default').checked      = !!p.is_default;
+  document.getElementById('storage-form-title').textContent = 'Edit Storage Provider';
+  document.getElementById('storage-submit-btn').innerHTML   = '<i class="fa-solid fa-floppy-disk"></i> Save Changes';
+  document.getElementById('storage-cancel-btn').style.display = '';
+  document.getElementById('sp-name').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function initStorageForm() {
+  const form    = document.getElementById('storage-form');
+  const msgEl   = document.getElementById('storage-form-msg');
+  const cancelBtn = document.getElementById('storage-cancel-btn');
+
+  cancelBtn.addEventListener('click', () => {
+    form.reset();
+    document.getElementById('storage-edit-id').value = '';
+    document.getElementById('storage-form-title').textContent = 'Add Storage Provider';
+    document.getElementById('storage-submit-btn').innerHTML = '<i class="fa-solid fa-plus"></i> Add Provider';
+    cancelBtn.style.display = 'none';
+    msgEl.textContent = '';
+  });
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    msgEl.textContent = '';
+    const editId = document.getElementById('storage-edit-id').value;
+    const body = {
+      name:            document.getElementById('sp-name').value.trim(),
+      endpoint_url:    document.getElementById('sp-endpoint').value.trim(),
+      key_id:          document.getElementById('sp-key-id').value.trim(),
+      application_key: document.getElementById('sp-app-key').value.trim(),
+      bucket_name:     document.getElementById('sp-bucket').value.trim(),
+      public_base_url: document.getElementById('sp-public-url').value.trim() || null,
+      is_default:      document.getElementById('sp-default').checked ? 1 : 0,
+      active: 1,
+    };
+    try {
+      if (editId) {
+        await apiFetch('PATCH', `/api/admin/storage/${editId}`, body);
+        msgEl.style.color = 'var(--success)'; msgEl.textContent = 'Saved!';
+      } else {
+        await apiFetch('POST', '/api/admin/storage', body);
+        msgEl.style.color = 'var(--success)'; msgEl.textContent = 'Provider added!';
+      }
+      form.reset();
+      document.getElementById('storage-edit-id').value = '';
+      document.getElementById('storage-form-title').textContent = 'Add Storage Provider';
+      document.getElementById('storage-submit-btn').innerHTML = '<i class="fa-solid fa-plus"></i> Add Provider';
+      cancelBtn.style.display = 'none';
+      setTimeout(() => { msgEl.textContent = ''; }, 3000);
+      loadStoragePage();
+    } catch (err) {
+      msgEl.style.color = 'var(--danger)'; msgEl.textContent = err.message;
+    }
+  });
+}
+
 // ── Ad Manager ────────────────────────────────────────────────────────────────
 
 async function loadAdsPage() {
@@ -732,6 +884,7 @@ function showPage(page) {
   if (page === 'dashboard') loadDashboard();
   if (page === 'files')     loadFileList();
   if (page === 'ads')       loadAdsPage();
+  if (page === 'storage')   loadStoragePage();
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -786,6 +939,7 @@ function initApp() {
   });
   initImportForm();
   initAdForm();
+  initStorageForm();
 
   document.getElementById('upload-shortcut').addEventListener('click', () => showPage('upload'));
 
