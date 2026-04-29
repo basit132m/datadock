@@ -40,6 +40,7 @@ def _migrate():
             "ALTER TABLE uploads ADD COLUMN storage_provider_id VARCHAR(36)",
             "ALTER TABLE storage_providers ADD COLUMN bandwidth_cap_gb REAL",
             "ALTER TABLE storage_providers ADD COLUMN fallback_base_url VARCHAR(500)",
+            "ALTER TABLE storage_providers ADD COLUMN fallback_provider_id VARCHAR(36)",
             "ALTER TABLE storage_providers ADD COLUMN monthly_bandwidth_used INTEGER DEFAULT 0",
             "ALTER TABLE storage_providers ADD COLUMN bandwidth_reset_month VARCHAR(7)",
         ]:

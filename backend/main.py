@@ -474,6 +474,50 @@ async def get_share_info(share_id: str, db: Session = Depends(get_db)):
     }
 
 
+def _chained_download_url(upload: Upload, db: Session) -> str:
+    """Walk the provider fallback chain and return the best available download URL.
+    Moves to the next provider when a cap is exceeded. Always returns a URL —
+    if every provider in the chain is over cap, the last one serves anyway."""
+    if not upload.storage_provider_id:
+        return _get_storage(None, db).get_download_url(upload.b2_file_key)
+
+    current_month = datetime.utcnow().strftime("%Y-%m")
+    visited: set = set()
+    pid = upload.storage_provider_id
+
+    while pid and pid not in visited:
+        visited.add(pid)
+        p = db.query(StorageProvider).filter(StorageProvider.id == pid).first()
+        if not p:
+            break
+
+        # Auto-reset counter on new month
+        if p.bandwidth_reset_month != current_month:
+            p.monthly_bandwidth_used = 0
+            p.bandwidth_reset_month = current_month
+
+        cap_bytes = int(p.bandwidth_cap_gb * 1_073_741_824) if p.bandwidth_cap_gb else None
+        used = p.monthly_bandwidth_used or 0
+        cap_exceeded = bool(cap_bytes and used >= cap_bytes)
+
+        if cap_exceeded:
+            # Try provider chain first, then legacy URL fallback
+            next_pid = p.fallback_provider_id
+            if next_pid:
+                pid = next_pid
+                continue
+            if p.fallback_base_url:
+                return f"{p.fallback_base_url.rstrip('/')}/{upload.b2_file_key}"
+            # No more fallbacks — serve from this provider anyway (never block user)
+
+        # Serve from this provider and track bandwidth
+        p.monthly_bandwidth_used = used + (upload.file_size or 0)
+        return _get_storage(p.id, db).get_download_url(upload.b2_file_key)
+
+    # Safety net
+    return _get_storage(upload.storage_provider_id, db).get_download_url(upload.b2_file_key)
+
+
 @app.get("/api/f/{share_id}/download")
 async def download_file(share_id: str, db: Session = Depends(get_db)):
     upload = (
@@ -485,32 +529,7 @@ async def download_file(share_id: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "File not found")
 
     upload.downloads = (upload.downloads or 0) + 1
-
-    # ── Bandwidth cap + CDN failover ─────────────────────────────────────────
-    download_url = _get_storage(upload.storage_provider_id, db).get_download_url(upload.b2_file_key)
-
-    if upload.storage_provider_id:
-        provider = db.query(StorageProvider).filter(
-            StorageProvider.id == upload.storage_provider_id
-        ).first()
-        if provider and provider.bandwidth_cap_gb:
-            current_month = datetime.utcnow().strftime("%Y-%m")
-            # Reset counter at the start of a new month
-            if provider.bandwidth_reset_month != current_month:
-                provider.monthly_bandwidth_used = 0
-                provider.bandwidth_reset_month = current_month
-
-            cap_bytes = int(provider.bandwidth_cap_gb * 1_073_741_824)
-            used = provider.monthly_bandwidth_used or 0
-
-            if used >= cap_bytes and provider.fallback_base_url:
-                # Cap exceeded — serve via fallback CDN
-                base = provider.fallback_base_url.rstrip("/")
-                download_url = f"{base}/{upload.b2_file_key}"
-            else:
-                # Still under cap — count this download's bytes
-                provider.monthly_bandwidth_used = used + (upload.file_size or 0)
-
+    download_url = _chained_download_url(upload, db)
     db.commit()
     return RedirectResponse(url=download_url)
 
@@ -1026,6 +1045,7 @@ class StorageProviderIn(BaseModel):
     is_default: int = 0
     active: int = 1
     bandwidth_cap_gb: Optional[float] = None
+    fallback_provider_id: Optional[str] = None
     fallback_base_url: Optional[str] = None
 
 
@@ -1044,6 +1064,7 @@ def _provider_dict(p: StorageProvider) -> dict:
         "active": p.active,
         "created_at": p.created_at.isoformat() if p.created_at else None,
         "bandwidth_cap_gb": cap,
+        "fallback_provider_id": p.fallback_provider_id or "",
         "fallback_base_url": p.fallback_base_url or "",
         "monthly_bandwidth_used": used,
         "bandwidth_used_gb": round(used / 1_073_741_824, 2),
@@ -1089,6 +1110,7 @@ async def create_storage_provider(
         is_default=body.is_default,
         active=body.active,
         bandwidth_cap_gb=body.bandwidth_cap_gb or None,
+        fallback_provider_id=body.fallback_provider_id or None,
         fallback_base_url=(body.fallback_base_url or "").rstrip("/") or None,
         monthly_bandwidth_used=0,
         bandwidth_reset_month=datetime.utcnow().strftime("%Y-%m"),
@@ -1122,6 +1144,7 @@ async def update_storage_provider(
     provider.is_default = body.is_default
     provider.active = body.active
     provider.bandwidth_cap_gb = body.bandwidth_cap_gb or None
+    provider.fallback_provider_id = body.fallback_provider_id or None
     provider.fallback_base_url = (body.fallback_base_url or "").rstrip("/") or None
     db.commit()
     _storage_cache.pop(provider_id, None)

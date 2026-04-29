@@ -833,7 +833,20 @@ async function loadStoragePage() {
       return;
     }
     list.innerHTML = '';
-    providers.forEach(p => list.appendChild(buildProviderCard(p)));
+    // Populate fallback provider dropdown (exclude the provider being edited)
+  const sel = document.getElementById('sp-fallback-provider');
+  const currentEdit = document.getElementById('storage-edit-id').value;
+  sel.innerHTML = '<option value="">— None —</option>';
+  providers.forEach(p => {
+    if (p.id !== currentEdit) {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.name;
+      sel.appendChild(opt);
+    }
+  });
+
+  providers.forEach(p => list.appendChild(buildProviderCard(p)));
   } catch (e) {
     list.innerHTML = `<p style="color:var(--danger);padding:1rem">Failed: ${e.message}</p>`;
   }
@@ -854,7 +867,7 @@ function buildProviderCard(p) {
           ${!p.active ? '<span class="sp-badge sp-inactive-badge">Inactive</span>' : ''}
         </div>
         <div class="sp-detail"><i class="fa-solid fa-link"></i> ${p.endpoint_url}</div>
-        <div class="sp-detail"><i class="fa-solid fa-box-archive"></i> ${p.bucket_name} · <span class="sp-type">${meta.label}</span> · <strong>${p.file_count || 0}</strong> files</div>
+        <div class="sp-detail"><i class="fa-solid fa-box-archive"></i> ${p.bucket_name} · <span class="sp-type">${meta.label}</span> · <strong>${p.file_count || 0}</strong> files${p.fallback_provider_id ? ' · <i class="fa-solid fa-arrow-right" style="color:var(--muted)"></i> <span style="color:var(--muted);font-size:.78rem">fallback set</span>' : ''}</div>
         ${p.bandwidth_cap_gb ? `
         <div class="sp-bw-wrap">
           <div class="sp-bw-bar-bg"><div class="sp-bw-bar${p.cap_exceeded ? ' sp-bw-exceeded' : ''}" style="width:${Math.min(100, p.bandwidth_pct || 0)}%"></div></div>
@@ -915,8 +928,8 @@ function fillEditForm(p) {
   document.getElementById('sp-app-key').value        = p.application_key;
   document.getElementById('sp-bucket').value         = p.bucket_name;
   document.getElementById('sp-public-url').value     = p.public_base_url || '';
-  document.getElementById('sp-bw-cap').value         = p.bandwidth_cap_gb || '';
-  document.getElementById('sp-fallback-url').value   = p.fallback_base_url || '';
+  document.getElementById('sp-bw-cap').value              = p.bandwidth_cap_gb || '';
+  document.getElementById('sp-fallback-provider').value   = p.fallback_provider_id || '';
   document.getElementById('sp-default').checked      = !!p.is_default;
   document.getElementById('storage-form-title').textContent = 'Edit Storage Provider';
   document.getElementById('storage-submit-btn').innerHTML   = '<i class="fa-solid fa-floppy-disk"></i> Save Changes';
@@ -949,8 +962,8 @@ function initStorageForm() {
       application_key: document.getElementById('sp-app-key').value.trim(),
       bucket_name:     document.getElementById('sp-bucket').value.trim(),
       public_base_url:   document.getElementById('sp-public-url').value.trim() || null,
-      bandwidth_cap_gb:  parseFloat(document.getElementById('sp-bw-cap').value) || null,
-      fallback_base_url: document.getElementById('sp-fallback-url').value.trim() || null,
+      bandwidth_cap_gb:     parseFloat(document.getElementById('sp-bw-cap').value) || null,
+      fallback_provider_id: document.getElementById('sp-fallback-provider').value || null,
       is_default:        document.getElementById('sp-default').checked ? 1 : 0,
       active: 1,
     };

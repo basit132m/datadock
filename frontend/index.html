@@ -238,8 +238,10 @@
             <label>Monthly Bandwidth Cap (GB) <span class="muted-label">(optional — triggers CDN failover)</span>
               <input id="sp-bw-cap" type="number" min="0" step="0.1" placeholder="e.g. 10" />
             </label>
-            <label>Fallback CDN URL <span class="muted-label">(served when cap is exceeded)</span>
-              <input id="sp-fallback-url" type="url" placeholder="https://pullzone.b-cdn.net" />
+            <label>Fallback Provider <span class="muted-label">(used when cap is exceeded)</span>
+              <select id="sp-fallback-provider">
+                <option value="">— None —</option>
+              </select>
             </label>
           </div>
           <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
