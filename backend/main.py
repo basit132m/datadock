@@ -505,9 +505,49 @@ async def import_from_url(
     except Exception as exc:
         raise HTTPException(400, f"Cannot reach URL: {exc}")
 
-    content_length = int(meta.get("content-length", 0) or 0)
     content_type = (meta.get("content-type", "application/octet-stream")
                     .split(";")[0].strip() or "application/octet-stream")
+
+    # ── HTML page detected: use headless browser to extract the real download URL ──
+    if "text/html" in content_type:
+        default_prov = _get_default_provider(db)
+        provider_id  = default_prov.id if default_prov else None
+
+        upload = Upload(
+            id=str(uuid.uuid4()),
+            share_id=_share_id(),
+            file_hash="",
+            filename=body.filename or "Scanning page…",
+            file_size=0,
+            content_type="application/octet-stream",
+            b2_upload_id="",
+            b2_file_key="",
+            status="analyzing",
+            views=0,
+            downloads=0,
+            storage_provider_id=provider_id,
+            created_at=datetime.utcnow(),
+        )
+        db.add(upload)
+        db.commit()
+
+        _import_progress[upload.id] = {
+            "status": "analyzing",
+            "bytes_done": 0,
+            "total": 0,
+            "error": None,
+        }
+
+        background_tasks.add_task(_do_page_import, upload.id, final_url, provider_id)
+
+        return {
+            "upload_id": upload.id,
+            "filename": upload.filename,
+            "total": 0,
+        }
+
+    # ── Direct file URL ──
+    content_length = int(meta.get("content-length", 0) or 0)
 
     if content_length and content_length > MAX_BYTES:
         raise HTTPException(400, f"Remote file exceeds {os.getenv('MAX_FILE_SIZE_GB', 10)} GB limit")
@@ -673,6 +713,152 @@ async def _resolve_url_meta(url: str) -> tuple[dict, str]:
         # Return empty metadata — filename will be parsed from the URL and the
         # actual streaming GET will carry the token and succeed.
         return {}, url
+
+
+_DL_EXTS = (
+    '.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz', '.zst',
+    '.iso', '.img', '.bin', '.nrg', '.mdf',
+    '.exe', '.dmg', '.pkg', '.deb', '.rpm', '.apk', '.msi',
+    '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm',
+    '.mp3', '.flac', '.wav', '.aac', '.ogg',
+    '.pdf', '.epub', '.mobi',
+    '.jar', '.apk',
+)
+
+
+async def _headless_extract(url: str) -> Optional[str]:
+    """Visit a download page with a headless Chromium browser, wait up to 20 s for
+    any countdown timer, and return the first file-download URL found."""
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        return None
+
+    found: Optional[str] = None
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-dev-shm-usage"],
+        )
+        ctx = await browser.new_context(
+            user_agent=_BROWSER_UA,
+            viewport={"width": 1280, "height": 800},
+        )
+        page = await ctx.new_page()
+
+        async def on_response(resp):
+            nonlocal found
+            if found:
+                return
+            ct = (resp.headers.get("content-type") or "").split(";")[0].lower()
+            skip = ("text/", "application/javascript", "application/json",
+                    "application/xml", "image/", "font/")
+            if ct and not any(ct.startswith(s) for s in skip):
+                found = resp.url
+                return
+            raw = resp.url.lower().split("?")[0]
+            if any(raw.endswith(e) for e in _DL_EXTS):
+                found = resp.url
+
+        page.on("response", on_response)
+
+        try:
+            await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+        except Exception:
+            pass
+
+        # Poll up to 20 s for countdown timers and link injection
+        for _ in range(20):
+            if found:
+                break
+            try:
+                ext_list = "|".join(e.lstrip(".") for e in _DL_EXTS)
+                links = await page.evaluate(
+                    f"() => Array.from(document.querySelectorAll('a[href]'))"
+                    f".map(a=>a.href)"
+                    f".filter(h=>/\\.({ext_list})(\\?|#|$)/i.test(h))"
+                )
+                if links:
+                    found = links[0]
+                    break
+            except Exception:
+                pass
+            await asyncio.sleep(1)
+
+        await browser.close()
+
+    return found
+
+
+async def _do_page_import(upload_id: str, page_url: str,
+                          provider_id: Optional[str] = None):
+    """Background task: use headless browser to extract a download URL from a
+    web page, then hand off to the normal _do_import pipeline."""
+    from database import SessionLocal
+    db = SessionLocal()
+    prog = _import_progress[upload_id]
+
+    try:
+        prog["status"] = "analyzing"
+
+        extracted = await _headless_extract(page_url)
+
+        if not extracted:
+            prog["status"] = "failed"
+            prog["error"] = (
+                "Could not find a direct download link on that page. "
+                "Try visiting the page yourself, copying the actual file URL, "
+                "and pasting it into the import box."
+            )
+            upload = db.query(Upload).filter(Upload.id == upload_id).first()
+            if upload:
+                upload.status = "failed"
+                db.commit()
+            return
+
+        # Resolve final URL and metadata
+        try:
+            meta, final_url = await _resolve_url_meta(extracted)
+        except Exception:
+            meta, final_url = {}, extracted
+
+        content_length = int(meta.get("content-length", 0) or 0)
+        content_type   = (meta.get("content-type", "application/octet-stream")
+                          .split(";")[0].strip() or "application/octet-stream")
+        filename = final_url.split("?")[0].rstrip("/").split("/")[-1]
+        filename = os.path.basename(filename).replace("\0", "") or "imported_file"
+
+        file_key     = f"uploads/{uuid.uuid4()}/{filename}"
+        file_storage = _get_storage(provider_id, db)
+        b2_upload_id = file_storage.create_multipart_upload(file_key, content_type)
+
+        upload = db.query(Upload).filter(Upload.id == upload_id).first()
+        if upload:
+            upload.filename       = filename
+            upload.file_size      = content_length
+            upload.content_type   = content_type
+            upload.b2_file_key    = file_key
+            upload.b2_upload_id   = b2_upload_id
+            upload.status         = "importing"
+            db.commit()
+
+        prog["status"] = "importing"
+        prog["total"]  = content_length
+
+    except Exception as exc:
+        prog["status"] = "failed"
+        prog["error"]  = f"Page analysis failed: {exc}"
+        upload = db.query(Upload).filter(Upload.id == upload_id).first()
+        if upload:
+            upload.status = "failed"
+            db.commit()
+        db.close()
+        return
+
+    db.close()
+    # Hand off to the regular import pipeline
+    await _do_import(upload_id, final_url, file_key, b2_upload_id, provider_id)
 
 
 async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str,

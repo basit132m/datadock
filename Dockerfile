@@ -4,7 +4,8 @@ WORKDIR /app
 
 # Install deps first (layer cache)
 COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+ && playwright install --with-deps chromium
 
 # Copy source
 COPY backend/ ./backend/

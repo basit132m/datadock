@@ -572,9 +572,14 @@ async function startImport(url, filename) {
       lastBytes = bytes_done; lastTime = now;
     }
 
-    if (status === 'importing') {
+    if (status === 'analyzing') {
+      badge.className = 'status-badge initializing';
+      badge.textContent = 'Scanning page…';
+      pct.textContent = 'Opening download page with browser…';
+    } else if (status === 'importing') {
       badge.className = 'status-badge uploading';
       badge.textContent = 'Downloading…';
+      pct.textContent = '';
     } else if (status === 'completing') {
       badge.className = 'status-badge completing';
       badge.textContent = 'Finalizing…';
