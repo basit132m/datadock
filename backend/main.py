@@ -548,16 +548,40 @@ async def import_status(
 
 _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 _MAX_REDIRECTS = 20
+
+_BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
+
+# Headers for HEAD / Range-GET metadata sniffing
 _META_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    ),
+    "User-Agent": _BROWSER_UA,
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
-    "Accept-Encoding": "identity",   # keep off so Content-Length stays accurate
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "identity",
 }
+
+def _download_headers(url: str) -> dict:
+    """Build full browser-like headers for the actual file download.
+    Derives Referer from the URL's own origin so anti-hotlink checks pass."""
+    from urllib.parse import urlparse
+    p = urlparse(url)
+    return {
+        "User-Agent": _BROWSER_UA,
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "identity",   # no compression — we upload raw bytes
+        "Referer": f"{p.scheme}://{p.netloc}/",
+        "Origin": f"{p.scheme}://{p.netloc}",
+        "Connection": "keep-alive",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
+    }
 
 
 async def _resolve_url_meta(url: str) -> tuple[dict, str]:
@@ -621,7 +645,7 @@ async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str,
             follow_redirects=True,
             max_redirects=_MAX_REDIRECTS,
             timeout=httpx.Timeout(30.0, read=600.0),
-            headers=_META_HEADERS,
+            headers=_download_headers(url),
         ) as client:
             async with client.stream("GET", url) as resp:
                 resp.raise_for_status()
