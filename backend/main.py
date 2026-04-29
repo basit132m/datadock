@@ -1132,13 +1132,10 @@ async def test_storage_provider(
     provider = db.query(StorageProvider).filter(StorageProvider.id == provider_id).first()
     if not provider:
         raise HTTPException(404, "Provider not found")
+    # Bust cache so the test always uses fresh credentials
+    _storage_cache.pop(provider_id, None)
     try:
-        inst = S3Storage(
-            endpoint_url=provider.endpoint_url,
-            key_id=provider.key_id,
-            application_key=provider.application_key,
-            bucket_name=provider.bucket_name,
-        )
+        inst = _get_storage(provider_id, db)
         inst.test_connection()
         return {"ok": True}
     except Exception as exc:
