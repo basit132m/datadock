@@ -1080,6 +1080,181 @@ function initAdForm() {
   });
 }
 
+// ── Downloads Analytics ───────────────────────────────────────────────────────
+
+let dlTimeChart   = null;
+let dlDeviceChart = null;
+let dlActiveDays  = 7;
+
+function countryFlag(code) {
+  if (!code || code.length !== 2 || code === '??') return '🌍';
+  const a = code.toUpperCase().charCodeAt(0) - 65 + 0x1F1E6;
+  const b = code.toUpperCase().charCodeAt(1) - 65 + 0x1F1E6;
+  return String.fromCodePoint(a, b);
+}
+
+function dlEmpty(msg) {
+  return `<p class="dl-empty">${msg}</p>`;
+}
+
+async function loadDownloadsPage() {
+  document.querySelectorAll('.dl-period-btn').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.days) === dlActiveDays);
+  });
+
+  ['dl-stat-total','dl-stat-ips','dl-stat-countries','dl-stat-avg'].forEach(id => {
+    document.getElementById(id).textContent = '…';
+  });
+  ['dl-countries','dl-os','dl-top-files','dl-recent'].forEach(id => {
+    document.getElementById(id).innerHTML = dlEmpty('Loading…');
+  });
+
+  let data;
+  try {
+    data = await apiFetch('GET', `/api/analytics/downloads?days=${dlActiveDays}`);
+  } catch (e) {
+    ['dl-countries','dl-os','dl-top-files','dl-recent'].forEach(id => {
+      document.getElementById(id).innerHTML = dlEmpty('Failed to load data.');
+    });
+    return;
+  }
+
+  document.getElementById('dl-stat-total').textContent     = data.total.toLocaleString();
+  document.getElementById('dl-stat-ips').textContent       = data.unique_ips.toLocaleString();
+  document.getElementById('dl-stat-countries').textContent = data.unique_countries.toLocaleString();
+  const avg = dlActiveDays > 0 ? (data.total / dlActiveDays).toFixed(1) : '0';
+  document.getElementById('dl-stat-avg').textContent = avg;
+
+  // Downloads over time — line chart
+  const timeCtx = document.getElementById('dl-time-chart').getContext('2d');
+  if (dlTimeChart) dlTimeChart.destroy();
+  dlTimeChart = new Chart(timeCtx, {
+    type: 'line',
+    data: {
+      labels: data.per_day.map(d => d.date),
+      datasets: [{
+        label: 'Downloads',
+        data: data.per_day.map(d => d.count),
+        borderColor: '#6366f1',
+        backgroundColor: 'rgba(99,102,241,.12)',
+        fill: true,
+        tension: 0.4,
+        pointRadius: dlActiveDays <= 7 ? 4 : 2,
+        pointBackgroundColor: '#6366f1',
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+      scales: {
+        y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: 'rgba(0,0,0,.04)' } },
+        x: { grid: { display: false }, ticks: { maxTicksLimit: dlActiveDays <= 7 ? 7 : 10 } },
+      },
+    },
+  });
+
+  // Device types — doughnut
+  const deviceCtx = document.getElementById('dl-device-chart').getContext('2d');
+  if (dlDeviceChart) dlDeviceChart.destroy();
+  if (data.devices.length) {
+    const DEVICE_COLORS = { Desktop: '#6366f1', Mobile: '#059669', Tablet: '#d97706', Unknown: '#94a3b8' };
+    dlDeviceChart = new Chart(deviceCtx, {
+      type: 'doughnut',
+      data: {
+        labels: data.devices.map(d => d.type),
+        datasets: [{
+          data: data.devices.map(d => d.count),
+          backgroundColor: data.devices.map(d => DEVICE_COLORS[d.type] || '#94a3b8'),
+          borderWidth: 3,
+          borderColor: '#fff',
+        }],
+      },
+      options: {
+        responsive: true,
+        cutout: '62%',
+        plugins: {
+          legend: { position: 'bottom', labels: { font: { size: 12, family: 'Inter' }, padding: 12 } },
+        },
+      },
+    });
+  }
+
+  // Top countries
+  const countriesEl = document.getElementById('dl-countries');
+  if (!data.top_countries.length) {
+    countriesEl.innerHTML = dlEmpty('No download data yet for this period.');
+  } else {
+    const max = data.top_countries[0].count;
+    countriesEl.innerHTML = data.top_countries.map(c => `
+      <div class="dl-row">
+        <span class="dl-flag">${countryFlag(c.country_code)}</span>
+        <span class="dl-row-label">${c.country || 'Unknown'}</span>
+        <div class="dl-bar-wrap"><div class="dl-bar" style="width:${Math.round(c.count / max * 100)}%"></div></div>
+        <span class="dl-row-count">${c.count.toLocaleString()}</span>
+      </div>`).join('');
+  }
+
+  // OS breakdown
+  const osEl = document.getElementById('dl-os');
+  if (!data.os_breakdown.length) {
+    osEl.innerHTML = dlEmpty('No download data yet for this period.');
+  } else {
+    const maxOs = data.os_breakdown[0].count;
+    const OS_ICONS = {
+      Windows: 'fa-windows', macOS: 'fa-apple', iOS: 'fa-apple',
+      Android: 'fa-android', Linux: 'fa-linux', ChromeOS: 'fa-chrome', Unknown: 'fa-circle-question',
+    };
+    osEl.innerHTML = data.os_breakdown.map(o => `
+      <div class="dl-row">
+        <span class="dl-os-icon"><i class="fa-brands ${OS_ICONS[o.os] || 'fa-circle-question'}"></i></span>
+        <span class="dl-row-label">${o.os}</span>
+        <div class="dl-bar-wrap"><div class="dl-bar dl-bar-os" style="width:${Math.round(o.count / maxOs * 100)}%"></div></div>
+        <span class="dl-row-count">${o.count.toLocaleString()}</span>
+      </div>`).join('');
+  }
+
+  // Top files
+  const filesEl = document.getElementById('dl-top-files');
+  if (!data.top_files.length) {
+    filesEl.innerHTML = dlEmpty('No download data yet for this period.');
+  } else {
+    filesEl.innerHTML = `
+      <table class="files-table">
+        <thead><tr>
+          <th style="width:2rem">#</th>
+          <th>Filename</th>
+          <th style="width:9rem">Downloads</th>
+        </tr></thead>
+        <tbody>
+          ${data.top_files.map((f, i) => `
+            <tr>
+              <td style="color:var(--muted);font-size:.8rem;font-weight:600">${i + 1}</td>
+              <td>${fileIcon(f.filename)} <span class="tf-name">${f.filename}</span></td>
+              <td><span class="dl-count-badge">${f.count.toLocaleString()}</span></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  // Recent downloads
+  const recentEl = document.getElementById('dl-recent');
+  if (!data.recent.length) {
+    recentEl.innerHTML = dlEmpty('No downloads yet in this period.');
+  } else {
+    recentEl.innerHTML = data.recent.map(r => `
+      <div class="dl-recent-row">
+        <span class="dl-recent-icon">${fileIcon(r.filename)}</span>
+        <span class="dl-recent-name">${r.filename}</span>
+        <span class="dl-recent-meta">
+          ${countryFlag(r.country_code)} ${r.country || '—'}
+          &nbsp;·&nbsp; ${r.device_type || '—'}
+          &nbsp;·&nbsp; ${r.os_name || '—'}
+        </span>
+        <span class="dl-recent-time">${formatDate(r.created_at)}</span>
+      </div>`).join('');
+  }
+}
+
 // ── Page navigation ───────────────────────────────────────────────────────────
 
 function showPage(page) {
@@ -1091,6 +1266,7 @@ function showPage(page) {
   if (page === 'files')     loadFileList();
   if (page === 'ads')       loadAdsPage();
   if (page === 'storage')   loadStoragePage();
+  if (page === 'downloads') loadDownloadsPage();
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -1146,6 +1322,13 @@ function initApp() {
   initImportForm();
   initAdForm();
   initStorageForm();
+
+  document.querySelectorAll('.dl-period-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      dlActiveDays = parseInt(btn.dataset.days);
+      loadDownloadsPage();
+    });
+  });
 
   document.getElementById('upload-shortcut').addEventListener('click', () => showPage('upload'));
 

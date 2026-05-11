@@ -49,6 +49,9 @@
       <button class="nav-item" data-page="storage">
         <i class="fa-solid fa-database ni-icon"></i> Storage
       </button>
+      <button class="nav-item" data-page="downloads">
+        <i class="fa-solid fa-chart-bar ni-icon"></i> Downloads
+      </button>
     </nav>
     <div class="sidebar-footer">
       <div id="key-badge" class="key-badge">
@@ -261,6 +264,83 @@
 
       <div id="storage-list">
         <p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">Loading…</p>
+      </div>
+    </div>
+
+    <!-- ── Downloads Analytics ── -->
+    <div id="page-downloads" class="page">
+      <div class="page-header">
+        <h1>Downloads Analytics</h1>
+        <div class="dl-period-tabs" id="dl-period-tabs">
+          <button class="dl-period-btn active" data-days="7">7 Days</button>
+          <button class="dl-period-btn" data-days="30">30 Days</button>
+          <button class="dl-period-btn" data-days="90">90 Days</button>
+        </div>
+      </div>
+
+      <div class="dl-stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon stat-icon-downloads"><i class="fa-solid fa-download"></i></div>
+          <div>
+            <div class="stat-label">Total Downloads</div>
+            <div class="stat-value" id="dl-stat-total">—</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:#f0fdf4;color:#059669"><i class="fa-solid fa-users"></i></div>
+          <div>
+            <div class="stat-label">Unique Visitors</div>
+            <div class="stat-value" id="dl-stat-ips">—</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:#fdf4ff;color:#a855f7"><i class="fa-solid fa-globe"></i></div>
+          <div>
+            <div class="stat-label">Countries</div>
+            <div class="stat-value" id="dl-stat-countries">—</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:#fff7ed;color:#ea580c"><i class="fa-solid fa-calendar-day"></i></div>
+          <div>
+            <div class="stat-label">Avg per Day</div>
+            <div class="stat-value" id="dl-stat-avg">—</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dl-charts-row">
+        <div class="card chart-card dl-chart-main">
+          <div class="card-header">Downloads Over Time</div>
+          <canvas id="dl-time-chart" height="110"></canvas>
+        </div>
+        <div class="card chart-card dl-chart-side">
+          <div class="card-header">Device Types</div>
+          <div class="dl-device-wrap">
+            <canvas id="dl-device-chart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="dl-two-col">
+        <div class="card">
+          <div class="card-header">Top Countries</div>
+          <div id="dl-countries"><p class="dl-empty">Loading…</p></div>
+        </div>
+        <div class="card">
+          <div class="card-header">Operating Systems</div>
+          <div id="dl-os"><p class="dl-empty">Loading…</p></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-header">Top Downloaded Files</div>
+        <div id="dl-top-files"><p class="dl-empty">Loading…</p></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Recent Downloads</div>
+        <div id="dl-recent"><p class="dl-empty">Loading…</p></div>
       </div>
     </div>
 

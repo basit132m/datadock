@@ -19,7 +19,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db, init_db
-from models import Ad, Part, StorageProvider, Upload
+from models import Ad, DownloadEvent, Part, StorageProvider, Upload
 from storage import B2Storage, BunnyStorage, S3Storage
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -31,6 +31,86 @@ IMPORT_CHUNK = 10 * 1024 * 1024  # 10 MB per B2 part
 
 _import_progress: dict = {}    # upload_id -> progress dict
 _storage_cache:   dict = {}    # provider_id -> S3Storage instance
+_geo_cache:       dict = {}    # ip -> (country, country_code)
+
+
+def _parse_ua(ua: str) -> tuple:
+    """Return (os_name, device_type) from a User-Agent string."""
+    ua = ua or ""
+    if "iPad" in ua or ("Tablet" in ua and "Android" in ua):
+        device = "Tablet"
+    elif "iPhone" in ua or "iPod" in ua or ("Android" in ua and "Mobile" in ua):
+        device = "Mobile"
+    elif "Android" in ua and "Mobile" not in ua:
+        device = "Tablet"
+    else:
+        device = "Desktop"
+
+    if "iPhone" in ua or "iPad" in ua or "iPod" in ua:
+        os_name = "iOS"
+    elif "Android" in ua:
+        os_name = "Android"
+    elif "Windows" in ua:
+        os_name = "Windows"
+    elif "CrOS" in ua:
+        os_name = "ChromeOS"
+    elif "Mac OS X" in ua:
+        os_name = "macOS"
+    elif "Linux" in ua:
+        os_name = "Linux"
+    else:
+        os_name = "Unknown"
+
+    return os_name, device
+
+
+async def _geolocate(ip: str) -> tuple:
+    """Return (country, country_code) for an IP, with in-memory caching."""
+    if not ip or ip in ("127.0.0.1", "::1", ""):
+        return "Local", "??"
+    if ip in _geo_cache:
+        return _geo_cache[ip]
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            r = await client.get(
+                f"http://ip-api.com/json/{ip}?fields=country,countryCode",
+                headers={"Accept": "application/json"},
+            )
+            if r.status_code == 200:
+                d = r.json()
+                result = (d.get("country", "Unknown"), d.get("countryCode", "??"))
+                _geo_cache[ip] = result
+                return result
+    except Exception:
+        pass
+    _geo_cache[ip] = ("Unknown", "??")
+    return "Unknown", "??"
+
+
+async def _log_download_event(upload_id: str, filename: str, ip: str, ua: str):
+    """Background task: resolve geolocation + UA then persist a DownloadEvent."""
+    from database import SessionLocal
+    os_name, device_type = _parse_ua(ua)
+    country, country_code = await _geolocate(ip)
+    db = SessionLocal()
+    try:
+        db.add(DownloadEvent(
+            id=str(uuid.uuid4()),
+            upload_id=upload_id,
+            filename=filename,
+            ip=ip,
+            country=country,
+            country_code=country_code,
+            device_type=device_type,
+            os_name=os_name,
+            user_agent=(ua or "")[:1000],
+            created_at=datetime.utcnow(),
+        ))
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
 
 
 def _get_storage(provider_id: Optional[str], db: Session) -> S3Storage:
@@ -519,7 +599,12 @@ def _chained_download_url(upload: Upload, db: Session) -> str:
 
 
 @app.get("/api/f/{share_id}/download")
-async def download_file(share_id: str, db: Session = Depends(get_db)):
+async def download_file(
+    share_id: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     upload = (
         db.query(Upload)
         .filter(Upload.share_id == share_id, Upload.status == "completed")
@@ -531,7 +616,118 @@ async def download_file(share_id: str, db: Session = Depends(get_db)):
     upload.downloads = (upload.downloads or 0) + 1
     download_url = _chained_download_url(upload, db)
     db.commit()
+
+    ip = request.headers.get("X-Forwarded-For", "")
+    if not ip and request.client:
+        ip = request.client.host
+    ip = ip.split(",")[0].strip()
+    ua = request.headers.get("User-Agent", "")
+    background_tasks.add_task(_log_download_event, upload.id, upload.filename, ip, ua)
+
     return RedirectResponse(url=download_url)
+
+
+# ── Download Analytics ───────────────────────────────────────────────────────
+
+
+@app.get("/api/analytics/downloads")
+async def get_download_analytics(
+    days: int = Query(7, ge=1, le=90),
+    db: Session = Depends(get_db),
+    _=Depends(require_auth),
+):
+    from sqlalchemy import distinct as sa_distinct
+
+    since = datetime.utcnow() - timedelta(days=days)
+
+    total = db.query(func.count(DownloadEvent.id)).filter(DownloadEvent.created_at >= since).scalar() or 0
+    unique_ips = db.query(func.count(sa_distinct(DownloadEvent.ip))).filter(DownloadEvent.created_at >= since).scalar() or 0
+    unique_countries = db.query(func.count(sa_distinct(DownloadEvent.country_code))).filter(DownloadEvent.created_at >= since).scalar() or 0
+
+    today = datetime.utcnow().date()
+    per_day = []
+    for i in range(days - 1, -1, -1):
+        day = today - timedelta(days=i)
+        day_start = datetime(day.year, day.month, day.day)
+        day_end = day_start + timedelta(days=1)
+        count = (
+            db.query(func.count(DownloadEvent.id))
+            .filter(DownloadEvent.created_at >= day_start, DownloadEvent.created_at < day_end)
+            .scalar() or 0
+        )
+        per_day.append({"date": day.strftime("%b %d"), "count": count})
+
+    country_rows = (
+        db.query(DownloadEvent.country, DownloadEvent.country_code, func.count(DownloadEvent.id).label("cnt"))
+        .filter(DownloadEvent.created_at >= since)
+        .group_by(DownloadEvent.country, DownloadEvent.country_code)
+        .order_by(func.count(DownloadEvent.id).desc())
+        .limit(10)
+        .all()
+    )
+    top_countries = [{"country": r.country, "country_code": r.country_code, "count": r.cnt} for r in country_rows]
+
+    device_rows = (
+        db.query(DownloadEvent.device_type, func.count(DownloadEvent.id).label("cnt"))
+        .filter(DownloadEvent.created_at >= since)
+        .group_by(DownloadEvent.device_type)
+        .order_by(func.count(DownloadEvent.id).desc())
+        .all()
+    )
+    devices = [{"type": r.device_type or "Unknown", "count": r.cnt} for r in device_rows]
+
+    os_rows = (
+        db.query(DownloadEvent.os_name, func.count(DownloadEvent.id).label("cnt"))
+        .filter(DownloadEvent.created_at >= since)
+        .group_by(DownloadEvent.os_name)
+        .order_by(func.count(DownloadEvent.id).desc())
+        .all()
+    )
+    os_breakdown = [{"os": r.os_name or "Unknown", "count": r.cnt} for r in os_rows]
+
+    file_rows = (
+        db.query(DownloadEvent.upload_id, DownloadEvent.filename, func.count(DownloadEvent.id).label("cnt"))
+        .filter(DownloadEvent.created_at >= since)
+        .group_by(DownloadEvent.upload_id, DownloadEvent.filename)
+        .order_by(func.count(DownloadEvent.id).desc())
+        .limit(10)
+        .all()
+    )
+    top_files = []
+    for r in file_rows:
+        u = db.query(Upload.share_id).filter(Upload.id == r.upload_id).first()
+        top_files.append({"filename": r.filename, "count": r.cnt, "share_id": u.share_id if u else None})
+
+    recent_rows = (
+        db.query(DownloadEvent)
+        .filter(DownloadEvent.created_at >= since)
+        .order_by(DownloadEvent.created_at.desc())
+        .limit(25)
+        .all()
+    )
+    recent = [
+        {
+            "filename": r.filename,
+            "country": r.country,
+            "country_code": r.country_code,
+            "device_type": r.device_type,
+            "os_name": r.os_name,
+            "created_at": r.created_at.isoformat(),
+        }
+        for r in recent_rows
+    ]
+
+    return {
+        "total": total,
+        "unique_ips": unique_ips,
+        "unique_countries": unique_countries,
+        "per_day": per_day,
+        "top_countries": top_countries,
+        "devices": devices,
+        "os_breakdown": os_breakdown,
+        "top_files": top_files,
+        "recent": recent,
+    }
 
 
 # ── URL Import API ────────────────────────────────────────────────────────────

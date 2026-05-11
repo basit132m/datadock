@@ -64,3 +64,18 @@ class Ad(Base):
     active = Column(Integer, default=1, nullable=False)
     display_order = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, nullable=False)
+
+
+class DownloadEvent(Base):
+    __tablename__ = "download_events"
+
+    id = Column(String(36), primary_key=True)
+    upload_id = Column(String(36), index=True, nullable=False)
+    filename = Column(String(500), nullable=False)
+    ip = Column(String(45), nullable=True)
+    country = Column(String(100), nullable=True)
+    country_code = Column(String(2), nullable=True)
+    device_type = Column(String(20), nullable=True)   # Desktop / Mobile / Tablet
+    os_name = Column(String(50), nullable=True)       # Windows / macOS / iOS / Android / Linux
+    user_agent = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, index=True)
