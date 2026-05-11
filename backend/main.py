@@ -633,10 +633,11 @@ async def download_file(
     download_url = _chained_download_url(upload, db)
     db.commit()
 
-    ip = request.headers.get("X-Forwarded-For", "")
+    ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+    if not ip:
+        ip = request.headers.get("X-Real-IP", "").strip()
     if not ip and request.client:
         ip = request.client.host
-    ip = ip.split(",")[0].strip()
     ua = request.headers.get("User-Agent", "")
     background_tasks.add_task(_log_download_event, upload.id, upload.filename, ip, ua)
 
