@@ -19,7 +19,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db, init_db
-from models import Ad, ApiKey, DownloadEvent, Part, StorageProvider, Upload
+from models import Ad, ApiKey, DownloadEvent, Part, SiteSetting, StorageProvider, Upload
 from storage import B2Storage, BunnyStorage, S3Storage
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -1586,6 +1586,47 @@ def _ad_dict(a: Ad):
         "display_order": a.display_order,
         "created_at": a.created_at.isoformat() if a.created_at else None,
     }
+
+
+# ── Site Settings ────────────────────────────────────────────────────────────
+
+
+def _get_setting(db: Session, key: str) -> Optional[str]:
+    row = db.query(SiteSetting).filter(SiteSetting.key == key).first()
+    return row.value if row else None
+
+
+def _upsert_setting(db: Session, key: str, value: Optional[str]):
+    row = db.query(SiteSetting).filter(SiteSetting.key == key).first()
+    if row:
+        row.value = value
+        row.updated_at = datetime.utcnow()
+    else:
+        db.add(SiteSetting(key=key, value=value, updated_at=datetime.utcnow()))
+
+
+@app.get("/api/settings")
+async def get_public_settings(db: Session = Depends(get_db)):
+    """Public endpoint — returns settings used by landing pages."""
+    return {"redirect_url": _get_setting(db, "redirect_url")}
+
+
+class UpdateSettingsIn(BaseModel):
+    redirect_url: Optional[str] = None
+
+
+@app.post("/api/admin/settings")
+async def update_settings(
+    body: UpdateSettingsIn,
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    if body.redirect_url:
+        if not body.redirect_url.startswith(("http://", "https://")):
+            raise HTTPException(400, "redirect_url must be an http/https URL")
+    _upsert_setting(db, "redirect_url", body.redirect_url or None)
+    db.commit()
+    return {"ok": True}
 
 
 # ── Team key management ───────────────────────────────────────────────────────

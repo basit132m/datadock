@@ -53,6 +53,14 @@ class StorageProvider(Base):
     bandwidth_reset_month = Column(String(7), nullable=True)
 
 
+class SiteSetting(Base):
+    __tablename__ = "site_settings"
+
+    key = Column(String(100), primary_key=True)
+    value = Column(Text, nullable=True)
+    updated_at = Column(DateTime, nullable=True)
+
+
 class Ad(Base):
     __tablename__ = "ads"
 

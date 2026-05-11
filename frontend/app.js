@@ -989,9 +989,47 @@ function initStorageForm() {
   });
 }
 
+// ── Download Redirect URL ─────────────────────────────────────────────────────
+
+async function loadRedirectUrlSetting() {
+  try {
+    const s = await apiFetch('GET', '/api/settings');
+    document.getElementById('redirect-url-input').value = s.redirect_url || '';
+  } catch {}
+}
+
+async function saveRedirectUrl(url) {
+  const msg = document.getElementById('redirect-url-msg');
+  msg.textContent = '';
+  try {
+    await apiFetch('POST', '/api/admin/settings', { redirect_url: url || null });
+    msg.style.color = 'var(--success)';
+    msg.textContent = url ? 'Redirect URL saved!' : 'Redirect URL cleared.';
+    document.getElementById('redirect-url-input').value = url || '';
+    setTimeout(() => { msg.textContent = ''; }, 3000);
+  } catch (e) {
+    msg.style.color = 'var(--danger)';
+    msg.textContent = e.message;
+  }
+}
+
+function initRedirectUrlForm() {
+  document.getElementById('redirect-url-save').addEventListener('click', () => {
+    const url = document.getElementById('redirect-url-input').value.trim();
+    saveRedirectUrl(url);
+  });
+  document.getElementById('redirect-url-clear').addEventListener('click', () => {
+    saveRedirectUrl('');
+  });
+  document.getElementById('redirect-url-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('redirect-url-save').click();
+  });
+}
+
 // ── Ad Manager ────────────────────────────────────────────────────────────────
 
 async function loadAdsPage() {
+  loadRedirectUrlSetting();
   const list = document.getElementById('ad-list');
   try {
     const ads = await apiFetch('GET', '/api/admin/ads');
@@ -1460,6 +1498,7 @@ function initApp() {
   });
   initImportForm();
   initAdForm();
+  initRedirectUrlForm();
   initStorageForm();
   initKeyForm();
   applyRoleUI();

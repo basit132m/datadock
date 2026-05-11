@@ -118,9 +118,10 @@
 
   // ── Main init ──────────────────────────────────────────────────────────────
   async function init() {
-    const [fileRes, adsRes] = await Promise.allSettled([
+    const [fileRes, adsRes, settingsRes] = await Promise.allSettled([
       fetch(`/api/f/${shareId}`).then(r => r.ok ? r.json() : Promise.reject()),
       fetch('/api/ads').then(r => r.ok ? r.json() : []),
+      fetch('/api/settings').then(r => r.ok ? r.json() : {}),
     ]);
 
     const ads = (adsRes.status === 'fulfilled' && Array.isArray(adsRes.value)) ? adsRes.value : [];
@@ -131,6 +132,9 @@
       document.getElementById('lc-error').hidden = false;
       return;
     }
+
+    const settings = (settingsRes.status === 'fulfilled' && settingsRes.value) ? settingsRes.value : {};
+    const redirectUrl = settings.redirect_url || null;
 
     const d = fileRes.value;
     const type = getType(d.filename);
@@ -151,20 +155,17 @@
     document.getElementById('lp-downloads').textContent = (d.downloads || 0).toLocaleString();
 
     // ── Download button — interstitial logic ───────────────────────────────
-    const dlBtn   = document.getElementById('lp-download-btn');
-    const dlUrl   = `/api/f/${shareId}/download`;
+    const dlBtn = document.getElementById('lp-download-btn');
+    const dlUrl = `/api/f/${shareId}/download`;
 
-    // Use first active ad that has a destination URL as the interstitial target
-    const interstitialAd = ads.find(a => a.active && a.link_url);
-
-    if (interstitialAd) {
+    if (redirectUrl) {
       let clicked = false;
       dlBtn.href = '#';
       dlBtn.addEventListener('click', e => {
         e.preventDefault();
         if (!clicked) {
           clicked = true;
-          window.open(interstitialAd.link_url, '_blank', 'noopener,noreferrer');
+          window.open(redirectUrl, '_blank', 'noopener,noreferrer');
           dlBtn.innerHTML = '<i class="fa-solid fa-download"></i> Click again to download';
           dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
           dlBtn.style.boxShadow = '0 4px 18px rgba(5,150,105,.35)';
