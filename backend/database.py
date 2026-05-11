@@ -27,7 +27,11 @@ def _gen_share_id():
 
 def init_db():
     from models import Base
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        if "already exists" not in str(e).lower():
+            raise
     _migrate()
 
 
