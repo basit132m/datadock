@@ -29,12 +29,14 @@ API_KEY = os.getenv("API_KEY", "")
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
 IMPORT_CHUNK = 10 * 1024 * 1024  # 10 MB per B2 part
 
-_import_progress: dict = {}    # upload_id -> progress dict
-_storage_cache:   dict = {}    # provider_id -> S3Storage instance
-_geo_cache:       dict = {}    # ip -> (country, country_code)
-_geoip_reader           = None  # geoip2 Reader singleton
+_import_progress:   dict = {}    # upload_id -> progress dict
+_storage_cache:     dict = {}    # provider_id -> S3Storage instance
+_geo_cache:         dict = {}    # ip -> (country, country_code)
+_geoip_reader             = None  # geoip2 Reader singleton
+_recent_downloads:  dict = {}    # (ip, upload_id) -> last download datetime
 
-GEOIP_DB_PATH = os.getenv("GEOIP_DB_PATH", "/app/backend/data/GeoLite2-Country.mmdb")
+GEOIP_DB_PATH      = os.getenv("GEOIP_DB_PATH", "/app/backend/data/GeoLite2-Country.mmdb")
+DEDUP_WINDOW_SECS  = 3600  # same IP + same file within 1 hour = duplicate
 
 
 def _parse_ua(ua: str) -> tuple:
@@ -104,12 +106,26 @@ def _geolocate(ip: str) -> tuple:
 
 
 async def _log_download_event(upload_id: str, filename: str, ip: str, ua: str):
-    """Background task: resolve geolocation + UA then persist a DownloadEvent."""
+    """Background task: resolve geolocation + UA then persist a DownloadEvent.
+    DB-level dedup guard catches duplicates that slip past the in-memory check
+    (e.g. second uvicorn worker seeing the same request)."""
     from database import SessionLocal
     os_name, device_type = _parse_ua(ua)
     country, country_code = _geolocate(ip)
     db = SessionLocal()
     try:
+        cutoff = datetime.utcnow() - timedelta(seconds=DEDUP_WINDOW_SECS)
+        already = (
+            db.query(DownloadEvent.id)
+            .filter(
+                DownloadEvent.upload_id == upload_id,
+                DownloadEvent.ip == ip,
+                DownloadEvent.created_at >= cutoff,
+            )
+            .first()
+        )
+        if already:
+            return
         db.add(DownloadEvent(
             id=str(uuid.uuid4()),
             upload_id=upload_id,
@@ -629,17 +645,32 @@ async def download_file(
     if not upload:
         raise HTTPException(404, "File not found")
 
-    upload.downloads = (upload.downloads or 0) + 1
-    download_url = _chained_download_url(upload, db)
-    db.commit()
-
     ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
     if not ip:
         ip = request.headers.get("X-Real-IP", "").strip()
     if not ip and request.client:
         ip = request.client.host
+
+    # Dedup: same IP + same file within DEDUP_WINDOW_SECS counts as one download
+    now = datetime.utcnow()
+    dedup_key = (ip, upload.id)
+    last = _recent_downloads.get(dedup_key)
+    is_dup = last is not None and (now - last).total_seconds() < DEDUP_WINDOW_SECS
+    if not is_dup:
+        _recent_downloads[dedup_key] = now
+        upload.downloads = (upload.downloads or 0) + 1
+        # Prune cache when it grows large to avoid unbounded memory use
+        if len(_recent_downloads) > 50_000:
+            cutoff = now - timedelta(seconds=DEDUP_WINDOW_SECS)
+            for k in [k for k, v in _recent_downloads.items() if v < cutoff]:
+                del _recent_downloads[k]
+
+    download_url = _chained_download_url(upload, db)
+    db.commit()
+
     ua = request.headers.get("User-Agent", "")
-    background_tasks.add_task(_log_download_event, upload.id, upload.filename, ip, ua)
+    if not is_dup:
+        background_tasks.add_task(_log_download_event, upload.id, upload.filename, ip, ua)
 
     return RedirectResponse(url=download_url)
 
