@@ -52,6 +52,9 @@
       <button class="nav-item" data-page="downloads">
         <i class="fa-solid fa-chart-bar ni-icon"></i> Downloads
       </button>
+      <button class="nav-item" data-page="team">
+        <i class="fa-solid fa-users-gear ni-icon"></i> Team
+      </button>
     </nav>
     <div class="sidebar-footer">
       <div id="key-badge" class="key-badge">
@@ -264,6 +267,55 @@
 
       <div id="storage-list">
         <p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">Loading…</p>
+      </div>
+    </div>
+
+    <!-- ── Team ── -->
+    <div id="page-team" class="page">
+      <div class="page-header">
+        <h1>Team Keys</h1>
+      </div>
+
+      <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-header">Generate New Key</div>
+        <form id="key-form" class="ad-form">
+          <div class="ad-form-row">
+            <label>Member Name
+              <input id="key-name" type="text" placeholder="e.g. John Smith" required />
+            </label>
+            <label>Access Level
+              <select id="key-role">
+                <option value="member">Member — Upload &amp; Files only</option>
+                <option value="admin">Admin — Full access</option>
+              </select>
+            </label>
+          </div>
+          <div style="display:flex;gap:.75rem;align-items:center">
+            <button type="submit" class="btn-primary" style="width:auto;padding:.6rem 1.5rem">
+              <i class="fa-solid fa-key"></i> Generate Key
+            </button>
+            <span id="key-form-msg" class="ad-form-msg"></span>
+          </div>
+        </form>
+      </div>
+
+      <div id="key-reveal-box" hidden class="card key-reveal-card">
+        <div class="card-header key-reveal-header">
+          <i class="fa-solid fa-triangle-exclamation"></i> Copy this key now — it will never be shown again
+        </div>
+        <div class="key-reveal-wrap">
+          <code id="key-reveal-value"></code>
+          <button class="btn-primary-sm" id="key-reveal-copy">
+            <i class="fa-solid fa-copy"></i> Copy Key
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">All Team Keys</div>
+        <div id="key-list">
+          <p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">Loading…</p>
+        </div>
       </div>
     </div>
 

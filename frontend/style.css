@@ -544,6 +544,32 @@ input[type="password"]:focus, input[type="text"]:focus { border-color: var(--pri
 .ad-on  { color: var(--success); }
 .ad-off { color: var(--muted); }
 
+/* ── Team Key Management ── */
+.key-reveal-card { border-color: var(--success) !important; margin-bottom: 1.5rem; }
+.key-reveal-header { color: var(--success) !important; }
+.key-reveal-wrap {
+  display: flex; align-items: center; gap: 1rem;
+  padding: 1rem 1.25rem; flex-wrap: wrap;
+}
+.key-reveal-wrap code {
+  flex: 1; font-family: monospace; font-size: .9rem; font-weight: 600;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: .6rem 1rem; word-break: break-all;
+  color: var(--text);
+}
+.team-key-masked {
+  font-family: monospace; font-size: .82rem; color: var(--muted);
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 5px; padding: .15rem .45rem;
+}
+.team-role {
+  display: inline-block; font-size: .72rem; font-weight: 700;
+  letter-spacing: .04em; text-transform: uppercase;
+  border-radius: 20px; padding: .18rem .6rem;
+}
+.team-role-admin  { background: #fef3c7; color: #92400e; }
+.team-role-member { background: var(--primary-lite); color: var(--primary); }
+
 /* ── Downloads Analytics ── */
 .dl-stats-grid {
   display: grid; grid-template-columns: repeat(4, 1fr);

@@ -19,7 +19,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db, init_db
-from models import Ad, DownloadEvent, Part, StorageProvider, Upload
+from models import Ad, ApiKey, DownloadEvent, Part, StorageProvider, Upload
 from storage import B2Storage, BunnyStorage, S3Storage
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -211,9 +211,28 @@ def _share_id() -> str:
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 
-def require_auth(x_api_key: Optional[str] = Header(None)):
-    if API_KEY and x_api_key != API_KEY:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+def require_auth(x_api_key: Optional[str] = Header(None), db: Session = Depends(get_db)):
+    """Return {'role': ..., 'name': ...} for any valid key, or raise 401."""
+    if not x_api_key:
+        raise HTTPException(401, "API key required")
+    # Master admin key from env — always works, cannot be revoked
+    if API_KEY and x_api_key == API_KEY:
+        return {"role": "admin", "name": "Admin"}
+    # Keys stored in DB
+    key_obj = db.query(ApiKey).filter(ApiKey.key == x_api_key, ApiKey.active == 1).first()
+    if key_obj:
+        return {"role": key_obj.role, "name": key_obj.name}
+    # Dev mode: no API_KEY set → allow anything as admin
+    if not API_KEY:
+        return {"role": "admin", "name": "Admin"}
+    raise HTTPException(401, "Unauthorized")
+
+
+def require_admin(auth: dict = Depends(require_auth)):
+    """Dependency that restricts an endpoint to admin-role keys only."""
+    if auth["role"] != "admin":
+        raise HTTPException(403, "Admin access required")
+    return auth
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -492,7 +511,7 @@ async def list_files(db: Session = Depends(get_db), _=Depends(require_auth)):
 
 
 @app.delete("/api/files/{file_id}")
-async def delete_file(file_id: str, db: Session = Depends(get_db), _=Depends(require_auth)):
+async def delete_file(file_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
     upload = (
         db.query(Upload)
         .filter(Upload.id == file_id, Upload.status == "completed")
@@ -510,15 +529,15 @@ async def delete_file(file_id: str, db: Session = Depends(get_db), _=Depends(req
 
 
 @app.post("/api/auth/verify")
-async def verify_auth(_=Depends(require_auth)):
-    return {"ok": True}
+async def verify_auth(auth=Depends(require_auth)):
+    return {"ok": True, "role": auth["role"], "name": auth["name"]}
 
 
 # ── Dashboard stats ───────────────────────────────────────────────────────────
 
 
 @app.get("/api/stats")
-async def get_stats(db: Session = Depends(get_db), _=Depends(require_auth)):
+async def get_stats(db: Session = Depends(get_db), _=Depends(require_admin)):
     total_files = (
         db.query(func.count(Upload.id)).filter(Upload.status == "completed").scalar() or 0
     )
@@ -682,7 +701,7 @@ async def download_file(
 async def get_download_analytics(
     days: int = Query(7, ge=1, le=90),
     db: Session = Depends(get_db),
-    _=Depends(require_auth),
+    _=Depends(require_admin),
 ):
     from sqlalchemy import distinct as sa_distinct
 
@@ -1319,7 +1338,7 @@ def _provider_dict(p: StorageProvider) -> dict:
 
 
 @app.get("/api/admin/storage")
-async def list_storage_providers(db: Session = Depends(get_db), _=Depends(require_auth)):
+async def list_storage_providers(db: Session = Depends(get_db), _=Depends(require_admin)):
     rows = db.query(StorageProvider).order_by(StorageProvider.created_at).all()
     result = []
     for p in rows:
@@ -1337,7 +1356,7 @@ async def list_storage_providers(db: Session = Depends(get_db), _=Depends(requir
 async def create_storage_provider(
     body: StorageProviderIn,
     db: Session = Depends(get_db),
-    _=Depends(require_auth),
+    _=Depends(require_admin),
 ):
     if not body.endpoint_url.startswith(("http://", "https://")):
         raise HTTPException(400, "endpoint_url must start with http:// or https://")
@@ -1370,7 +1389,7 @@ async def update_storage_provider(
     provider_id: str,
     body: StorageProviderIn,
     db: Session = Depends(get_db),
-    _=Depends(require_auth),
+    _=Depends(require_admin),
 ):
     provider = db.query(StorageProvider).filter(StorageProvider.id == provider_id).first()
     if not provider:
@@ -1399,7 +1418,7 @@ async def update_storage_provider(
 async def delete_storage_provider(
     provider_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_auth),
+    _=Depends(require_admin),
 ):
     provider = db.query(StorageProvider).filter(StorageProvider.id == provider_id).first()
     if not provider:
@@ -1421,7 +1440,7 @@ async def delete_storage_provider(
 async def set_default_storage(
     provider_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_auth),
+    _=Depends(require_admin),
 ):
     provider = db.query(StorageProvider).filter(StorageProvider.id == provider_id).first()
     if not provider:
@@ -1436,7 +1455,7 @@ async def set_default_storage(
 async def test_storage_provider(
     provider_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_auth),
+    _=Depends(require_admin),
 ):
     provider = db.query(StorageProvider).filter(StorageProvider.id == provider_id).first()
     if not provider:
@@ -1476,13 +1495,13 @@ async def list_ads_public(db: Session = Depends(get_db)):
 
 
 @app.get("/api/admin/ads")
-async def list_ads_admin(db: Session = Depends(get_db), _=Depends(require_auth)):
+async def list_ads_admin(db: Session = Depends(get_db), _=Depends(require_admin)):
     rows = db.query(Ad).order_by(Ad.display_order.asc(), Ad.created_at.asc()).all()
     return [_ad_dict(a) for a in rows]
 
 
 @app.post("/api/admin/ads")
-async def create_ad(body: AdIn, db: Session = Depends(get_db), _=Depends(require_auth)):
+async def create_ad(body: AdIn, db: Session = Depends(get_db), _=Depends(require_admin)):
     if body.type not in ("banner", "button"):
         raise HTTPException(400, "type must be 'banner' or 'button'")
     if not body.link_url.startswith(("http://", "https://")):
@@ -1505,7 +1524,7 @@ async def create_ad(body: AdIn, db: Session = Depends(get_db), _=Depends(require
 
 
 @app.patch("/api/admin/ads/{ad_id}")
-async def update_ad(ad_id: str, body: AdIn, db: Session = Depends(get_db), _=Depends(require_auth)):
+async def update_ad(ad_id: str, body: AdIn, db: Session = Depends(get_db), _=Depends(require_admin)):
     ad = db.query(Ad).filter(Ad.id == ad_id).first()
     if not ad:
         raise HTTPException(404, "Ad not found")
@@ -1520,7 +1539,7 @@ async def update_ad(ad_id: str, body: AdIn, db: Session = Depends(get_db), _=Dep
 
 
 @app.delete("/api/admin/ads/{ad_id}")
-async def delete_ad(ad_id: str, db: Session = Depends(get_db), _=Depends(require_auth)):
+async def delete_ad(ad_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
     ad = db.query(Ad).filter(Ad.id == ad_id).first()
     if not ad:
         raise HTTPException(404, "Ad not found")
@@ -1540,6 +1559,77 @@ def _ad_dict(a: Ad):
         "display_order": a.display_order,
         "created_at": a.created_at.isoformat() if a.created_at else None,
     }
+
+
+# ── Team key management ───────────────────────────────────────────────────────
+
+
+class CreateKeyIn(BaseModel):
+    name: str
+    role: str = "member"
+
+
+class UpdateKeyIn(BaseModel):
+    name: Optional[str] = None
+    active: Optional[bool] = None
+
+
+def _key_dict(k: ApiKey, reveal: bool = False) -> dict:
+    masked = k.key[:6] + "••••••••••••••••"
+    return {
+        "id": k.id,
+        "name": k.name,
+        "key": k.key if reveal else masked,
+        "role": k.role,
+        "active": bool(k.active),
+        "created_at": k.created_at.isoformat(),
+    }
+
+
+@app.get("/api/admin/keys")
+async def list_team_keys(db: Session = Depends(get_db), _=Depends(require_admin)):
+    keys = db.query(ApiKey).order_by(ApiKey.created_at.desc()).all()
+    return [_key_dict(k) for k in keys]
+
+
+@app.post("/api/admin/keys")
+async def create_team_key(body: CreateKeyIn, db: Session = Depends(get_db), _=Depends(require_admin)):
+    if body.role not in ("member", "admin"):
+        raise HTTPException(400, "Role must be 'member' or 'admin'")
+    new_key = ApiKey(
+        id=str(uuid.uuid4()),
+        name=body.name.strip(),
+        key=secrets.token_urlsafe(32),
+        role=body.role,
+        active=1,
+        created_at=datetime.utcnow(),
+    )
+    db.add(new_key)
+    db.commit()
+    return _key_dict(new_key, reveal=True)
+
+
+@app.patch("/api/admin/keys/{key_id}")
+async def update_team_key(key_id: str, body: UpdateKeyIn, db: Session = Depends(get_db), _=Depends(require_admin)):
+    k = db.query(ApiKey).filter(ApiKey.id == key_id).first()
+    if not k:
+        raise HTTPException(404, "Key not found")
+    if body.name is not None:
+        k.name = body.name.strip()
+    if body.active is not None:
+        k.active = 1 if body.active else 0
+    db.commit()
+    return _key_dict(k)
+
+
+@app.delete("/api/admin/keys/{key_id}")
+async def delete_team_key(key_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
+    k = db.query(ApiKey).filter(ApiKey.id == key_id).first()
+    if not k:
+        raise HTTPException(404, "Key not found")
+    db.delete(k)
+    db.commit()
+    return {"ok": True}
 
 
 # ── Serve frontend ────────────────────────────────────────────────────────────

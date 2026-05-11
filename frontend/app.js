@@ -10,6 +10,7 @@ const LS_KEY       = 'datadock_apikey';
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let apiKey = localStorage.getItem(LS_KEY) || '';
+let userRole = 'admin';
 let activeUploaders = [];
 let uploadsChart = null;
 
@@ -1080,6 +1081,94 @@ function initAdForm() {
   });
 }
 
+// ── Team Key Management ───────────────────────────────────────────────────────
+
+async function loadTeamPage() {
+  const el = document.getElementById('key-list');
+  el.innerHTML = '<p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">Loading…</p>';
+  let keys;
+  try { keys = await apiFetch('GET', '/api/admin/keys'); }
+  catch (e) { el.innerHTML = `<p style="padding:1.5rem;color:var(--danger);font-size:.875rem;text-align:center">${e.message}</p>`; return; }
+
+  if (!keys.length) {
+    el.innerHTML = '<p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">No team keys yet. Generate one above.</p>';
+    return;
+  }
+  el.innerHTML = `
+    <table class="files-table">
+      <thead><tr>
+        <th>Name</th><th>Access Level</th><th>Key</th><th>Status</th><th>Created</th><th>Actions</th>
+      </tr></thead>
+      <tbody>
+        ${keys.map(k => `
+          <tr>
+            <td class="tf-name">${k.name}</td>
+            <td>${k.role === 'admin'
+              ? '<span class="team-role team-role-admin">Admin</span>'
+              : '<span class="team-role team-role-member">Member</span>'}</td>
+            <td><code class="team-key-masked">${k.key}</code></td>
+            <td>${k.active
+              ? '<span class="ad-on"><i class="fa-solid fa-circle-check"></i> Active</span>'
+              : '<span class="ad-off"><i class="fa-solid fa-circle-xmark"></i> Revoked</span>'}</td>
+            <td style="color:var(--muted);font-size:.8rem">${formatDate(k.created_at)}</td>
+            <td><div class="tf-actions">
+              <button class="btn-sm ${k.active ? 'danger' : ''}" onclick="toggleTeamKey('${k.id}',${!k.active})">
+                ${k.active ? 'Revoke' : 'Enable'}
+              </button>
+              <button class="btn-sm danger" onclick="deleteTeamKey('${k.id}')">Delete</button>
+            </div></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function toggleTeamKey(id, active) {
+  try { await apiFetch('PATCH', `/api/admin/keys/${id}`, { active }); loadTeamPage(); }
+  catch (e) { alert(e.message); }
+}
+
+async function deleteTeamKey(id) {
+  if (!confirm('Delete this key? The member will lose access immediately.')) return;
+  try { await apiFetch('DELETE', `/api/admin/keys/${id}`); loadTeamPage(); }
+  catch (e) { alert(e.message); }
+}
+
+function initKeyForm() {
+  const form    = document.getElementById('key-form');
+  const msg     = document.getElementById('key-form-msg');
+  const reveal  = document.getElementById('key-reveal-box');
+  const revVal  = document.getElementById('key-reveal-value');
+  const revCopy = document.getElementById('key-reveal-copy');
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const name = document.getElementById('key-name').value.trim();
+    const role = document.getElementById('key-role').value;
+    if (!name) return;
+    msg.textContent = '';
+    try {
+      const result = await apiFetch('POST', '/api/admin/keys', { name, role });
+      revVal.textContent = result.key;
+      reveal.hidden = false;
+      reveal.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      document.getElementById('key-name').value = '';
+      msg.style.color = 'var(--success)';
+      msg.textContent = 'Key created!';
+      loadTeamPage();
+    } catch (err) {
+      msg.style.color = 'var(--danger)';
+      msg.textContent = err.message;
+    }
+    setTimeout(() => { msg.textContent = ''; }, 4000);
+  });
+
+  revCopy.addEventListener('click', () => {
+    navigator.clipboard.writeText(revVal.textContent);
+    revCopy.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
+    setTimeout(() => { revCopy.innerHTML = '<i class="fa-solid fa-copy"></i> Copy Key'; }, 2000);
+  });
+}
+
 // ── Downloads Analytics ───────────────────────────────────────────────────────
 
 let dlTimeChart   = null;
@@ -1257,23 +1346,39 @@ async function loadDownloadsPage() {
 
 // ── Page navigation ───────────────────────────────────────────────────────────
 
+const ADMIN_PAGES = ['dashboard', 'ads', 'storage', 'downloads', 'team'];
+
+function applyRoleUI() {
+  ADMIN_PAGES.forEach(page => {
+    const btn = document.querySelector(`.nav-item[data-page="${page}"]`);
+    if (btn) btn.style.display = userRole === 'admin' ? '' : 'none';
+  });
+}
+
 function showPage(page) {
+  // Redirect members away from admin-only pages
+  if (userRole !== 'admin' && ADMIN_PAGES.includes(page)) page = 'upload';
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
   document.getElementById(`page-${page}`).classList.add('active');
-  document.querySelector(`[data-page="${page}"]`).classList.add('active');
+  const navBtn = document.querySelector(`[data-page="${page}"]`);
+  if (navBtn) navBtn.classList.add('active');
   if (page === 'dashboard') loadDashboard();
   if (page === 'files')     loadFileList();
   if (page === 'ads')       loadAdsPage();
   if (page === 'storage')   loadStoragePage();
   if (page === 'downloads') loadDownloadsPage();
+  if (page === 'team')      loadTeamPage();
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 async function checkAuth() {
-  try { await apiFetch('POST', '/api/auth/verify'); return true; }
-  catch { return false; }
+  try {
+    const data = await apiFetch('POST', '/api/auth/verify');
+    userRole = data.role || 'admin';
+    return true;
+  } catch { return false; }
 }
 
 async function initAuth() {
@@ -1322,6 +1427,8 @@ function initApp() {
   initImportForm();
   initAdForm();
   initStorageForm();
+  initKeyForm();
+  applyRoleUI();
 
   document.querySelectorAll('.dl-period-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1343,7 +1450,7 @@ function initApp() {
   });
   input.addEventListener('change', () => { [...input.files].forEach(startUpload); input.value = ''; });
 
-  showPage('dashboard');
+  showPage(userRole === 'admin' ? 'dashboard' : 'upload');
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────

@@ -66,6 +66,17 @@ class Ad(Base):
     created_at = Column(DateTime, nullable=False)
 
 
+class ApiKey(Base):
+    __tablename__ = "api_keys"
+
+    id = Column(String(36), primary_key=True)
+    name = Column(String(200), nullable=False)
+    key = Column(String(100), unique=True, nullable=False, index=True)
+    role = Column(String(20), default="member", nullable=False)  # "admin" or "member"
+    active = Column(Integer, default=1, nullable=False)
+    created_at = Column(DateTime, nullable=False)
+
+
 class DownloadEvent(Base):
     __tablename__ = "download_events"
 
