@@ -9,6 +9,7 @@ services:
       - ./data:/app/backend/data
     environment:
       DATABASE_URL: sqlite:////app/backend/data/datadock.db
+      GEOIP_DB_PATH: /app/backend/data/GeoLite2-Country.mmdb
     ports:
       - "127.0.0.1:8000:8000"   # only expose to localhost; nginx proxies externally
     healthcheck:

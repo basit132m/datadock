@@ -32,6 +32,9 @@ IMPORT_CHUNK = 10 * 1024 * 1024  # 10 MB per B2 part
 _import_progress: dict = {}    # upload_id -> progress dict
 _storage_cache:   dict = {}    # provider_id -> S3Storage instance
 _geo_cache:       dict = {}    # ip -> (country, country_code)
+_geoip_reader           = None  # geoip2 Reader singleton
+
+GEOIP_DB_PATH = os.getenv("GEOIP_DB_PATH", "/app/backend/data/GeoLite2-Country.mmdb")
 
 
 def _parse_ua(ua: str) -> tuple:
@@ -64,34 +67,47 @@ def _parse_ua(ua: str) -> tuple:
     return os_name, device
 
 
-async def _geolocate(ip: str) -> tuple:
-    """Return (country, country_code) for an IP, with in-memory caching."""
+def _get_geoip_reader():
+    """Return a cached geoip2 Reader, or None if the DB file is not present."""
+    global _geoip_reader
+    if _geoip_reader is not None:
+        return _geoip_reader
+    try:
+        import geoip2.database
+        _geoip_reader = geoip2.database.Reader(GEOIP_DB_PATH)
+    except Exception:
+        pass
+    return _geoip_reader
+
+
+def _geolocate(ip: str) -> tuple:
+    """Return (country, country_code) using the local MaxMind GeoLite2 DB.
+    Falls back to ('Unknown', '??') if the DB is missing or the IP is private.
+    Results are cached in memory — no rate limits, no network calls."""
     if not ip or ip in ("127.0.0.1", "::1", ""):
         return "Local", "??"
     if ip in _geo_cache:
         return _geo_cache[ip]
+    reader = _get_geoip_reader()
+    if reader is None:
+        return "Unknown", "??"
     try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            r = await client.get(
-                f"http://ip-api.com/json/{ip}?fields=country,countryCode",
-                headers={"Accept": "application/json"},
-            )
-            if r.status_code == 200:
-                d = r.json()
-                result = (d.get("country", "Unknown"), d.get("countryCode", "??"))
-                _geo_cache[ip] = result
-                return result
+        response = reader.country(ip)
+        result = (
+            response.country.name or "Unknown",
+            response.country.iso_code or "??",
+        )
     except Exception:
-        pass
-    _geo_cache[ip] = ("Unknown", "??")
-    return "Unknown", "??"
+        result = ("Unknown", "??")
+    _geo_cache[ip] = result
+    return result
 
 
 async def _log_download_event(upload_id: str, filename: str, ip: str, ua: str):
     """Background task: resolve geolocation + UA then persist a DownloadEvent."""
     from database import SessionLocal
     os_name, device_type = _parse_ua(ua)
-    country, country_code = await _geolocate(ip)
+    country, country_code = _geolocate(ip)
     db = SessionLocal()
     try:
         db.add(DownloadEvent(
