@@ -276,6 +276,30 @@
         <h1>Team Keys</h1>
       </div>
 
+      <div class="card admin-key-card" style="margin-bottom:1.5rem">
+        <div class="card-header admin-key-card-header"><i class="fa-solid fa-shield-halved"></i> Admin Key</div>
+        <div style="padding:1rem 1.25rem">
+          <p style="color:var(--muted);font-size:.875rem;margin:0 0 1rem 0">
+            Generate a new admin key to immediately invalidate the current one. You will be logged out automatically.
+          </p>
+          <div id="admin-key-reveal-box" hidden class="key-reveal-card">
+            <div class="card-header key-reveal-header">
+              <i class="fa-solid fa-triangle-exclamation"></i> Copy your new admin key — it will never be shown again
+            </div>
+            <div class="key-reveal-wrap">
+              <code id="admin-key-reveal-value"></code>
+              <button class="btn-primary-sm" id="admin-key-reveal-copy">
+                <i class="fa-solid fa-copy"></i> Copy Key
+              </button>
+            </div>
+            <div id="admin-key-logout-msg" style="padding:.5rem 1rem;color:#dc2626;font-size:.875rem;font-weight:500"></div>
+          </div>
+          <button id="change-admin-key-btn" class="btn-sm danger" onclick="changeMasterKey()">
+            <i class="fa-solid fa-rotate"></i> Generate New Admin Key
+          </button>
+        </div>
+      </div>
+
       <div class="card" style="margin-bottom:1.5rem">
         <div class="card-header">Generate New Key</div>
         <form id="key-form" class="ad-form">

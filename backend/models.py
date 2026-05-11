@@ -72,7 +72,8 @@ class ApiKey(Base):
     id = Column(String(36), primary_key=True)
     name = Column(String(200), nullable=False)
     key = Column(String(100), unique=True, nullable=False, index=True)
-    role = Column(String(20), default="member", nullable=False)  # "admin" or "member"
+    role = Column(String(20), default="member", nullable=False)
+    is_master = Column(Integer, default=0, nullable=False)  # 1 = the admin's own key
     active = Column(Integer, default=1, nullable=False)
     created_at = Column(DateTime, nullable=False)
 

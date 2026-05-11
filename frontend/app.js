@@ -1181,6 +1181,45 @@ function initKeyForm() {
   });
 }
 
+async function changeMasterKey() {
+  if (!confirm('This will immediately invalidate your current admin key. You will be logged out and must use the new key. Continue?')) return;
+  const btn = document.getElementById('change-admin-key-btn');
+  btn.disabled = true;
+  try {
+    const result = await apiFetch('POST', '/api/admin/change-master-key');
+    const revealBox = document.getElementById('admin-key-reveal-box');
+    const revealVal = document.getElementById('admin-key-reveal-value');
+    const revealCopy = document.getElementById('admin-key-reveal-copy');
+    const msgEl = document.getElementById('admin-key-logout-msg');
+    revealVal.textContent = result.new_key;
+    revealBox.hidden = false;
+    revealBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    revealCopy.onclick = () => {
+      navigator.clipboard.writeText(result.new_key);
+      revealCopy.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
+      setTimeout(() => { revealCopy.innerHTML = '<i class="fa-solid fa-copy"></i> Copy Key'; }, 2000);
+    };
+
+    let secs = 15;
+    msgEl.textContent = `Logging out in ${secs} seconds…`;
+    const countdown = setInterval(() => {
+      secs--;
+      if (secs <= 0) {
+        clearInterval(countdown);
+        localStorage.removeItem(LS_KEY);
+        apiKey = '';
+        location.reload();
+      } else {
+        msgEl.textContent = `Logging out in ${secs} second${secs !== 1 ? 's' : ''}…`;
+      }
+    }, 1000);
+  } catch (e) {
+    alert('Failed: ' + e.message);
+    btn.disabled = false;
+  }
+}
+
 // ── Downloads Analytics ───────────────────────────────────────────────────────
 
 let dlTimeChart   = null;

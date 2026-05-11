@@ -544,6 +544,10 @@ input[type="password"]:focus, input[type="text"]:focus { border-color: var(--pri
 .ad-on  { color: var(--success); }
 .ad-off { color: var(--muted); }
 
+/* ── Admin Key Card ── */
+.admin-key-card { border-color: #fecaca !important; }
+.admin-key-card-header { color: #dc2626 !important; }
+
 /* ── Team Key Management ── */
 .key-reveal-card { border-color: var(--success) !important; margin-bottom: 1.5rem; }
 .key-reveal-header { color: var(--success) !important; }

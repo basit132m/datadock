@@ -199,9 +199,35 @@ app.add_middleware(
 )
 
 
+def _seed_master_key():
+    """On first startup, seed the env API_KEY into the DB as the master admin key."""
+    if not API_KEY:
+        return
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        if db.query(ApiKey).filter(ApiKey.is_master == 1).first():
+            return
+        db.add(ApiKey(
+            id=str(uuid.uuid4()),
+            name="Admin",
+            key=API_KEY,
+            role="admin",
+            is_master=1,
+            active=1,
+            created_at=datetime.utcnow(),
+        ))
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+
 @app.on_event("startup")
 async def _startup():
     init_db()
+    _seed_master_key()
 
 
 def _share_id() -> str:
@@ -215,13 +241,14 @@ def require_auth(x_api_key: Optional[str] = Header(None), db: Session = Depends(
     """Return {'role': ..., 'name': ...} for any valid key, or raise 401."""
     if not x_api_key:
         raise HTTPException(401, "API key required")
-    # Master admin key from env — always works, cannot be revoked
-    if API_KEY and x_api_key == API_KEY:
-        return {"role": "admin", "name": "Admin"}
-    # Keys stored in DB
+    # DB-stored keys take priority (master + team keys)
     key_obj = db.query(ApiKey).filter(ApiKey.key == x_api_key, ApiKey.active == 1).first()
     if key_obj:
         return {"role": key_obj.role, "name": key_obj.name}
+    # Env key as emergency recovery — only if no master key exists in DB (DB wiped / first run)
+    master_exists = db.query(ApiKey).filter(ApiKey.is_master == 1).first()
+    if not master_exists and API_KEY and x_api_key == API_KEY:
+        return {"role": "admin", "name": "Admin"}
     # Dev mode: no API_KEY set → allow anything as admin
     if not API_KEY:
         return {"role": "admin", "name": "Admin"}
@@ -1588,7 +1615,7 @@ def _key_dict(k: ApiKey, reveal: bool = False) -> dict:
 
 @app.get("/api/admin/keys")
 async def list_team_keys(db: Session = Depends(get_db), _=Depends(require_admin)):
-    keys = db.query(ApiKey).order_by(ApiKey.created_at.desc()).all()
+    keys = db.query(ApiKey).filter(ApiKey.is_master == 0).order_by(ApiKey.created_at.desc()).all()
     return [_key_dict(k) for k in keys]
 
 
@@ -1637,9 +1664,32 @@ async def delete_team_key(key_id: str, db: Session = Depends(get_db), _=Depends(
     k = db.query(ApiKey).filter(ApiKey.id == key_id).first()
     if not k:
         raise HTTPException(404, "Key not found")
+    if k.is_master:
+        raise HTTPException(400, "Cannot delete the master admin key. Use Change Admin Key instead.")
     db.delete(k)
     db.commit()
     return {"ok": True}
+
+
+@app.post("/api/admin/change-master-key")
+async def change_master_key(db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Generate a new master admin key. The old key is immediately invalidated."""
+    new_key_value = secrets.token_urlsafe(32)
+    master = db.query(ApiKey).filter(ApiKey.is_master == 1).first()
+    if master:
+        master.key = new_key_value
+    else:
+        db.add(ApiKey(
+            id=str(uuid.uuid4()),
+            name="Admin",
+            key=new_key_value,
+            role="admin",
+            is_master=1,
+            active=1,
+            created_at=datetime.utcnow(),
+        ))
+    db.commit()
+    return {"new_key": new_key_value}
 
 
 # ── Serve frontend ────────────────────────────────────────────────────────────
