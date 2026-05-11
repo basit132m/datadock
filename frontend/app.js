@@ -2,7 +2,7 @@
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CHUNK_SIZE   = 10 * 1024 * 1024;
-const MAX_BYTES    = 10 * 1024 * 1024 * 1024;
+const MAX_BYTES    = 500 * 1024 * 1024 * 1024; // 500 GB frontend guard
 const MAX_CONC     = 3;
 const MAX_RETRIES  = 4;
 const SAMPLE_BYTES = 512 * 1024;
