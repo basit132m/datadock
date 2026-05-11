@@ -1112,6 +1112,7 @@ async function loadTeamPage() {
               : '<span class="ad-off"><i class="fa-solid fa-circle-xmark"></i> Revoked</span>'}</td>
             <td style="color:var(--muted);font-size:.8rem">${formatDate(k.created_at)}</td>
             <td><div class="tf-actions">
+              <button class="btn-sm" onclick="regenerateTeamKey('${k.id}')">Regenerate</button>
               <button class="btn-sm ${k.active ? 'danger' : ''}" onclick="toggleTeamKey('${k.id}',${!k.active})">
                 ${k.active ? 'Revoke' : 'Enable'}
               </button>
@@ -1125,6 +1126,17 @@ async function loadTeamPage() {
 async function toggleTeamKey(id, active) {
   try { await apiFetch('PATCH', `/api/admin/keys/${id}`, { active }); loadTeamPage(); }
   catch (e) { alert(e.message); }
+}
+
+async function regenerateTeamKey(id) {
+  if (!confirm('Regenerate this key? The old key stops working immediately and the member must use the new one.')) return;
+  try {
+    const result = await apiFetch('POST', `/api/admin/keys/${id}/regenerate`);
+    document.getElementById('key-reveal-value').textContent = result.key;
+    document.getElementById('key-reveal-box').hidden = false;
+    document.getElementById('key-reveal-box').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    loadTeamPage();
+  } catch (e) { alert(e.message); }
 }
 
 async function deleteTeamKey(id) {
@@ -1194,7 +1206,7 @@ async function loadDownloadsPage() {
   ['dl-stat-total','dl-stat-ips','dl-stat-countries','dl-stat-avg'].forEach(id => {
     document.getElementById(id).textContent = '…';
   });
-  ['dl-countries','dl-os','dl-top-files','dl-recent'].forEach(id => {
+  ['dl-countries','dl-os','dl-top-files'].forEach(id => {
     document.getElementById(id).innerHTML = dlEmpty('Loading…');
   });
 
@@ -1202,7 +1214,7 @@ async function loadDownloadsPage() {
   try {
     data = await apiFetch('GET', `/api/analytics/downloads?days=${dlActiveDays}`);
   } catch (e) {
-    ['dl-countries','dl-os','dl-top-files','dl-recent'].forEach(id => {
+    ['dl-countries','dl-os','dl-top-files'].forEach(id => {
       document.getElementById(id).innerHTML = dlEmpty('Failed to load data.');
     });
     return;
@@ -1325,23 +1337,6 @@ async function loadDownloadsPage() {
       </table>`;
   }
 
-  // Recent downloads
-  const recentEl = document.getElementById('dl-recent');
-  if (!data.recent.length) {
-    recentEl.innerHTML = dlEmpty('No downloads yet in this period.');
-  } else {
-    recentEl.innerHTML = data.recent.map(r => `
-      <div class="dl-recent-row">
-        <span class="dl-recent-icon">${fileIcon(r.filename)}</span>
-        <span class="dl-recent-name">${r.filename}</span>
-        <span class="dl-recent-meta">
-          ${countryFlag(r.country_code)} ${r.country || '—'}
-          &nbsp;·&nbsp; ${r.device_type || '—'}
-          &nbsp;·&nbsp; ${r.os_name || '—'}
-        </span>
-        <span class="dl-recent-time">${formatDate(r.created_at)}</span>
-      </div>`).join('');
-  }
 }
 
 // ── Page navigation ───────────────────────────────────────────────────────────

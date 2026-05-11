@@ -123,9 +123,8 @@
       fetch('/api/ads').then(r => r.ok ? r.json() : []),
     ]);
 
-    if (adsRes.status === 'fulfilled' && Array.isArray(adsRes.value)) {
-      renderAds(adsRes.value);
-    }
+    const ads = (adsRes.status === 'fulfilled' && Array.isArray(adsRes.value)) ? adsRes.value : [];
+    if (ads.length) renderAds(ads);
 
     if (fileRes.status !== 'fulfilled') {
       document.getElementById('lc-loading').hidden = true;
@@ -138,7 +137,6 @@
 
     document.title = `DataDock – ${d.filename}`;
 
-    // Icon circle
     const iconEl = document.getElementById('lp-file-icon');
     iconEl.className = `fa-solid ${type.fa} lp-file-icon`;
     const wrapEl = document.getElementById('lp-icon-wrap');
@@ -151,7 +149,32 @@
     document.getElementById('lp-type').textContent = extLabel(d.filename);
     document.getElementById('lp-views').textContent = (d.views || 0).toLocaleString();
     document.getElementById('lp-downloads').textContent = (d.downloads || 0).toLocaleString();
-    document.getElementById('lp-download-btn').href = `/api/f/${shareId}/download`;
+
+    // ── Download button — interstitial logic ───────────────────────────────
+    const dlBtn   = document.getElementById('lp-download-btn');
+    const dlUrl   = `/api/f/${shareId}/download`;
+
+    // Use first active ad that has a destination URL as the interstitial target
+    const interstitialAd = ads.find(a => a.active && a.link_url);
+
+    if (interstitialAd) {
+      let clicked = false;
+      dlBtn.href = '#';
+      dlBtn.addEventListener('click', e => {
+        e.preventDefault();
+        if (!clicked) {
+          clicked = true;
+          window.open(interstitialAd.link_url, '_blank', 'noopener,noreferrer');
+          dlBtn.innerHTML = '<i class="fa-solid fa-download"></i> Click again to download';
+          dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
+          dlBtn.style.boxShadow = '0 4px 18px rgba(5,150,105,.35)';
+        } else {
+          location.href = dlUrl;
+        }
+      });
+    } else {
+      dlBtn.href = dlUrl;
+    }
 
     document.getElementById('lc-loading').hidden = true;
     document.getElementById('lc-card').hidden = false;

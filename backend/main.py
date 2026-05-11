@@ -1622,6 +1622,16 @@ async def update_team_key(key_id: str, body: UpdateKeyIn, db: Session = Depends(
     return _key_dict(k)
 
 
+@app.post("/api/admin/keys/{key_id}/regenerate")
+async def regenerate_team_key(key_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
+    k = db.query(ApiKey).filter(ApiKey.id == key_id).first()
+    if not k:
+        raise HTTPException(404, "Key not found")
+    k.key = secrets.token_urlsafe(32)
+    db.commit()
+    return _key_dict(k, reveal=True)
+
+
 @app.delete("/api/admin/keys/{key_id}")
 async def delete_team_key(key_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
     k = db.query(ApiKey).filter(ApiKey.id == key_id).first()
