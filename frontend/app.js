@@ -3,8 +3,8 @@
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CHUNK_SIZE   = 10 * 1024 * 1024;
 const MAX_BYTES    = 500 * 1024 * 1024 * 1024; // 500 GB frontend guard
-const MAX_CONC     = 3;
-const MAX_RETRIES  = 4;
+const MAX_CONC     = 6;   // parallel chunk uploads — uses full available bandwidth
+const MAX_RETRIES  = 6;   // retries per chunk before giving up
 const SAMPLE_BYTES = 512 * 1024;
 const LS_KEY       = 'datadock_apikey';
 
@@ -119,11 +119,31 @@ class ChunkedUploader extends EventTarget {
     this.aborted   = false;
     this.completedParts = new Map();
     this.chunkProgress  = new Map();
-    this._xhr      = null;
+    this._xhr           = null;
+    this._paused        = false;
+    this._pauseWaiters  = [];
   }
 
   emit(name, detail = {}) {
     this.dispatchEvent(new CustomEvent(name, { detail }));
+  }
+
+  pause() {
+    if (this.aborted || this._paused) return;
+    this._paused = true;
+    this.emit('status', { status: 'paused' });
+  }
+
+  resume() {
+    if (!this._paused) return;
+    this._paused = false;
+    this._pauseWaiters.splice(0).forEach(r => r());
+    this.emit('status', { status: 'uploading' });
+  }
+
+  _waitIfPaused() {
+    if (!this._paused) return Promise.resolve();
+    return new Promise(r => this._pauseWaiters.push(r));
   }
 
   async start() {
@@ -177,13 +197,21 @@ class ChunkedUploader extends EventTarget {
 
   async _uploadPartRetry(partNum, totalParts) {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      await this._waitIfPaused();   // hold here while offline
+      if (this.aborted) throw new Error('Aborted');
       try {
         await this._uploadPart(partNum, totalParts);
         return;
       } catch (err) {
         if (this.aborted) throw err;
         if (attempt === MAX_RETRIES - 1) throw err;
-        await sleep(1000 * 2 ** attempt);
+        // If we're offline, pause and wait for reconnect instead of sleeping
+        if (!navigator.onLine) {
+          this.pause();
+          await this._waitIfPaused();
+        } else {
+          await sleep(1000 * 2 ** attempt);
+        }
       }
     }
   }
@@ -293,6 +321,7 @@ function attachUploaderEvents(uploader, el) {
     badge.className = `status-badge ${s}`;
     badge.textContent = {
       hashing: 'Hashing…', initializing: 'Starting…', uploading: 'Uploading',
+      paused: 'Connection lost — reconnecting…',
       resuming: 'Resuming…', completing: 'Finalizing…', done: 'Done',
       error: 'Error', aborted: 'Cancelled',
     }[s] || s;
@@ -1522,6 +1551,9 @@ function initApp() {
     [...e.dataTransfer.files].forEach(startUpload);
   });
   input.addEventListener('change', () => { [...input.files].forEach(startUpload); input.value = ''; });
+
+  window.addEventListener('offline', () => activeUploaders.forEach(u => u.pause()));
+  window.addEventListener('online',  () => activeUploaders.forEach(u => u.resume()));
 
   showPage(userRole === 'admin' ? 'dashboard' : 'upload');
 }

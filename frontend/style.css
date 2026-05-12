@@ -214,6 +214,7 @@ input[type="password"]:focus, input[type="text"]:focus { border-color: var(--pri
 }
 .status-badge.hashing    { background: #fef3c7; color: var(--warn); }
 .status-badge.uploading  { background: var(--primary-lite); color: var(--primary); }
+.status-badge.paused     { background: #fff7ed; color: #c2410c; }
 .status-badge.resuming   { background: #fef3c7; color: var(--warn); }
 .status-badge.completing { background: var(--success-lite); color: var(--success); }
 .status-badge.done       { background: var(--success-lite); color: var(--success); }
