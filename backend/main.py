@@ -1,4 +1,8 @@
 import asyncio
+import base64
+import hashlib
+import hmac
+import json
 import os
 import secrets
 import string
@@ -24,10 +28,14 @@ from storage import B2Storage, BunnyStorage, S3Storage
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-MAX_BYTES = int(os.getenv("MAX_FILE_SIZE_GB", "10")) * 1_073_741_824
-API_KEY = os.getenv("API_KEY", "")
+MAX_BYTES    = int(os.getenv("MAX_FILE_SIZE_GB", "10")) * 1_073_741_824
+API_KEY      = os.getenv("API_KEY", "")
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
 IMPORT_CHUNK = 10 * 1024 * 1024  # 10 MB per B2 part
+
+WORKER_URL    = os.getenv("WORKER_URL", "").rstrip("/")   # e.g. https://datadock-dl.abc.workers.dev
+WORKER_SECRET = os.getenv("WORKER_SECRET", "")
+WORKER_TOKEN_TTL = 300  # seconds — token expires after 5 minutes
 
 _import_progress:   dict = {}    # upload_id -> progress dict
 _storage_cache:     dict = {}    # provider_id -> S3Storage instance
@@ -143,6 +151,83 @@ async def _log_download_event(upload_id: str, filename: str, ip: str, ua: str):
         db.rollback()
     finally:
         db.close()
+
+
+def _gen_worker_token(file_key: str, filename: str, content_type: str,
+                      token_type: str = "r2", url: Optional[str] = None) -> str:
+    """Return a short-lived HMAC-SHA256-signed token for the Cloudflare Worker.
+    token_type='r2'  → Worker fetches from R2 binding using file_key.
+    token_type='url' → Worker proxies from the given signed URL."""
+    expiry = int((datetime.utcnow() + timedelta(seconds=WORKER_TOKEN_TTL)).timestamp())
+    payload: dict = {
+        "t": token_type,
+        "f": filename,
+        "c": content_type or "application/octet-stream",
+        "e": expiry,
+    }
+    if token_type == "r2":
+        payload["k"] = file_key
+    else:
+        payload["u"] = url
+    payload_b64 = base64.urlsafe_b64encode(
+        json.dumps(payload, separators=(",", ":")).encode()
+    ).rstrip(b"=").decode()
+    sig = hmac.new(WORKER_SECRET.encode(), payload_b64.encode(), hashlib.sha256).hexdigest()
+    return f"{payload_b64}.{sig}"
+
+
+def _make_worker_redirect(upload, db: Session) -> str:
+    """Mirror of _chained_download_url but wraps the result in a Worker token URL.
+    Bandwidth tracking runs here so stats remain accurate."""
+    file_key = upload.b2_file_key
+
+    if not upload.storage_provider_id:
+        token = _gen_worker_token(file_key, upload.filename, upload.content_type, "r2")
+        return f"{WORKER_URL}/dl/{token}"
+
+    current_month = datetime.utcnow().strftime("%Y-%m")
+    visited: set = set()
+    pid = upload.storage_provider_id
+
+    while pid and pid not in visited:
+        visited.add(pid)
+        p = db.query(StorageProvider).filter(StorageProvider.id == pid).first()
+        if not p:
+            break
+
+        if p.bandwidth_reset_month != current_month:
+            p.monthly_bandwidth_used = 0
+            p.bandwidth_reset_month = current_month
+
+        cap_bytes = int(p.bandwidth_cap_gb * 1_073_741_824) if p.bandwidth_cap_gb else None
+        used = p.monthly_bandwidth_used or 0
+        cap_exceeded = bool(cap_bytes and used >= cap_bytes)
+
+        if cap_exceeded:
+            if p.fallback_provider_id:
+                pid = p.fallback_provider_id
+                continue
+            if p.fallback_base_url:
+                fallback_url = f"{p.fallback_base_url.rstrip('/')}/{file_key}"
+                token = _gen_worker_token(file_key, upload.filename, upload.content_type, "url", fallback_url)
+                return f"{WORKER_URL}/dl/{token}"
+
+        p.monthly_bandwidth_used = used + (upload.file_size or 0)
+
+        is_r2 = "r2.cloudflarestorage" in p.endpoint_url.lower()
+        if is_r2:
+            token = _gen_worker_token(file_key, upload.filename, upload.content_type, "r2")
+        else:
+            try:
+                presigned = _get_storage(p.id, db).get_presigned_url(file_key, WORKER_TOKEN_TTL)
+            except Exception:
+                presigned = _get_storage(p.id, db).get_download_url(file_key)
+            token = _gen_worker_token(file_key, upload.filename, upload.content_type, "url", presigned)
+        return f"{WORKER_URL}/dl/{token}"
+
+    # Safety net — assume R2
+    token = _gen_worker_token(file_key, upload.filename, upload.content_type, "r2")
+    return f"{WORKER_URL}/dl/{token}"
 
 
 def _get_storage(provider_id: Optional[str], db: Session) -> S3Storage:
@@ -711,7 +796,10 @@ async def download_file(
             for k in [k for k, v in _recent_downloads.items() if v < cutoff]:
                 del _recent_downloads[k]
 
-    download_url = _chained_download_url(upload, db)
+    if WORKER_URL and WORKER_SECRET:
+        download_url = _make_worker_redirect(upload, db)
+    else:
+        download_url = _chained_download_url(upload, db)
     db.commit()
 
     ua = request.headers.get("User-Agent", "")

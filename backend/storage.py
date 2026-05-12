@@ -88,6 +88,14 @@ class S3Storage:
             ExpiresIn=expires,
         )
 
+    def get_presigned_url(self, key: str, expires: int = 300) -> str:
+        """Short-lived authenticated URL — always bypasses public_base."""
+        return self.s3.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": self.bucket, "Key": key},
+            ExpiresIn=expires,
+        )
+
 
 class B2Storage(S3Storage):
     """Backwards-compatible: reads credentials from environment variables."""
@@ -202,3 +210,7 @@ class BunnyStorage:
         if self.public_base:
             return f"{self.public_base}/{key}"
         return f"{self.base_url}/{self.zone}/{key}"
+
+    def get_presigned_url(self, key: str, expires: int = 300) -> str:
+        """BunnyCDN has no signed URLs — returns the CDN URL (token auth optional separately)."""
+        return self.get_download_url(key)

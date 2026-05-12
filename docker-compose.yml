@@ -10,6 +10,8 @@ services:
     environment:
       DATABASE_URL: sqlite:////app/backend/data/datadock.db
       GEOIP_DB_PATH: /app/backend/data/GeoLite2-Country.mmdb
+      WORKER_URL: ""       # set in backend/.env  e.g. https://datadock-dl.abc.workers.dev
+      WORKER_SECRET: ""    # set in backend/.env  must match wrangler secret WORKER_SECRET
     ports:
       - "127.0.0.1:8000:8000"   # only expose to localhost; nginx proxies externally
     healthcheck:
