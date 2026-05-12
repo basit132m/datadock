@@ -561,27 +561,29 @@ function buildImportItem(filename, total) {
   return el;
 }
 
-async function startImport(url, filename) {
-  const errEl  = document.getElementById('import-error');
-  const queue  = document.getElementById('import-queue');
-  errEl.textContent = '';
+// ── Import persistence (survive page refresh) ─────────────────────────────────
 
-  let initData;
-  try {
-    initData = await apiFetch('POST', '/api/import', { url, filename: filename || null });
-  } catch (e) {
-    errEl.textContent = e.message;
-    return;
+const LS_IMPORTS_KEY = 'datadock_pending_imports';
+
+function _saveImport(upload_id, filename, total, url) {
+  const list = JSON.parse(localStorage.getItem(LS_IMPORTS_KEY) || '[]');
+  if (!list.find(i => i.upload_id === upload_id)) {
+    list.push({ upload_id, filename, total, url });
+    localStorage.setItem(LS_IMPORTS_KEY, JSON.stringify(list));
   }
+}
 
-  const { upload_id, filename: detectedName, total } = initData;
-  const el       = buildImportItem(detectedName, total);
+function _removeImport(upload_id) {
+  const list = JSON.parse(localStorage.getItem(LS_IMPORTS_KEY) || '[]');
+  localStorage.setItem(LS_IMPORTS_KEY, JSON.stringify(list.filter(i => i.upload_id !== upload_id)));
+}
+
+function _attachImportPoll(upload_id, filename, total, url, el) {
   const badge    = el.querySelector('.status-badge');
   const bar      = el.querySelector('.progress-bar');
   const pct      = el.querySelector('.pct-text');
   const spd      = el.querySelector('.spd-text');
   const abortBtn = el.querySelector('.abort-btn');
-  queue.prepend(el);
 
   let lastBytes = 0, lastTime = Date.now();
   let cancelled = false;
@@ -591,6 +593,7 @@ async function startImport(url, filename) {
     if (cancelled) return;
     cancelled = true;
     clearInterval(poll);
+    _removeImport(upload_id);
     abortBtn.remove();
     badge.className = 'status-badge aborted';
     badge.textContent = 'Cancelled';
@@ -618,7 +621,13 @@ async function startImport(url, filename) {
       return;
     }
 
-    const { status, bytes_done = 0, total: tot = total, error } = prog;
+    const { status, bytes_done = 0, total: tot = (total || 0), error } = prog;
+
+    // Update filename label if server detected a different name
+    if (prog.filename && prog.filename !== filename) {
+      const nameEl = el.querySelector('.file-name');
+      if (nameEl) nameEl.textContent = prog.filename;
+    }
 
     const pctVal = tot ? Math.min(100, Math.round((bytes_done / tot) * 100)) : 0;
     bar.style.width = pctVal + '%';
@@ -643,6 +652,7 @@ async function startImport(url, filename) {
       bar.style.width = '98%';
     } else if (status === 'completed') {
       clearInterval(poll);
+      _removeImport(upload_id);
       abortBtn.remove();
       bar.style.width = '100%';
       bar.classList.add('success');
@@ -670,8 +680,9 @@ async function startImport(url, filename) {
       loadDashboard();
     } else if (status === 'failed' || status === 'aborted') {
       clearInterval(poll);
+      _removeImport(upload_id);
       abortBtn.remove();
-      if (status === 'aborted') return; // user already cancelled locally
+      if (status === 'aborted') return;
       bar.classList.add('error');
       badge.className = 'status-badge error';
       badge.textContent = 'Failed';
@@ -689,12 +700,51 @@ async function startImport(url, filename) {
           errDiv.remove();
           relayBtn.remove();
           bar.classList.remove('error');
-          startBrowserRelay(url, detectedName, el);
+          startBrowserRelay(url, filename, el);
         });
         el.appendChild(relayBtn);
       }
     }
   }, 2000);
+}
+
+function resumePendingImports() {
+  const list = JSON.parse(localStorage.getItem(LS_IMPORTS_KEY) || '[]');
+  if (!list.length) return;
+  const queue = document.getElementById('import-queue');
+  const wrap  = document.getElementById('upload-queue-wrap');
+  list.forEach(({ upload_id, filename, total, url }) => {
+    const el = buildImportItem(filename, total);
+    const badge = el.querySelector('.status-badge');
+    badge.className = 'status-badge resuming';
+    badge.textContent = 'Reconnecting…';
+    queue.prepend(el);
+    wrap.hidden = false;
+    _attachImportPoll(upload_id, filename, total, url, el);
+  });
+}
+
+async function startImport(url, filename) {
+  const errEl = document.getElementById('import-error');
+  const queue = document.getElementById('import-queue');
+  const wrap  = document.getElementById('upload-queue-wrap');
+  errEl.textContent = '';
+
+  let initData;
+  try {
+    initData = await apiFetch('POST', '/api/import', { url, filename: filename || null });
+  } catch (e) {
+    errEl.textContent = e.message;
+    return;
+  }
+
+  const { upload_id, filename: detectedName, total } = initData;
+  _saveImport(upload_id, detectedName, total, url);
+
+  const el = buildImportItem(detectedName, total);
+  queue.prepend(el);
+  wrap.hidden = false;
+  _attachImportPoll(upload_id, detectedName, total, url, el);
 }
 
 async function startBrowserRelay(url, filename, el) {
@@ -1591,6 +1641,7 @@ function initApp() {
     btn.addEventListener('click', () => showPage(btn.dataset.page));
   });
   initImportForm();
+  resumePendingImports();
   initAdForm();
   initRedirectUrlForm();
   initStorageForm();
