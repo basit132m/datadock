@@ -550,6 +550,7 @@ function buildImportItem(filename, total) {
       </div>
       <div class="item-actions">
         <span class="status-badge initializing">Connecting…</span>
+        <button class="btn-sm danger abort-btn">Cancel</button>
       </div>
     </div>
     <div class="progress-wrap"><div class="progress-bar" style="width:0%"></div></div>
@@ -574,28 +575,55 @@ async function startImport(url, filename) {
   }
 
   const { upload_id, filename: detectedName, total } = initData;
-  const el    = buildImportItem(detectedName, total);
-  const badge = el.querySelector('.status-badge');
-  const bar   = el.querySelector('.progress-bar');
-  const pct   = el.querySelector('.pct-text');
-  const spd   = el.querySelector('.spd-text');
+  const el       = buildImportItem(detectedName, total);
+  const badge    = el.querySelector('.status-badge');
+  const bar      = el.querySelector('.progress-bar');
+  const pct      = el.querySelector('.pct-text');
+  const spd      = el.querySelector('.spd-text');
+  const abortBtn = el.querySelector('.abort-btn');
   queue.prepend(el);
 
   let lastBytes = 0, lastTime = Date.now();
+  let cancelled = false;
+  let failStreak = 0;
+
+  abortBtn.addEventListener('click', async () => {
+    if (cancelled) return;
+    cancelled = true;
+    clearInterval(poll);
+    abortBtn.remove();
+    badge.className = 'status-badge aborted';
+    badge.textContent = 'Cancelled';
+    bar.classList.add('error');
+    spd.textContent = '';
+    try { await apiFetch('DELETE', `/api/upload/${upload_id}`); } catch {}
+  });
 
   const poll = setInterval(async () => {
+    if (cancelled) { clearInterval(poll); return; }
     let prog;
-    try { prog = await apiFetch('GET', `/api/import/${upload_id}/status`); }
-    catch { return; }
+    try {
+      prog = await apiFetch('GET', `/api/import/${upload_id}/status`);
+      if (failStreak > 0) {
+        failStreak = 0;
+        badge.className = 'status-badge uploading';
+        badge.textContent = 'Downloading…';
+      }
+    } catch {
+      failStreak++;
+      if (failStreak >= 3) {
+        badge.className = 'status-badge paused';
+        badge.textContent = 'Connection lost — reconnecting…';
+      }
+      return;
+    }
 
     const { status, bytes_done = 0, total: tot = total, error } = prog;
 
-    // Update progress bar
     const pctVal = tot ? Math.min(100, Math.round((bytes_done / tot) * 100)) : 0;
     bar.style.width = pctVal + '%';
     pct.textContent = tot ? pctVal + '%' : formatBytes(bytes_done);
 
-    // Speed
     const now = Date.now(), dt = (now - lastTime) / 1000;
     if (dt >= 1 && bytes_done > lastBytes) {
       spd.textContent = formatBytes((bytes_done - lastBytes) / dt) + '/s';
@@ -609,13 +637,13 @@ async function startImport(url, filename) {
     } else if (status === 'importing') {
       badge.className = 'status-badge uploading';
       badge.textContent = 'Downloading…';
-      pct.textContent = '';
     } else if (status === 'completing') {
       badge.className = 'status-badge completing';
       badge.textContent = 'Finalizing…';
       bar.style.width = '98%';
     } else if (status === 'completed') {
       clearInterval(poll);
+      abortBtn.remove();
       bar.style.width = '100%';
       bar.classList.add('success');
       badge.className = 'status-badge done';
@@ -640,8 +668,10 @@ async function startImport(url, filename) {
       });
       el.appendChild(doneRow);
       loadDashboard();
-    } else if (status === 'failed') {
+    } else if (status === 'failed' || status === 'aborted') {
       clearInterval(poll);
+      abortBtn.remove();
+      if (status === 'aborted') return; // user already cancelled locally
       bar.classList.add('error');
       badge.className = 'status-badge error';
       badge.textContent = 'Failed';
@@ -668,10 +698,35 @@ async function startImport(url, filename) {
 }
 
 async function startBrowserRelay(url, filename, el) {
-  const badge = el.querySelector('.status-badge');
-  const bar   = el.querySelector('.progress-bar');
-  const pct   = el.querySelector('.pct-text');
-  const spd   = el.querySelector('.spd-text');
+  const badge    = el.querySelector('.status-badge');
+  const bar      = el.querySelector('.progress-bar');
+  const pct      = el.querySelector('.pct-text');
+  const spd      = el.querySelector('.spd-text');
+  const actions  = el.querySelector('.item-actions');
+
+  // Add cancel button
+  const abortBtn = document.createElement('button');
+  abortBtn.className = 'btn-sm danger abort-btn';
+  abortBtn.textContent = 'Cancel';
+  actions.appendChild(abortBtn);
+
+  const controller = new AbortController();
+  let relayUploadId = null;
+  let aborted = false;
+
+  abortBtn.addEventListener('click', async () => {
+    if (aborted) return;
+    aborted = true;
+    controller.abort();
+    abortBtn.remove();
+    badge.className = 'status-badge aborted';
+    badge.textContent = 'Cancelled';
+    bar.classList.add('error');
+    spd.textContent = '';
+    if (relayUploadId) {
+      try { await apiFetch('DELETE', `/api/upload/${relayUploadId}`); } catch {}
+    }
+  });
 
   badge.className = 'status-badge uploading';
   badge.textContent = 'Browser Fetch…';
@@ -680,9 +735,10 @@ async function startBrowserRelay(url, filename, el) {
 
   let resp;
   try {
-    resp = await fetch(url);
+    resp = await fetch(url, { signal: controller.signal });
     if (!resp.ok) throw new Error(`Server returned HTTP ${resp.status}`);
   } catch (e) {
+    if (aborted) return;
     badge.className = 'status-badge error';
     badge.textContent = 'Failed';
     bar.classList.add('error');
@@ -718,6 +774,7 @@ async function startBrowserRelay(url, filename, el) {
     return;
   }
 
+  relayUploadId = initData.upload_id;
   const { upload_id } = initData;
   const reader = resp.body.getReader();
   let buf = new Uint8Array(0);
@@ -727,6 +784,7 @@ async function startBrowserRelay(url, filename, el) {
 
   const uploadPart = async (data, pn) => {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      if (aborted) throw new Error('Aborted');
       try {
         const r = await fetch(`/api/upload/${upload_id}/chunk/${pn}`, {
           method: 'POST',
@@ -736,6 +794,7 @@ async function startBrowserRelay(url, filename, el) {
         if (!r.ok) throw new Error(`Chunk ${pn} failed: HTTP ${r.status}`);
         return;
       } catch (e) {
+        if (aborted) throw e;
         if (attempt === MAX_RETRIES - 1) throw e;
         await sleep(1000 * (attempt + 1));
       }
@@ -744,6 +803,7 @@ async function startBrowserRelay(url, filename, el) {
 
   try {
     while (true) {
+      if (aborted) break;
       const { done, value } = await reader.read();
       if (value) {
         const merged = new Uint8Array(buf.length + value.length);
@@ -776,16 +836,19 @@ async function startBrowserRelay(url, filename, el) {
       if (done) break;
     }
 
-    if (buf.length > 0) {
+    if (!aborted && buf.length > 0) {
       partNumber++;
       await uploadPart(buf, partNumber);
     }
+
+    if (aborted) return;
 
     if (partNumber === 0) throw new Error('Downloaded file was empty');
 
     badge.className = 'status-badge completing';
     badge.textContent = 'Finalizing…';
     bar.style.width = '98%';
+    abortBtn.remove();
 
     const result = await apiFetch('POST', `/api/upload/${upload_id}/complete`, { actual_size: totalBytes });
 
@@ -815,6 +878,8 @@ async function startBrowserRelay(url, filename, el) {
     loadDashboard();
 
   } catch (e) {
+    if (aborted) return;
+    abortBtn.remove();
     badge.className = 'status-badge error';
     badge.textContent = 'Failed';
     bar.classList.add('error');

@@ -577,6 +577,9 @@ async def abort_upload(
     upload = db.query(Upload).filter(Upload.id == upload_id).first()
     if not upload:
         raise HTTPException(404, "Upload not found")
+    # Signal any running import background task to stop
+    if upload_id in _import_progress:
+        _import_progress[upload_id]["status"] = "aborted"
     if upload.status == "pending":
         _get_storage(upload.storage_provider_id, db).abort_multipart_upload(
             upload.b2_file_key, upload.b2_upload_id
@@ -1319,11 +1322,15 @@ async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str,
             async with client.stream("GET", url) as resp:
                 resp.raise_for_status()
                 async for chunk in resp.aiter_bytes(65_536):
+                    if prog.get("status") == "aborted":
+                        break
                     buf.extend(chunk)
                     total_bytes += len(chunk)
                     prog["bytes_done"] = total_bytes
 
                     while len(buf) >= IMPORT_CHUNK:
+                        if prog.get("status") == "aborted":
+                            break
                         part_number += 1
                         data = bytes(buf[:IMPORT_CHUNK])
                         del buf[:IMPORT_CHUNK]
@@ -1333,6 +1340,17 @@ async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str,
                             lambda d=data, p=pn: file_storage.upload_part(file_key, b2_upload_id, p, d),
                         )
                         parts.append({"part_number": pn, "etag": etag})
+
+                    if prog.get("status") == "aborted":
+                        break
+
+        # If cancelled, clean up any parts already uploaded to storage and exit
+        if prog.get("status") == "aborted":
+            await loop.run_in_executor(
+                None, lambda: file_storage.abort_multipart_upload(file_key, b2_upload_id)
+            )
+            db.close()
+            return
 
         # Upload any remaining bytes as the final part
         if buf:
