@@ -458,6 +458,12 @@ input[type="password"]:focus, input[type="text"]:focus { border-color: var(--pri
   background: var(--bg); border: 1px solid var(--border);
   border-radius: 20px; padding: .18rem .6rem; white-space: nowrap;
 }
+.uploader-chip {
+  display: inline-block;
+  font-size: .75rem; font-weight: 500; color: var(--primary);
+  background: var(--primary-lite); border-radius: 20px;
+  padding: .18rem .6rem; white-space: nowrap;
+}
 
 /* ── URL Import ── */
 .url-import-box {

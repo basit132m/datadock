@@ -48,6 +48,7 @@ def _migrate():
             "ALTER TABLE storage_providers ADD COLUMN monthly_bandwidth_used INTEGER DEFAULT 0",
             "ALTER TABLE storage_providers ADD COLUMN bandwidth_reset_month VARCHAR(7)",
             "ALTER TABLE api_keys ADD COLUMN is_master INTEGER DEFAULT 0",
+            "ALTER TABLE uploads ADD COLUMN uploaded_by_key_id VARCHAR(36)",
         ]:
             try:
                 conn.execute(text(sql))

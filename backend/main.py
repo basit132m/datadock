@@ -347,6 +347,13 @@ def require_admin(auth: dict = Depends(require_auth)):
     return auth
 
 
+def get_current_key(x_api_key: Optional[str] = Header(None), db: Session = Depends(get_db)) -> Optional[ApiKey]:
+    """Return the ApiKey ORM object for the request (None for env-key / unauthenticated)."""
+    if not x_api_key:
+        return None
+    return db.query(ApiKey).filter(ApiKey.key == x_api_key, ApiKey.active == 1).first()
+
+
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 
@@ -374,6 +381,7 @@ async def init_upload(
     body: InitUploadIn,
     db: Session = Depends(get_db),
     _=Depends(require_auth),
+    auth_key: Optional[ApiKey] = Depends(get_current_key),
 ):
     if body.file_size > MAX_BYTES:
         raise HTTPException(400, f"File exceeds {os.getenv('MAX_FILE_SIZE_GB', 10)} GB limit")
@@ -432,6 +440,7 @@ async def init_upload(
         views=0,
         downloads=0,
         storage_provider_id=provider_id,
+        uploaded_by_key_id=auth_key.id if auth_key else None,
         created_at=datetime.utcnow(),
     )
     db.add(upload)
@@ -444,6 +453,7 @@ async def relay_init(
     body: BrowserRelayInitIn,
     db: Session = Depends(get_db),
     _=Depends(require_auth),
+    auth_key: Optional[ApiKey] = Depends(get_current_key),
 ):
     """Create an upload slot for browser-side relay (no file_size required)."""
     safe_name = os.path.basename(body.filename).replace("\0", "") or "unnamed"
@@ -469,6 +479,7 @@ async def relay_init(
         views=0,
         downloads=0,
         storage_provider_id=provider_id,
+        uploaded_by_key_id=auth_key.id if auth_key else None,
         created_at=datetime.utcnow(),
     )
     db.add(upload)
@@ -593,20 +604,37 @@ async def abort_upload(
 
 
 @app.get("/api/files")
-async def list_files(db: Session = Depends(get_db), _=Depends(require_auth)):
-    rows = (
-        db.query(Upload)
-        .filter(Upload.status == "completed")
-        .order_by(Upload.completed_at.desc())
-        .limit(200)
-        .all()
-    )
-    # Build provider name lookup in one query
+async def list_files(
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+    auth_key: Optional[ApiKey] = Depends(get_current_key),
+):
+    query = db.query(Upload).filter(Upload.status == "completed")
+    is_admin = auth["role"] == "admin"
+
+    if not is_admin:
+        # Members see only their own uploads
+        if auth_key:
+            query = query.filter(Upload.uploaded_by_key_id == auth_key.id)
+        else:
+            return []
+
+    rows = query.order_by(Upload.completed_at.desc()).limit(200).all()
+
+    # Provider name lookup
     pids = {f.storage_provider_id for f in rows if f.storage_provider_id}
     providers = {}
     if pids:
         for p in db.query(StorageProvider).filter(StorageProvider.id.in_(pids)).all():
             providers[p.id] = p.name
+
+    # Uploader name lookup (admin only)
+    uploader_names: dict = {}
+    if is_admin:
+        key_ids = {f.uploaded_by_key_id for f in rows if f.uploaded_by_key_id}
+        if key_ids:
+            for k in db.query(ApiKey).filter(ApiKey.id.in_(key_ids)).all():
+                uploader_names[k.id] = k.name
 
     return [
         {
@@ -620,6 +648,7 @@ async def list_files(db: Session = Depends(get_db), _=Depends(require_auth)):
             "downloads": f.downloads or 0,
             "storage_name": providers.get(f.storage_provider_id, "Default (env)"),
             "completed_at": f.completed_at.isoformat() if f.completed_at else None,
+            "uploaded_by": uploader_names.get(f.uploaded_by_key_id) if f.uploaded_by_key_id else None,
         }
         for f in rows
     ]
@@ -929,6 +958,7 @@ async def import_from_url(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     _=Depends(require_auth),
+    auth_key: Optional[ApiKey] = Depends(get_current_key),
 ):
     if not body.url.startswith(("http://", "https://")):
         raise HTTPException(400, "URL must start with http:// or https://")
@@ -963,6 +993,7 @@ async def import_from_url(
             views=0,
             downloads=0,
             storage_provider_id=provider_id,
+            uploaded_by_key_id=auth_key.id if auth_key else None,
             created_at=datetime.utcnow(),
         )
         db.add(upload)
@@ -1025,6 +1056,7 @@ async def import_from_url(
         views=0,
         downloads=0,
         storage_provider_id=provider_id,
+        uploaded_by_key_id=auth_key.id if auth_key else None,
         created_at=datetime.utcnow(),
     )
     db.add(upload)

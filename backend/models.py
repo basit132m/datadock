@@ -19,6 +19,7 @@ class Upload(Base):
     views = Column(Integer, default=0)
     downloads = Column(Integer, default=0)
     storage_provider_id = Column(String(36), nullable=True, index=True)
+    uploaded_by_key_id  = Column(String(36), nullable=True)
     created_at = Column(DateTime, nullable=False)
     completed_at = Column(DateTime, nullable=True)
 

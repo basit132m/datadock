@@ -475,13 +475,15 @@ async function loadFileList() {
       return;
     }
 
+    const showUploader = userRole === 'admin';
     const table = document.createElement('table');
     table.className = 'files-table';
     table.innerHTML = `
       <thead>
         <tr>
-          <th>File</th><th>Size</th><th>Storage</th><th>Date</th>
-          <th>Views</th><th>DLs</th><th>Actions</th>
+          <th>File</th><th>Size</th><th>Storage</th>
+          ${showUploader ? '<th>Uploaded by</th>' : ''}
+          <th>Date</th><th>Views</th><th>DLs</th><th>Actions</th>
         </tr>
       </thead>
       <tbody></tbody>`;
@@ -491,18 +493,22 @@ async function loadFileList() {
 
     files.forEach(f => {
       const meta = providerMeta(f.storage_name || '');
+      const uploaderCell = showUploader
+        ? `<td><span class="uploader-chip">${f.uploaded_by || '<span style="color:var(--muted)">—</span>'}</span></td>`
+        : '';
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td><span class="tf-icon">${fileIcon(f.filename)}</span><span class="tf-name">${f.filename}</span></td>
         <td>${formatBytes(f.file_size)}</td>
         <td><span class="sp-chip" title="${f.storage_name || 'Default (env)'}"><i class="fa-solid ${meta.icon}" style="color:${meta.color}"></i> ${f.storage_name || 'Default'}</span></td>
+        ${uploaderCell}
         <td>${formatDate(f.completed_at)}</td>
         <td>${(f.views || 0).toLocaleString()}</td>
         <td>${(f.downloads || 0).toLocaleString()}</td>
         <td class="tf-actions">
           ${f.share_id ? `<button class="btn-share">Share</button>` : ''}
           <button class="btn-direct">Direct</button>
-          <button class="btn-delete">Delete</button>
+          ${userRole === 'admin' ? '<button class="btn-delete">Delete</button>' : ''}
         </td>`;
 
       if (f.share_id) {
