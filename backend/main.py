@@ -609,6 +609,7 @@ async def list_files(
     auth: dict = Depends(require_auth),
     auth_key: Optional[ApiKey] = Depends(get_current_key),
     all_files: bool = Query(False, alias="all"),
+    limit: Optional[int] = Query(None, ge=1, le=500),
 ):
     query = db.query(Upload).filter(Upload.status == "completed")
     is_admin = auth["role"] == "admin"
@@ -620,7 +621,7 @@ async def list_files(
         else:
             return []
 
-    rows = query.order_by(Upload.completed_at.desc()).limit(200).all()
+    rows = query.order_by(Upload.completed_at.desc()).limit(limit or 200).all()
 
     # Provider name lookup
     pids = {f.storage_provider_id for f in rows if f.storage_provider_id}
@@ -683,37 +684,34 @@ async def verify_auth(auth=Depends(require_auth)):
 
 @app.get("/api/stats")
 async def get_stats(db: Session = Depends(get_db), _=Depends(require_admin)):
-    total_files = (
-        db.query(func.count(Upload.id)).filter(Upload.status == "completed").scalar() or 0
-    )
-    total_size = (
-        db.query(func.coalesce(func.sum(Upload.file_size), 0))
-        .filter(Upload.status == "completed")
-        .scalar()
-    )
-    total_downloads = (
-        db.query(func.coalesce(func.sum(Upload.downloads), 0))
-        .filter(Upload.status == "completed")
-        .scalar()
-    )
+    # Single query for all three aggregates
+    agg = db.query(
+        func.count(Upload.id),
+        func.coalesce(func.sum(Upload.file_size), 0),
+        func.coalesce(func.sum(Upload.downloads), 0),
+    ).filter(Upload.status == "completed").one()
+    total_files, total_size, total_downloads = agg
 
-    uploads_per_day = []
+    # Single GROUP BY replaces 7 individual daily count queries
     today = datetime.utcnow().date()
-    for i in range(6, -1, -1):
-        day = today - timedelta(days=i)
-        day_start = datetime(day.year, day.month, day.day, 0, 0, 0)
-        day_end = datetime(day.year, day.month, day.day, 23, 59, 59)
-        count = (
-            db.query(func.count(Upload.id))
-            .filter(
-                Upload.status == "completed",
-                Upload.completed_at >= day_start,
-                Upload.completed_at <= day_end,
-            )
-            .scalar()
-            or 0
+    week_start = datetime(today.year, today.month, today.day) - timedelta(days=6)
+    daily_rows = (
+        db.query(
+            func.strftime("%Y-%m-%d", Upload.completed_at).label("day"),
+            func.count(Upload.id).label("cnt"),
         )
-        uploads_per_day.append({"date": day.strftime("%b %d"), "count": count})
+        .filter(Upload.status == "completed", Upload.completed_at >= week_start)
+        .group_by(func.strftime("%Y-%m-%d", Upload.completed_at))
+        .all()
+    )
+    counts = {r.day: r.cnt for r in daily_rows}
+    uploads_per_day = [
+        {
+            "date":  (today - timedelta(days=i)).strftime("%b %d"),
+            "count": counts.get((today - timedelta(days=i)).strftime("%Y-%m-%d"), 0),
+        }
+        for i in range(6, -1, -1)
+    ]
 
     return {
         "total_files": total_files,

@@ -410,12 +410,15 @@ async function startUpload(file) {
 
 async function loadDashboard() {
   try {
-    const stats = await apiFetch('GET', '/api/stats');
+    const [stats, recent] = await Promise.all([
+      apiFetch('GET', '/api/stats'),
+      apiFetch('GET', '/api/files?limit=6'),
+    ]);
     document.getElementById('stat-files').textContent     = stats.total_files.toLocaleString();
     document.getElementById('stat-storage').textContent   = formatBytes(stats.total_size);
     document.getElementById('stat-downloads').textContent = stats.total_downloads.toLocaleString();
     renderChart(stats.uploads_per_day);
-    await loadRecentFiles();
+    _renderRecentFiles(recent);
   } catch (e) {
     console.error('Dashboard error:', e);
   }
@@ -447,15 +450,13 @@ function renderChart(data) {
   });
 }
 
-async function loadRecentFiles() {
+function _renderRecentFiles(files) {
   const el = document.getElementById('recent-files');
-  const files = await apiFetch('GET', '/api/files');
-  const recent = files.slice(0, 6);
-  if (!recent.length) {
+  if (!files.length) {
     el.innerHTML = '<p style="padding:1rem;color:var(--muted);font-size:.875rem">No files yet. Upload something!</p>';
     return;
   }
-  el.innerHTML = recent.map(f => `
+  el.innerHTML = files.map(f => `
     <div class="recent-file-row">
       <span class="rf-icon">${fileIcon(f.filename)}</span>
       <span class="rf-name">${f.filename}</span>
