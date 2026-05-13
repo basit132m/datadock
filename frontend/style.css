@@ -282,6 +282,29 @@ input[type="password"]:focus, input[type="text"]:focus { border-color: var(--pri
 .tf-name { font-weight: 500; }
 .tf-actions { display: flex; gap: .4rem; }
 
+/* ── Folder view (admin file list) ── */
+.folder-card {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); margin-bottom: .6rem;
+  overflow: hidden; box-shadow: var(--shadow);
+}
+.folder-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .85rem 1.1rem; cursor: pointer; user-select: none;
+  transition: background .12s;
+}
+.folder-header:hover { background: var(--bg); }
+.folder-title { display: flex; align-items: center; gap: .6rem; }
+.folder-icon  { font-size: 1.1rem; color: #f59e0b; }
+.folder-name  { font-weight: 600; font-size: .9rem; color: var(--text); }
+.folder-meta  {
+  font-size: .75rem; color: var(--muted);
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 20px; padding: .1rem .55rem;
+}
+.folder-chevron { font-size: .75rem; color: var(--muted); transition: transform .15s; }
+.folder-body { border-top: 1px solid var(--border); }
+
 .btn-share  { cursor: pointer; font-family: var(--font); font-size: .75rem; font-weight: 500; border: none; border-radius: 6px; padding: .3rem .65rem; background: var(--primary-lite); color: var(--primary); transition: background .15s; }
 .btn-share:hover { background: #dde4ff; }
 .btn-direct { cursor: pointer; font-family: var(--font); font-size: .75rem; font-weight: 500; border: none; border-radius: 6px; padding: .3rem .65rem; background: var(--success-lite); color: var(--success); transition: background .15s; }

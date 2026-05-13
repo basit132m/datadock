@@ -466,77 +466,140 @@ async function loadRecentFiles() {
 
 // ── File list ─────────────────────────────────────────────────────────────────
 
+function _buildFileRow(f, canDelete) {
+  const meta = providerMeta(f.storage_name || '');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><span class="tf-icon">${fileIcon(f.filename)}</span><span class="tf-name">${f.filename}</span></td>
+    <td>${formatBytes(f.file_size)}</td>
+    <td><span class="sp-chip" title="${f.storage_name || 'Default (env)'}"><i class="fa-solid ${meta.icon}" style="color:${meta.color}"></i> ${f.storage_name || 'Default'}</span></td>
+    <td>${formatDate(f.completed_at)}</td>
+    <td>${(f.views || 0).toLocaleString()}</td>
+    <td>${(f.downloads || 0).toLocaleString()}</td>
+    <td class="tf-actions">
+      ${f.share_id ? `<button class="btn-share">Share</button>` : ''}
+      <button class="btn-direct">Direct</button>
+      ${canDelete ? '<button class="btn-delete">Delete</button>' : ''}
+    </td>`;
+
+  if (f.share_id) {
+    const shareUrl = `${window.location.origin}/f/${f.share_id}`;
+    tr.querySelector('.btn-share').addEventListener('click', e => {
+      navigator.clipboard.writeText(shareUrl);
+      e.target.textContent = 'Copied!';
+      setTimeout(() => { e.target.textContent = 'Share'; }, 2000);
+    });
+  }
+
+  tr.querySelector('.btn-direct').addEventListener('click', e => {
+    navigator.clipboard.writeText(f.direct_url);
+    e.target.textContent = 'Copied!';
+    setTimeout(() => { e.target.textContent = 'Direct'; }, 2000);
+  });
+
+  if (canDelete) {
+    tr.querySelector('.btn-delete').addEventListener('click', async () => {
+      if (!confirm(`Delete "${f.filename}"?`)) return;
+      try {
+        await apiFetch('DELETE', `/api/files/${f.id}`);
+        tr.remove();
+        loadDashboard();
+      } catch (err) { alert('Delete failed: ' + err.message); }
+    });
+  }
+
+  return tr;
+}
+
+function _renderFilesTable(container, files, canDelete) {
+  const table = document.createElement('table');
+  table.className = 'files-table';
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>File</th><th>Size</th><th>Storage</th><th>Date</th>
+        <th>Views</th><th>DLs</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody></tbody>`;
+  const tbody = table.querySelector('tbody');
+  files.forEach(f => tbody.appendChild(_buildFileRow(f, canDelete)));
+  container.appendChild(table);
+}
+
+function _buildFolderCard(memberName, files) {
+  const isLegacy = memberName === null;
+  const displayName = isLegacy ? 'Admin / Unattributed' : memberName;
+  const totalSize = files.reduce((s, f) => s + (f.file_size || 0), 0);
+
+  const card = document.createElement('div');
+  card.className = 'folder-card';
+  card.innerHTML = `
+    <div class="folder-header">
+      <div class="folder-title">
+        <i class="fa-solid fa-folder folder-icon"></i>
+        <span class="folder-name">${displayName}</span>
+        <span class="folder-meta">${files.length} file${files.length !== 1 ? 's' : ''} &middot; ${formatBytes(totalSize)}</span>
+      </div>
+      <i class="fa-solid fa-chevron-right folder-chevron"></i>
+    </div>
+    <div class="folder-body" hidden></div>`;
+
+  const header   = card.querySelector('.folder-header');
+  const body     = card.querySelector('.folder-body');
+  const folderIc = card.querySelector('.folder-icon');
+  const chevron  = card.querySelector('.folder-chevron');
+  let expanded = false;
+  let rendered = false;
+
+  header.addEventListener('click', () => {
+    expanded = !expanded;
+    body.hidden = !expanded;
+    folderIc.className = `fa-solid ${expanded ? 'fa-folder-open' : 'fa-folder'} folder-icon`;
+    chevron.className  = `fa-solid ${expanded ? 'fa-chevron-down' : 'fa-chevron-right'} folder-chevron`;
+    if (expanded && !rendered) {
+      rendered = true;
+      _renderFilesTable(body, files, true); // admin can always delete
+    }
+  });
+
+  return card;
+}
+
 async function loadFileList() {
   const list = document.getElementById('file-list');
   try {
     const files = await apiFetch('GET', '/api/files');
+    list.innerHTML = '';
+
     if (!files.length) {
       list.innerHTML = '<p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">No files yet.</p>';
       return;
     }
 
-    const showUploader = userRole === 'admin';
-    const table = document.createElement('table');
-    table.className = 'files-table';
-    table.innerHTML = `
-      <thead>
-        <tr>
-          <th>File</th><th>Size</th><th>Storage</th>
-          ${showUploader ? '<th>Uploaded by</th>' : ''}
-          <th>Date</th><th>Views</th><th>DLs</th><th>Actions</th>
-        </tr>
-      </thead>
-      <tbody></tbody>`;
-    list.innerHTML = '';
-    list.appendChild(table);
-    const tbody = table.querySelector('tbody');
-
-    files.forEach(f => {
-      const meta = providerMeta(f.storage_name || '');
-      const uploaderCell = showUploader
-        ? `<td><span class="uploader-chip">${f.uploaded_by || '<span style="color:var(--muted)">—</span>'}</span></td>`
-        : '';
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><span class="tf-icon">${fileIcon(f.filename)}</span><span class="tf-name">${f.filename}</span></td>
-        <td>${formatBytes(f.file_size)}</td>
-        <td><span class="sp-chip" title="${f.storage_name || 'Default (env)'}"><i class="fa-solid ${meta.icon}" style="color:${meta.color}"></i> ${f.storage_name || 'Default'}</span></td>
-        ${uploaderCell}
-        <td>${formatDate(f.completed_at)}</td>
-        <td>${(f.views || 0).toLocaleString()}</td>
-        <td>${(f.downloads || 0).toLocaleString()}</td>
-        <td class="tf-actions">
-          ${f.share_id ? `<button class="btn-share">Share</button>` : ''}
-          <button class="btn-direct">Direct</button>
-          ${userRole === 'admin' ? '<button class="btn-delete">Delete</button>' : ''}
-        </td>`;
-
-      if (f.share_id) {
-        const shareUrl = `${window.location.origin}/f/${f.share_id}`;
-        tr.querySelector('.btn-share').addEventListener('click', e => {
-          navigator.clipboard.writeText(shareUrl);
-          e.target.textContent = 'Copied!';
-          setTimeout(() => { e.target.textContent = 'Share'; }, 2000);
-        });
+    if (userRole === 'admin') {
+      // Group by uploader — null means unattributed (legacy / env-key uploads)
+      const groups = new Map();
+      for (const f of files) {
+        const key = f.uploaded_by || null;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(f);
       }
 
-      tr.querySelector('.btn-direct').addEventListener('click', e => {
-        navigator.clipboard.writeText(f.direct_url);
-        e.target.textContent = 'Copied!';
-        setTimeout(() => { e.target.textContent = 'Direct'; }, 2000);
+      // Named members alphabetically; unattributed folder last
+      const sorted = [...groups.entries()].sort(([a], [b]) => {
+        if (a === null) return 1;
+        if (b === null) return -1;
+        return a.localeCompare(b);
       });
 
-      tr.querySelector('.btn-delete').addEventListener('click', async e => {
-        if (!confirm(`Delete "${f.filename}"?`)) return;
-        try {
-          await apiFetch('DELETE', `/api/files/${f.id}`);
-          tr.remove();
-          loadDashboard();
-        } catch (err) { alert('Delete failed: ' + err.message); }
-      });
-
-      tbody.appendChild(tr);
-    });
+      for (const [name, groupFiles] of sorted) {
+        list.appendChild(_buildFolderCard(name, groupFiles));
+      }
+    } else {
+      // Members: flat table of their own files (no delete)
+      _renderFilesTable(list, files, false);
+    }
   } catch (e) {
     list.innerHTML = `<p style="color:var(--danger);padding:1rem">Failed: ${e.message}</p>`;
   }
