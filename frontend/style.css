@@ -295,7 +295,9 @@ input[type="password"]:focus, input[type="text"]:focus { border-color: var(--pri
 }
 .folder-header:hover { background: var(--bg); }
 .folder-title { display: flex; align-items: center; gap: .6rem; }
-.folder-icon  { font-size: 1.1rem; color: #f59e0b; }
+.folder-icon     { font-size: 1.1rem; color: #f59e0b; }
+.folder-icon-all { font-size: 1.1rem; color: var(--primary); }
+.folder-card-all .folder-header { border-left: 3px solid var(--primary); }
 .folder-name  { font-weight: 600; font-size: .9rem; color: var(--text); }
 .folder-meta  {
   font-size: .75rem; color: var(--muted);

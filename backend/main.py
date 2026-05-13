@@ -608,12 +608,13 @@ async def list_files(
     db: Session = Depends(get_db),
     auth: dict = Depends(require_auth),
     auth_key: Optional[ApiKey] = Depends(get_current_key),
+    all_files: bool = Query(False, alias="all"),
 ):
     query = db.query(Upload).filter(Upload.status == "completed")
     is_admin = auth["role"] == "admin"
 
-    if not is_admin:
-        # Members see only their own uploads
+    if not is_admin and not all_files:
+        # Members see only their own uploads unless requesting all
         if auth_key:
             query = query.filter(Upload.uploaded_by_key_id == auth_key.id)
         else:
@@ -628,9 +629,9 @@ async def list_files(
         for p in db.query(StorageProvider).filter(StorageProvider.id.in_(pids)).all():
             providers[p.id] = p.name
 
-    # Uploader name lookup (admin only)
+    # Uploader name lookup (admin always; members when requesting all files)
     uploader_names: dict = {}
-    if is_admin:
+    if is_admin or all_files:
         key_ids = {f.uploaded_by_key_id for f in rows if f.uploaded_by_key_id}
         if key_ids:
             for k in db.query(ApiKey).filter(ApiKey.id.in_(key_ids)).all():

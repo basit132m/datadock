@@ -466,13 +466,17 @@ async function loadRecentFiles() {
 
 // ── File list ─────────────────────────────────────────────────────────────────
 
-function _buildFileRow(f, canDelete) {
+function _buildFileRow(f, canDelete, showUploader = false) {
   const meta = providerMeta(f.storage_name || '');
+  const uploaderCell = showUploader
+    ? `<td><span class="uploader-chip">${f.uploaded_by || '<span style="color:var(--muted)">—</span>'}</span></td>`
+    : '';
   const tr = document.createElement('tr');
   tr.innerHTML = `
     <td><span class="tf-icon">${fileIcon(f.filename)}</span><span class="tf-name">${f.filename}</span></td>
     <td>${formatBytes(f.file_size)}</td>
     <td><span class="sp-chip" title="${f.storage_name || 'Default (env)'}"><i class="fa-solid ${meta.icon}" style="color:${meta.color}"></i> ${f.storage_name || 'Default'}</span></td>
+    ${uploaderCell}
     <td>${formatDate(f.completed_at)}</td>
     <td>${(f.views || 0).toLocaleString()}</td>
     <td>${(f.downloads || 0).toLocaleString()}</td>
@@ -511,25 +515,24 @@ function _buildFileRow(f, canDelete) {
   return tr;
 }
 
-function _renderFilesTable(container, files, canDelete) {
+function _renderFilesTable(container, files, canDelete, showUploader = false) {
   const table = document.createElement('table');
   table.className = 'files-table';
   table.innerHTML = `
     <thead>
       <tr>
-        <th>File</th><th>Size</th><th>Storage</th><th>Date</th>
-        <th>Views</th><th>DLs</th><th>Actions</th>
+        <th>File</th><th>Size</th><th>Storage</th>
+        ${showUploader ? '<th>Uploaded by</th>' : ''}
+        <th>Date</th><th>Views</th><th>DLs</th><th>Actions</th>
       </tr>
     </thead>
     <tbody></tbody>`;
   const tbody = table.querySelector('tbody');
-  files.forEach(f => tbody.appendChild(_buildFileRow(f, canDelete)));
+  files.forEach(f => tbody.appendChild(_buildFileRow(f, canDelete, showUploader)));
   container.appendChild(table);
 }
 
-function _buildFolderCard(memberName, files) {
-  const isLegacy = memberName === null;
-  const displayName = isLegacy ? 'Admin / Unattributed' : memberName;
+function _buildFolderCard(displayName, files, canDelete = true, showUploader = false) {
   const totalSize = files.reduce((s, f) => s + (f.file_size || 0), 0);
 
   const card = document.createElement('div');
@@ -559,7 +562,60 @@ function _buildFolderCard(memberName, files) {
     chevron.className  = `fa-solid ${expanded ? 'fa-chevron-down' : 'fa-chevron-right'} folder-chevron`;
     if (expanded && !rendered) {
       rendered = true;
-      _renderFilesTable(body, files, true); // admin can always delete
+      _renderFilesTable(body, files, canDelete, showUploader);
+    }
+  });
+
+  return card;
+}
+
+function _buildAllFilesFolder() {
+  const card = document.createElement('div');
+  card.className = 'folder-card folder-card-all';
+  card.innerHTML = `
+    <div class="folder-header">
+      <div class="folder-title">
+        <i class="fa-solid fa-folder-tree folder-icon-all"></i>
+        <span class="folder-name">All Files</span>
+        <span class="folder-meta">All team uploads</span>
+      </div>
+      <i class="fa-solid fa-chevron-right folder-chevron"></i>
+    </div>
+    <div class="folder-body" hidden></div>`;
+
+  const header   = card.querySelector('.folder-header');
+  const body     = card.querySelector('.folder-body');
+  const folderIc = card.querySelector('.folder-icon-all');
+  const chevron  = card.querySelector('.folder-chevron');
+  let expanded = false;
+  let rendered = false;
+
+  header.addEventListener('click', async () => {
+    expanded = !expanded;
+    body.hidden = !expanded;
+    chevron.className = `fa-solid ${expanded ? 'fa-chevron-down' : 'fa-chevron-right'} folder-chevron`;
+
+    if (expanded && !rendered) {
+      rendered = true;
+      body.innerHTML = '<p style="padding:1rem 1.1rem;color:var(--muted);font-size:.875rem">Loading…</p>';
+      try {
+        const all = await apiFetch('GET', '/api/files?all=1');
+        body.innerHTML = '';
+        if (!all.length) {
+          body.innerHTML = '<p style="padding:1rem 1.1rem;color:var(--muted);font-size:.875rem;text-align:center">No files yet.</p>';
+        } else {
+          // Update meta badge with real count
+          card.querySelector('.folder-meta').textContent =
+            `${all.length} file${all.length !== 1 ? 's' : ''} · ${formatBytes(all.reduce((s, f) => s + (f.file_size || 0), 0))}`;
+          _renderFilesTable(body, all, false, true); // no delete, show uploader
+        }
+      } catch (e) {
+        body.innerHTML = `<p style="color:var(--danger);padding:1rem">Failed: ${e.message}</p>`;
+        rendered = false; // allow retry on next click
+        expanded = false;
+        body.hidden = true;
+        chevron.className = 'fa-solid fa-chevron-right folder-chevron';
+      }
     }
   });
 
@@ -572,12 +628,11 @@ async function loadFileList() {
     const files = await apiFetch('GET', '/api/files');
     list.innerHTML = '';
 
-    if (!files.length) {
-      list.innerHTML = '<p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">No files yet.</p>';
-      return;
-    }
-
     if (userRole === 'admin') {
+      if (!files.length) {
+        list.innerHTML = '<p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">No files yet.</p>';
+        return;
+      }
       // Group by uploader — null means unattributed (legacy / env-key uploads)
       const groups = new Map();
       for (const f of files) {
@@ -585,20 +640,21 @@ async function loadFileList() {
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key).push(f);
       }
-
       // Named members alphabetically; unattributed folder last
       const sorted = [...groups.entries()].sort(([a], [b]) => {
         if (a === null) return 1;
         if (b === null) return -1;
         return a.localeCompare(b);
       });
-
       for (const [name, groupFiles] of sorted) {
-        list.appendChild(_buildFolderCard(name, groupFiles));
+        list.appendChild(_buildFolderCard(name || 'Admin / Unattributed', groupFiles));
       }
     } else {
-      // Members: flat table of their own files (no delete)
-      _renderFilesTable(list, files, false);
+      // Members: "My Files" folder + "All Files" folder
+      list.appendChild(_buildFolderCard(
+        'My Files', files, false, false   // own files, no delete, no uploader column
+      ));
+      list.appendChild(_buildAllFilesFolder());
     }
   } catch (e) {
     list.innerHTML = `<p style="color:var(--danger);padding:1rem">Failed: ${e.message}</p>`;
