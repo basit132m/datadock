@@ -31,7 +31,10 @@ from storage import B2Storage, BunnyStorage, S3Storage
 MAX_BYTES    = int(os.getenv("MAX_FILE_SIZE_GB", "10")) * 1_073_741_824
 API_KEY      = os.getenv("API_KEY", "")
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
-IMPORT_CHUNK = 10 * 1024 * 1024  # 10 MB per B2 part
+IMPORT_CHUNK     = 32 * 1024 * 1024   # 32 MB per B2 part
+IMPORT_WORKERS   = 4                   # parallel S3 upload workers
+IMPORT_QUEUE_MAX = 8                   # max buffered parts in queue
+IMPORT_READ_SIZE = 2 * 1024 * 1024    # 2 MB HTTP read chunks
 
 WORKER_URL    = os.getenv("WORKER_URL", "").rstrip("/")   # e.g. https://datadock-dl.abc.workers.dev
 WORKER_SECRET = os.getenv("WORKER_SECRET", "")
@@ -1339,41 +1342,82 @@ async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str,
 
     try:
         file_storage = _get_storage(provider_id, db)
-        parts: list = []
+        parts_dict: dict = {}  # part_number → etag
+        errors: list = []
         part_number = 0
         buf = bytearray()
         total_bytes = 0
 
-        async with httpx.AsyncClient(
-            follow_redirects=True,
-            max_redirects=_MAX_REDIRECTS,
-            timeout=httpx.Timeout(30.0, read=600.0),
-            headers=_download_headers(url),
-        ) as client:
-            async with client.stream("GET", url) as resp:
-                resp.raise_for_status()
-                async for chunk in resp.aiter_bytes(65_536):
-                    if prog.get("status") == "aborted":
-                        break
-                    buf.extend(chunk)
-                    total_bytes += len(chunk)
-                    prog["bytes_done"] = total_bytes
+        part_queue: asyncio.Queue = asyncio.Queue(maxsize=IMPORT_QUEUE_MAX)
 
-                    while len(buf) >= IMPORT_CHUNK:
-                        if prog.get("status") == "aborted":
+        async def upload_worker():
+            while True:
+                item = await part_queue.get()
+                try:
+                    if item is None:  # sentinel — worker should exit
+                        return
+                    if errors or prog.get("status") == "aborted":
+                        continue  # drain queue without processing
+                    pn, data = item
+                    etag = await loop.run_in_executor(
+                        None,
+                        lambda d=data, p=pn: file_storage.upload_part(file_key, b2_upload_id, p, d),
+                    )
+                    parts_dict[pn] = etag
+                except Exception as exc:
+                    errors.append(exc)
+                finally:
+                    part_queue.task_done()
+
+        workers = [asyncio.create_task(upload_worker()) for _ in range(IMPORT_WORKERS)]
+
+        try:
+            async with httpx.AsyncClient(
+                follow_redirects=True,
+                max_redirects=_MAX_REDIRECTS,
+                timeout=httpx.Timeout(30.0, read=600.0),
+                headers=_download_headers(url),
+            ) as client:
+                async with client.stream("GET", url) as resp:
+                    resp.raise_for_status()
+                    async for chunk in resp.aiter_bytes(IMPORT_READ_SIZE):
+                        if prog.get("status") == "aborted" or errors:
                             break
-                        part_number += 1
-                        data = bytes(buf[:IMPORT_CHUNK])
-                        del buf[:IMPORT_CHUNK]
-                        pn = part_number
-                        etag = await loop.run_in_executor(
-                            None,
-                            lambda d=data, p=pn: file_storage.upload_part(file_key, b2_upload_id, p, d),
-                        )
-                        parts.append({"part_number": pn, "etag": etag})
+                        buf.extend(chunk)
+                        total_bytes += len(chunk)
+                        prog["bytes_done"] = total_bytes
 
-                    if prog.get("status") == "aborted":
-                        break
+                        while len(buf) >= IMPORT_CHUNK:
+                            if prog.get("status") == "aborted" or errors:
+                                break
+                            part_number += 1
+                            data = bytes(buf[:IMPORT_CHUNK])
+                            del buf[:IMPORT_CHUNK]
+                            await part_queue.put((part_number, data))  # backpressure
+
+                        if prog.get("status") == "aborted" or errors:
+                            break
+
+            # Upload any remaining bytes as the final part
+            if buf and not errors and prog.get("status") != "aborted":
+                part_number += 1
+                await part_queue.put((part_number, bytes(buf)))
+
+        finally:
+            # Drain any unconsumed items before sending sentinels
+            while not part_queue.empty():
+                try:
+                    part_queue.get_nowait()
+                    part_queue.task_done()
+                except asyncio.QueueEmpty:
+                    break
+            for _ in range(IMPORT_WORKERS):
+                part_queue.put_nowait(None)
+
+        await asyncio.gather(*workers, return_exceptions=True)
+
+        if errors:
+            raise errors[0]
 
         # If cancelled, clean up any parts already uploaded to storage and exit
         if prog.get("status") == "aborted":
@@ -1383,21 +1427,11 @@ async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str,
             db.close()
             return
 
-        # Upload any remaining bytes as the final part
-        if buf:
-            part_number += 1
-            pn = part_number
-            data = bytes(buf)
-            etag = await loop.run_in_executor(
-                None,
-                lambda d=data, p=pn: file_storage.upload_part(file_key, b2_upload_id, p, d),
-            )
-            parts.append({"part_number": pn, "etag": etag})
-
-        if not parts:
+        if not parts_dict:
             raise ValueError("Remote file was empty")
 
         prog["status"] = "completing"
+        parts = [{"part_number": pn, "etag": etag} for pn, etag in sorted(parts_dict.items())]
         await loop.run_in_executor(
             None,
             lambda: file_storage.complete_multipart_upload(file_key, b2_upload_id, parts),
