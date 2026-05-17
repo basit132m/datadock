@@ -45,6 +45,7 @@ _storage_cache:     dict = {}    # provider_id -> S3Storage instance
 _geo_cache:         dict = {}    # ip -> (country, country_code)
 _geoip_reader             = None  # geoip2 Reader singleton
 _recent_downloads:  dict = {}    # (ip, upload_id) -> last download datetime
+_dl_tokens:         dict = {}    # token -> {share_id, expires}
 
 GEOIP_DB_PATH      = os.getenv("GEOIP_DB_PATH", "/app/backend/data/GeoLite2-Country.mmdb")
 DEDUP_WINDOW_SECS  = 3600  # same IP + same file within 1 hour = duplicate
@@ -795,11 +796,32 @@ def _chained_download_url(upload: Upload, db: Session) -> str:
     return _get_storage(upload.storage_provider_id, db).get_download_url(upload.b2_file_key)
 
 
+@app.post("/api/f/{share_id}/token")
+async def create_download_token(share_id: str, db: Session = Depends(get_db)):
+    """Issue a short-lived single-use download token for the share page."""
+    upload = (
+        db.query(Upload)
+        .filter(Upload.share_id == share_id, Upload.status == "completed")
+        .first()
+    )
+    if not upload:
+        raise HTTPException(404, "File not found")
+    token = secrets.token_urlsafe(24)
+    expires = datetime.utcnow() + timedelta(seconds=120)
+    _dl_tokens[token] = {"share_id": share_id, "expires": expires}
+    # Prune expired tokens to prevent unbounded growth
+    now = datetime.utcnow()
+    for k in [k for k, v in list(_dl_tokens.items()) if v["expires"] < now]:
+        del _dl_tokens[k]
+    return {"token": token}
+
+
 @app.get("/api/f/{share_id}/download")
 async def download_file(
     share_id: str,
     request: Request,
     background_tasks: BackgroundTasks,
+    token: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
     upload = (
@@ -809,6 +831,11 @@ async def download_file(
     )
     if not upload:
         raise HTTPException(404, "File not found")
+
+    # Require a valid single-use token — prevents hotlinking the download URL
+    tok = _dl_tokens.pop(token, None) if token else None
+    if tok is None or tok["share_id"] != share_id or tok["expires"] < datetime.utcnow():
+        raise HTTPException(403, "Missing or expired download token. Please use the share page to download.")
 
     ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
     if not ip:

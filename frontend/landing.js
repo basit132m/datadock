@@ -154,28 +154,41 @@
     document.getElementById('lp-views').textContent = (d.views || 0).toLocaleString();
     document.getElementById('lp-downloads').textContent = (d.downloads || 0).toLocaleString();
 
-    // ── Download button — interstitial logic ───────────────────────────────
+    // ── Download button — token-gated, no static href ─────────────────────
     const dlBtn = document.getElementById('lp-download-btn');
-    const dlUrl = `/api/f/${shareId}/download`;
+    dlBtn.removeAttribute('href');
+    dlBtn.style.cursor = 'pointer';
 
-    if (redirectUrl) {
-      let clicked = false;
-      dlBtn.href = '#';
-      dlBtn.addEventListener('click', e => {
-        e.preventDefault();
-        if (!clicked) {
-          clicked = true;
-          window.open(redirectUrl, '_blank', 'noopener,noreferrer');
-          dlBtn.innerHTML = '<i class="fa-solid fa-download"></i> Click again to download';
-          dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
-          dlBtn.style.boxShadow = '0 4px 18px rgba(5,150,105,.35)';
-        } else {
-          location.href = dlUrl;
-        }
-      });
-    } else {
-      dlBtn.href = dlUrl;
+    async function triggerDownload() {
+      dlBtn.disabled = true;
+      const orig = dlBtn.innerHTML;
+      dlBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Preparing…';
+      try {
+        const res = await fetch(`/api/f/${shareId}/token`, { method: 'POST' });
+        if (!res.ok) throw new Error('Token error');
+        const { token } = await res.json();
+        location.href = `/api/f/${shareId}/download?token=${token}`;
+      } catch {
+        dlBtn.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Try again';
+        setTimeout(() => { dlBtn.innerHTML = orig; dlBtn.disabled = false; }, 2500);
+        return;
+      }
+      setTimeout(() => { dlBtn.innerHTML = orig; dlBtn.disabled = false; }, 3000);
     }
+
+    let interstitialDone = !redirectUrl;
+    dlBtn.addEventListener('click', async e => {
+      e.preventDefault();
+      if (!interstitialDone) {
+        interstitialDone = true;
+        window.open(redirectUrl, '_blank', 'noopener,noreferrer');
+        dlBtn.innerHTML = '<i class="fa-solid fa-download"></i> Click again to download';
+        dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
+        dlBtn.style.boxShadow = '0 4px 18px rgba(5,150,105,.35)';
+        return;
+      }
+      await triggerDownload();
+    });
 
     document.getElementById('lc-loading').hidden = true;
     document.getElementById('lc-card').hidden = false;
