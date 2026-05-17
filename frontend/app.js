@@ -629,33 +629,28 @@ async function loadFileList() {
     const files = await apiFetch('GET', '/api/files');
     list.innerHTML = '';
 
+    // "All Files" folder is visible to everyone (admin + members)
+    list.appendChild(_buildAllFilesFolder());
+
     if (userRole === 'admin') {
-      if (!files.length) {
-        list.innerHTML = '<p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">No files yet.</p>';
-        return;
-      }
-      // Group by uploader — null means unattributed (legacy / env-key uploads)
+      if (!files.length) return;
+      // Group by named uploader only — unattributed files appear in All Files above
       const groups = new Map();
       for (const f of files) {
         const key = f.uploaded_by || null;
+        if (!key) continue; // skip unattributed — covered by All Files
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key).push(f);
       }
-      // Named members alphabetically; unattributed folder last
-      const sorted = [...groups.entries()].sort(([a], [b]) => {
-        if (a === null) return 1;
-        if (b === null) return -1;
-        return a.localeCompare(b);
-      });
+      const sorted = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
       for (const [name, groupFiles] of sorted) {
-        list.appendChild(_buildFolderCard(name || 'Admin / Unattributed', groupFiles));
+        list.appendChild(_buildFolderCard(name, groupFiles));
       }
     } else {
-      // Members: "My Files" folder + "All Files" folder
+      // Members: also show their own "My Files" folder
       list.appendChild(_buildFolderCard(
-        'My Files', files, false, false   // own files, no delete, no uploader column
+        'My Files', files, false, false
       ));
-      list.appendChild(_buildAllFilesFolder());
     }
   } catch (e) {
     list.innerHTML = `<p style="color:var(--danger);padding:1rem">Failed: ${e.message}</p>`;
