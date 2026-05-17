@@ -40,6 +40,10 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); line
 }
 .auth-logo { font-size: 1.8rem; font-weight: 800; margin-bottom: .25rem; }
 .auth-logo span { color: var(--primary); }
+.logo-img { display: block; width: auto; }
+.logo-img-auth    { height: 52px; margin: 0 auto .25rem; }
+.logo-img-sidebar { height: 34px; }
+.logo-img-lp      { height: 32px; }
 .auth-box p { color: var(--muted); font-size: .9rem; margin-bottom: 1.5rem; }
 .auth-box .err { color: var(--danger); font-size: .82rem; margin-top: .6rem; min-height: 1.2rem; }
 

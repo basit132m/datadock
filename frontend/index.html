@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
@@ -15,7 +16,7 @@
 <!-- ── Auth overlay ── -->
 <div id="auth-overlay" style="display:none">
   <div class="auth-box">
-    <div class="auth-logo">Data<span>Dock</span></div>
+    <div class="auth-logo"><img src="/logo.webp" alt="DataDock" class="logo-img logo-img-auth"></div>
     <p>Enter your team API key to access the platform</p>
     <form id="auth-form">
       <input id="auth-input" type="password" placeholder="API Key" autocomplete="current-password" autofocus />
@@ -32,7 +33,7 @@
 
   <!-- Sidebar -->
   <aside id="sidebar">
-    <div class="sidebar-logo">Data<span>Dock</span></div>
+    <div class="sidebar-logo"><img src="/logo.webp" alt="DataDock" class="logo-img logo-img-sidebar"></div>
     <nav class="sidebar-nav">
       <button class="nav-item active" data-page="dashboard">
         <i class="fa-solid fa-chart-line ni-icon"></i> Dashboard

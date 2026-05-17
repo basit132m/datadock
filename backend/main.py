@@ -1957,3 +1957,13 @@ async def serve_css():
 @app.get("/landing.js", include_in_schema=False)
 async def serve_landing_js():
     return FileResponse(os.path.join(FRONTEND_DIR, "landing.js"))
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def serve_favicon():
+    return FileResponse(os.path.join(FRONTEND_DIR, "favicon.ico"), media_type="image/x-icon")
+
+
+@app.get("/logo.webp", include_in_schema=False)
+async def serve_logo():
+    return FileResponse(os.path.join(FRONTEND_DIR, "logo.webp"), media_type="image/webp")
