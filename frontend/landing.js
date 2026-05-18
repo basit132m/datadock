@@ -153,27 +153,35 @@
     document.getElementById('lp-type').textContent = extLabel(d.filename);
     document.getElementById('lp-views').textContent = (d.views || 0).toLocaleString();
     document.getElementById('lp-downloads').textContent = (d.downloads || 0).toLocaleString();
+    document.getElementById('lp-dl-size').textContent = fmtBytes(d.file_size);
 
     // ── Download button — token-gated, no static href ─────────────────────
     const dlBtn = document.getElementById('lp-download-btn');
-    dlBtn.removeAttribute('href');
-    dlBtn.style.cursor = 'pointer';
+
+    function dlBtnState(icon, label, sub) {
+      dlBtn.innerHTML =
+        `<span class="lp-dl-icon"><i class="fa-solid ${icon}"></i></span>` +
+        `<span class="lp-dl-text"><span class="lp-dl-primary">${label}</span>` +
+        (sub ? `<span class="lp-dl-size">${sub}</span>` : '') +
+        `</span>`;
+    }
+
+    const origHTML = dlBtn.innerHTML;
 
     async function triggerDownload() {
       dlBtn.disabled = true;
-      const orig = dlBtn.innerHTML;
-      dlBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Preparing…';
+      dlBtnState('fa-spinner fa-spin', 'Preparing download…', '');
       try {
         const res = await fetch(`/api/f/${shareId}/token`, { method: 'POST' });
         if (!res.ok) throw new Error('Token error');
         const { token } = await res.json();
         location.href = `/api/f/${shareId}/download?token=${token}`;
       } catch {
-        dlBtn.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Try again';
-        setTimeout(() => { dlBtn.innerHTML = orig; dlBtn.disabled = false; }, 2500);
+        dlBtnState('fa-circle-exclamation', 'Try again', '');
+        setTimeout(() => { dlBtn.innerHTML = origHTML; dlBtn.disabled = false; }, 2500);
         return;
       }
-      setTimeout(() => { dlBtn.innerHTML = orig; dlBtn.disabled = false; }, 3000);
+      setTimeout(() => { dlBtn.innerHTML = origHTML; dlBtn.disabled = false; }, 3000);
     }
 
     let interstitialDone = !redirectUrl;
@@ -182,12 +190,34 @@
       if (!interstitialDone) {
         interstitialDone = true;
         window.open(redirectUrl, '_blank', 'noopener,noreferrer');
-        dlBtn.innerHTML = '<i class="fa-solid fa-download"></i> Click again to download';
+        dlBtnState('fa-arrow-up-right-from-square', 'Click again to download', 'Ad opened in new tab');
         dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
-        dlBtn.style.boxShadow = '0 4px 18px rgba(5,150,105,.35)';
         return;
       }
+      dlBtn.style.background = '';
       await triggerDownload();
+    });
+
+    // ── Copy share link button ─────────────────────────────────────────────
+    const copyBtn = document.getElementById('lp-copy-btn');
+    copyBtn.addEventListener('click', async () => {
+      const url = location.href;
+      try {
+        await navigator.clipboard.writeText(url);
+      } catch {
+        const ta = document.createElement('textarea');
+        ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); ta.remove();
+      }
+      copyBtn.classList.add('copied');
+      copyBtn.querySelector('i').className = 'fa-solid fa-check';
+      copyBtn.querySelector('span').textContent = 'Link Copied!';
+      setTimeout(() => {
+        copyBtn.classList.remove('copied');
+        copyBtn.querySelector('i').className = 'fa-solid fa-link';
+        copyBtn.querySelector('span').textContent = 'Copy Share Link';
+      }, 2500);
     });
 
     document.getElementById('lc-loading').hidden = true;

@@ -27,7 +27,7 @@
   <!-- Loading -->
   <div id="lc-loading" class="lp-state">
     <div class="lp-spinner"></div>
-    <p>Loading file…</p>
+    <p>Loading file info…</p>
   </div>
 
   <!-- Error -->
@@ -40,67 +40,89 @@
 
   <!-- File card -->
   <div id="lc-card" class="lp-card" hidden>
+    <div class="lp-card-inner">
 
-    <!-- Icon circle -->
-    <div class="lp-icon-wrap" id="lp-icon-wrap">
-      <i class="fa-solid fa-file lp-file-icon" id="lp-file-icon"></i>
-    </div>
-
-    <!-- Filename -->
-    <h1 class="lp-filename" id="lp-filename">filename.zip</h1>
-
-    <!-- Metadata pills -->
-    <div class="lp-badges" id="lp-badges">
-      <span class="lp-badge">
-        <i class="fa-solid fa-weight-hanging"></i>
-        <span id="lp-size">—</span>
-      </span>
-      <span class="lp-badge">
-        <i class="fa-regular fa-calendar"></i>
-        <span id="lp-date">—</span>
-      </span>
-      <span class="lp-badge lp-badge-type" id="lp-type">—</span>
-    </div>
-
-    <!-- Stats row -->
-    <div class="lp-stats">
-      <div class="lp-stat">
-        <i class="fa-regular fa-eye"></i>
-        <span class="lp-stat-val" id="lp-views">0</span>
-        <span class="lp-stat-label">Views</span>
+      <!-- Left: file info -->
+      <div class="lp-info-panel">
+        <div class="lp-icon-wrap" id="lp-icon-wrap">
+          <i class="fa-solid fa-file lp-file-icon" id="lp-file-icon"></i>
+        </div>
+        <div class="lp-file-details">
+          <div class="lp-ext-chip" id="lp-type">FILE</div>
+          <h1 class="lp-filename" id="lp-filename">filename.zip</h1>
+          <div class="lp-meta-table">
+            <div class="lp-meta-row">
+              <span class="lp-meta-key"><i class="fa-solid fa-weight-hanging"></i> File Size</span>
+              <span class="lp-meta-val" id="lp-size">—</span>
+            </div>
+            <div class="lp-meta-row">
+              <span class="lp-meta-key"><i class="fa-regular fa-calendar-plus"></i> Uploaded</span>
+              <span class="lp-meta-val" id="lp-date">—</span>
+            </div>
+            <div class="lp-meta-row">
+              <span class="lp-meta-key"><i class="fa-solid fa-download"></i> Downloads</span>
+              <span class="lp-meta-val" id="lp-downloads">0</span>
+            </div>
+            <div class="lp-meta-row">
+              <span class="lp-meta-key"><i class="fa-regular fa-eye"></i> Views</span>
+              <span class="lp-meta-val" id="lp-views">0</span>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="lp-divider"></div>
-      <div class="lp-stat">
-        <i class="fa-solid fa-download"></i>
-        <span class="lp-stat-val" id="lp-downloads">0</span>
-        <span class="lp-stat-label">Downloads</span>
+
+      <!-- Right: actions -->
+      <div class="lp-action-panel">
+        <div class="lp-action-inner">
+          <p class="lp-action-label">Ready to download</p>
+
+          <button id="lp-download-btn" class="lp-download-btn">
+            <span class="lp-dl-icon"><i class="fa-solid fa-download"></i></span>
+            <span class="lp-dl-text">
+              <span class="lp-dl-primary">Download File</span>
+              <span class="lp-dl-size" id="lp-dl-size">—</span>
+            </span>
+          </button>
+
+          <button class="lp-copy-btn" id="lp-copy-btn">
+            <i class="fa-solid fa-link"></i>
+            <span>Copy Share Link</span>
+          </button>
+
+          <!-- Button ads injected here -->
+          <div id="ads-buttons" class="ad-slot-buttons"></div>
+
+          <div class="lp-trust">
+            <div class="lp-trust-item">
+              <i class="fa-solid fa-lock"></i>
+              <span>Secure</span>
+            </div>
+            <div class="lp-trust-item">
+              <i class="fa-solid fa-bolt"></i>
+              <span>Fast CDN</span>
+            </div>
+            <div class="lp-trust-item">
+              <i class="fa-solid fa-user-secret"></i>
+              <span>Private</span>
+            </div>
+          </div>
+        </div>
       </div>
+
     </div>
-
-    <!-- Primary download button -->
-    <a id="lp-download-btn" href="#" class="lp-download-btn">
-      <i class="fa-solid fa-download"></i>
-      Download File
-    </a>
-
-    <!-- Button ads injected here -->
-    <div id="ads-buttons" class="ad-slot-buttons"></div>
-
-    <p class="lp-secure-note">
-      <i class="fa-solid fa-lock"></i>
-      Served securely · No account required
-    </p>
-
   </div>
+
 </main>
 
 <!-- Bottom banner ads -->
 <div id="ads-bottom" class="ad-slot ad-slot-bottom"></div>
 
 <footer class="lp-footer">
-  <span>Powered by <a href="/">DataDock</a></span>
+  <a href="/"><img src="/logo.webp" alt="DataDock" class="lp-footer-logo"></a>
   <span class="lp-footer-dot">·</span>
   <span>Fast &amp; Private File Sharing</span>
+  <span class="lp-footer-dot">·</span>
+  <a href="/">Go to DataDock</a>
 </footer>
 
 <script src="/landing.js"></script>
