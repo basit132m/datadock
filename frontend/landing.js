@@ -3,6 +3,24 @@
 
   const shareId = location.pathname.split('/').filter(Boolean).pop();
 
+  // ── Theme toggle ──────────────────────────────────────────────────────────
+  const body = document.body;
+  const themeBtn  = document.getElementById('lp-theme-toggle');
+  const themeIcon = themeBtn.querySelector('i');
+
+  function applyTheme(dark) {
+    body.classList.toggle('lp-dark', dark);
+    themeIcon.className = dark ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+  }
+
+  applyTheme(localStorage.getItem('lp-theme') === 'dark');
+
+  themeBtn.addEventListener('click', () => {
+    const isDark = !body.classList.contains('lp-dark');
+    localStorage.setItem('lp-theme', isDark ? 'dark' : 'light');
+    applyTheme(isDark);
+  });
+
   // ── File type map ──────────────────────────────────────────────────────────
   const FILE_TYPES = {
     zip:  { fa: 'fa-file-zipper',     color: '#f59e0b', bg: '#fef3c7' },
@@ -222,6 +240,7 @@
 
     document.getElementById('lc-loading').hidden = true;
     document.getElementById('lc-card').hidden = false;
+    document.getElementById('lp-features').hidden = false;
   }
 
   init();
