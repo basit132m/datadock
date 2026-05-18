@@ -625,7 +625,8 @@ async def list_files(
         else:
             return []
 
-    rows = query.order_by(Upload.completed_at.desc()).limit(limit or 200).all()
+    q = query.order_by(Upload.completed_at.desc())
+    rows = (q.limit(limit).all() if limit else q.all())
 
     # Provider name lookup
     pids = {f.storage_provider_id for f in rows if f.storage_provider_id}
