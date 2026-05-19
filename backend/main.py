@@ -17,7 +17,7 @@ load_dotenv()
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -2002,3 +2002,48 @@ async def serve_browse():
 @app.get("/browse.js", include_in_schema=False)
 async def serve_browse_js():
     return FileResponse(os.path.join(FRONTEND_DIR, "browse.js"))
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+async def sitemap(request: Request, db: Session = Depends(get_db)):
+    base = os.getenv("SITE_URL", "").rstrip("/") or f"{request.url.scheme}://{request.url.netloc}"
+
+    rows = (
+        db.query(Upload.share_id, Upload.completed_at)
+        .filter(Upload.status == "completed", Upload.share_id.isnot(None))
+        .order_by(Upload.completed_at.desc())
+        .all()
+    )
+
+    urls = [
+        f'  <url><loc>{base}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>',
+        f'  <url><loc>{base}/browse</loc><changefreq>hourly</changefreq><priority>0.9</priority></url>',
+    ]
+    for row in rows:
+        lm = f"<lastmod>{row.completed_at.strftime('%Y-%m-%d')}</lastmod>" if row.completed_at else ""
+        urls.append(
+            f'  <url><loc>{base}/f/{row.share_id}</loc>{lm}'
+            f'<changefreq>never</changefreq><priority>0.7</priority></url>'
+        )
+
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        + "\n".join(urls)
+        + "\n</urlset>"
+    )
+    return Response(content=xml, media_type="application/xml")
+
+
+@app.get("/robots.txt", include_in_schema=False)
+async def robots(request: Request):
+    base = os.getenv("SITE_URL", "").rstrip("/") or f"{request.url.scheme}://{request.url.netloc}"
+    content = (
+        "User-agent: *\n"
+        "Allow: /\n"
+        "Allow: /browse\n"
+        "Allow: /f/\n"
+        "Disallow: /api/\n"
+        f"Sitemap: {base}/sitemap.xml\n"
+    )
+    return Response(content=content, media_type="text/plain")
