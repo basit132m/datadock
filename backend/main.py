@@ -1968,3 +1968,37 @@ async def serve_favicon():
 @app.get("/logo.webp", include_in_schema=False)
 async def serve_logo():
     return FileResponse(os.path.join(FRONTEND_DIR, "logo.webp"), media_type="image/webp")
+
+
+# ── Public browse page ────────────────────────────────────────────────────────
+
+@app.get("/api/public/files")
+async def public_files(db: Session = Depends(get_db)):
+    """No-auth endpoint — returns public file listing for the browse page."""
+    rows = (
+        db.query(Upload)
+        .filter(Upload.status == "completed", Upload.share_id.isnot(None))
+        .order_by(Upload.completed_at.desc())
+        .all()
+    )
+    return [
+        {
+            "filename":     r.filename,
+            "file_size":    r.file_size,
+            "content_type": r.content_type or "application/octet-stream",
+            "share_id":     r.share_id,
+            "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+            "downloads":    r.downloads or 0,
+        }
+        for r in rows
+    ]
+
+
+@app.get("/browse", include_in_schema=False)
+async def serve_browse():
+    return FileResponse(os.path.join(FRONTEND_DIR, "browse.html"))
+
+
+@app.get("/browse.js", include_in_schema=False)
+async def serve_browse_js():
+    return FileResponse(os.path.join(FRONTEND_DIR, "browse.js"))

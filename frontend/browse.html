@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DataDock – Browse Files</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body class="br-body">
+
+<!-- Header -->
+<header class="br-header">
+  <a href="/" class="br-logo"><img src="/logo.webp" alt="DataDock" class="logo-img" style="height:32px;width:auto"></a>
+  <div class="br-header-right">
+    <a href="/browse" class="br-nav-link br-nav-active"><i class="fa-solid fa-folder-open"></i> Browse</a>
+    <button class="br-theme-toggle" id="br-theme-toggle" title="Toggle dark mode">
+      <i class="fa-solid fa-moon"></i>
+    </button>
+  </div>
+</header>
+
+<!-- Hero -->
+<section class="br-hero">
+  <div class="br-hero-inner">
+    <div class="br-hero-badge"><i class="fa-solid fa-bolt"></i> Fast &amp; Free</div>
+    <h1 class="br-hero-title">Share Files For Free</h1>
+    <p class="br-hero-sub">Browse and download files instantly — no account, no sign-up required</p>
+
+    <div class="br-hero-stats" id="br-stats" hidden>
+      <div class="br-hero-stat">
+        <span class="br-hero-stat-val" id="br-count">—</span>
+        <span class="br-hero-stat-lbl">Files Available</span>
+      </div>
+      <div class="br-hero-stat-div"></div>
+      <div class="br-hero-stat">
+        <span class="br-hero-stat-val" id="br-size">—</span>
+        <span class="br-hero-stat-lbl">Total Size</span>
+      </div>
+      <div class="br-hero-stat-div"></div>
+      <div class="br-hero-stat">
+        <span class="br-hero-stat-val" id="br-dl">—</span>
+        <span class="br-hero-stat-lbl">Downloads</span>
+      </div>
+    </div>
+
+    <div class="br-search-wrap">
+      <i class="fa-solid fa-magnifying-glass br-search-icon"></i>
+      <input type="text" id="br-search" class="br-search" placeholder="Search by filename or type…" autocomplete="off" />
+    </div>
+  </div>
+</section>
+
+<!-- File listing -->
+<main class="br-main">
+  <div id="br-loading" class="br-empty">
+    <div class="br-spinner"></div>
+    <p>Loading files…</p>
+  </div>
+
+  <div id="br-empty" class="br-empty" hidden>
+    <i class="fa-solid fa-folder-open" style="font-size:2.5rem;opacity:.3;margin-bottom:.75rem;display:block"></i>
+    <p>No files found.</p>
+  </div>
+
+  <div id="br-no-results" class="br-empty" hidden>
+    <i class="fa-solid fa-magnifying-glass" style="font-size:2rem;opacity:.3;margin-bottom:.75rem;display:block"></i>
+    <p>No files match your search.</p>
+  </div>
+
+  <div id="br-grid" class="br-grid" hidden></div>
+</main>
+
+<footer class="br-footer">
+  <a href="/"><img src="/logo.webp" alt="DataDock" style="height:20px;width:auto;opacity:.4;vertical-align:middle"></a>
+  <span class="br-footer-dot">·</span>
+  <span>Fast &amp; Private File Sharing</span>
+  <span class="br-footer-dot">·</span>
+  <a href="/">Go to DataDock</a>
+</footer>
+
+<script src="/browse.js"></script>
+</body>
+</html>
