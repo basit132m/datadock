@@ -56,6 +56,32 @@
   </div>
 </section>
 
+<!-- Toolbar (category tabs + sort + view toggle) -->
+<div class="br-toolbar" id="br-toolbar" hidden>
+  <div class="br-toolbar-inner">
+    <div class="br-tabs" id="br-tabs" role="tablist"></div>
+    <div class="br-toolbar-right">
+      <select class="br-sort-select" id="br-sort" title="Sort files">
+        <option value="newest">Newest</option>
+        <option value="oldest">Oldest</option>
+        <option value="name-az">Name A→Z</option>
+        <option value="name-za">Name Z→A</option>
+        <option value="largest">Largest</option>
+        <option value="smallest">Smallest</option>
+      </select>
+      <div class="br-view-toggle">
+        <button class="br-view-btn br-view-active" id="br-view-grid" title="Grid view">
+          <i class="fa-solid fa-grip"></i>
+        </button>
+        <button class="br-view-btn" id="br-view-list" title="List view">
+          <i class="fa-solid fa-list"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="br-results-bar" id="br-results-bar"></div>
+</div>
+
 <!-- File listing -->
 <main class="br-main">
   <div id="br-loading" class="br-empty">
@@ -73,7 +99,8 @@
     <p>No files match your search.</p>
   </div>
 
-  <div id="br-grid" class="br-grid" hidden></div>
+  <div id="br-grid" class="br-grid br-grid-mode" hidden></div>
+  <div id="br-pagination" class="br-pagination" hidden></div>
 </main>
 
 <footer class="br-footer">
