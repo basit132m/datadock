@@ -2051,11 +2051,6 @@ async def serve_home():
     return FileResponse(os.path.join(FRONTEND_DIR, "home.html"))
 
 
-@app.get("/home.js", include_in_schema=False)
-async def serve_home_js():
-    return FileResponse(os.path.join(FRONTEND_DIR, "home.js"))
-
-
 @app.get("/admin", include_in_schema=False)
 async def serve_index():
     return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
@@ -2066,34 +2061,48 @@ async def serve_request():
     return FileResponse(os.path.join(FRONTEND_DIR, "request.html"))
 
 
-@app.get("/request.js", include_in_schema=False)
-async def serve_request_js():
-    return FileResponse(os.path.join(FRONTEND_DIR, "request.js"))
+_NO_CACHE  = {"Cache-Control": "no-cache"}
+_IMG_CACHE = {"Cache-Control": "public, max-age=604800"}  # 7 days for images
 
 
 @app.get("/app.js", include_in_schema=False)
 async def serve_js():
-    return FileResponse(os.path.join(FRONTEND_DIR, "app.js"))
+    return FileResponse(os.path.join(FRONTEND_DIR, "app.js"), headers=_NO_CACHE)
 
 
 @app.get("/style.css", include_in_schema=False)
 async def serve_css():
-    return FileResponse(os.path.join(FRONTEND_DIR, "style.css"))
+    return FileResponse(os.path.join(FRONTEND_DIR, "style.css"), headers=_NO_CACHE)
 
 
 @app.get("/landing.js", include_in_schema=False)
 async def serve_landing_js():
-    return FileResponse(os.path.join(FRONTEND_DIR, "landing.js"))
+    return FileResponse(os.path.join(FRONTEND_DIR, "landing.js"), headers=_NO_CACHE)
+
+
+@app.get("/browse.js", include_in_schema=False)
+async def serve_browse_js_cached():
+    return FileResponse(os.path.join(FRONTEND_DIR, "browse.js"), headers=_NO_CACHE)
+
+
+@app.get("/home.js", include_in_schema=False)
+async def serve_home_js_cached():
+    return FileResponse(os.path.join(FRONTEND_DIR, "home.js"), headers=_NO_CACHE)
+
+
+@app.get("/request.js", include_in_schema=False)
+async def serve_request_js_cached():
+    return FileResponse(os.path.join(FRONTEND_DIR, "request.js"), headers=_NO_CACHE)
 
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def serve_favicon():
-    return FileResponse(os.path.join(FRONTEND_DIR, "favicon.ico"), media_type="image/x-icon")
+    return FileResponse(os.path.join(FRONTEND_DIR, "favicon.ico"), media_type="image/x-icon", headers=_IMG_CACHE)
 
 
 @app.get("/logo.webp", include_in_schema=False)
 async def serve_logo():
-    return FileResponse(os.path.join(FRONTEND_DIR, "logo.webp"), media_type="image/webp")
+    return FileResponse(os.path.join(FRONTEND_DIR, "logo.webp"), media_type="image/webp", headers=_IMG_CACHE)
 
 
 # ── Public browse page ────────────────────────────────────────────────────────
@@ -2123,11 +2132,6 @@ async def public_files(db: Session = Depends(get_db)):
 @app.get("/browse", include_in_schema=False)
 async def serve_browse():
     return FileResponse(os.path.join(FRONTEND_DIR, "browse.html"))
-
-
-@app.get("/browse.js", include_in_schema=False)
-async def serve_browse_js():
-    return FileResponse(os.path.join(FRONTEND_DIR, "browse.js"))
 
 
 @app.get("/sitemap.xml", include_in_schema=False)

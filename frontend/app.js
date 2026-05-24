@@ -1888,13 +1888,6 @@ function initApp() {
   initRequestsPage();
   applyRoleUI();
 
-  // Fetch pending request badge silently after login
-  if (userRole === 'admin') {
-    apiFetch('GET', '/api/admin/access-requests')
-      .then(d => updateReqBadge(d.pending_count))
-      .catch(() => {});
-  }
-
   document.querySelectorAll('.dl-period-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       dlActiveDays = parseInt(btn.dataset.days);
@@ -1924,6 +1917,18 @@ function initApp() {
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {
-  await initAuth();
-  if (apiKey) initApp();
+  if (apiKey) {
+    // Optimistic: show panel immediately without waiting for auth round-trip.
+    // The panel renders with assumed admin role; background verify corrects it.
+    userRole = 'admin';
+    document.getElementById('auth-overlay').style.display = 'none';
+    initApp();
+    checkAuth().then(valid => {
+      if (!valid) { localStorage.removeItem(LS_KEY); apiKey = ''; location.reload(); }
+      else applyRoleUI(); // correct role if actually a member key
+    });
+  } else {
+    await initAuth();
+    if (apiKey) initApp();
+  }
 });
