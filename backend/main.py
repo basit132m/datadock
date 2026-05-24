@@ -1941,6 +1941,16 @@ async def share_page(share_id: str):
 
 
 @app.get("/", include_in_schema=False)
+async def serve_home():
+    return FileResponse(os.path.join(FRONTEND_DIR, "home.html"))
+
+
+@app.get("/home.js", include_in_schema=False)
+async def serve_home_js():
+    return FileResponse(os.path.join(FRONTEND_DIR, "home.js"))
+
+
+@app.get("/admin", include_in_schema=False)
 async def serve_index():
     return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 

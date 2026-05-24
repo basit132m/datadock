@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DataDock – Fast & Free File Sharing</title>
+  <meta name="description" content="Share files instantly for free. No account required. Upload once, get a link, share anywhere — powered by blazing-fast CDN." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+  <link rel="stylesheet" href="/style.css" />
+  <meta name="google-site-verification" content="izGRPK44VTISSaaNbqXElZZNyRPMs7UjcQHrZbUHbZ4" />
+</head>
+<body class="hp-body">
+
+<!-- ── Header ── -->
+<header class="hp-header" id="hp-header">
+  <div class="hp-header-inner">
+    <a href="/" class="hp-logo">
+      <img src="/logo.webp" alt="DataDock" style="height:32px;width:auto">
+    </a>
+    <nav class="hp-nav">
+      <a href="/browse" class="hp-nav-link"><i class="fa-solid fa-folder-open"></i> Browse Files</a>
+      <a href="/admin" class="hp-nav-link hp-nav-admin"><i class="fa-solid fa-lock"></i> Admin</a>
+    </nav>
+    <button class="hp-theme-toggle" id="hp-theme-toggle" title="Toggle dark mode">
+      <i class="fa-solid fa-moon"></i>
+    </button>
+  </div>
+</header>
+
+<!-- ── Hero ── -->
+<section class="hp-hero">
+  <div class="hp-hero-bg-shapes" aria-hidden="true">
+    <div class="hp-shape hp-shape-1"></div>
+    <div class="hp-shape hp-shape-2"></div>
+    <div class="hp-shape hp-shape-3"></div>
+  </div>
+  <div class="hp-hero-inner">
+    <div class="hp-hero-badge">
+      <span class="hp-badge-dot"></span>
+      Fast &amp; Free File Sharing
+    </div>
+    <h1 class="hp-hero-h1">Share Any File,<br><span class="hp-hero-gradient">Instantly.</span></h1>
+    <p class="hp-hero-sub">
+      Upload files to blazing-fast cloud storage and share them with a single link.<br>
+      No accounts, no paywalls, no limits.
+    </p>
+    <div class="hp-hero-actions">
+      <a href="/browse" class="hp-btn-primary">
+        <i class="fa-solid fa-folder-open"></i>
+        Browse Files
+        <i class="fa-solid fa-arrow-right hp-btn-arrow"></i>
+      </a>
+      <a href="/admin" class="hp-btn-outline">
+        <i class="fa-solid fa-lock"></i>
+        Admin Login
+      </a>
+    </div>
+
+    <!-- Live stats -->
+    <div class="hp-stats" id="hp-stats" hidden>
+      <div class="hp-stat">
+        <span class="hp-stat-val" id="hp-stat-files">—</span>
+        <span class="hp-stat-lbl">Files Shared</span>
+      </div>
+      <div class="hp-stat-sep"></div>
+      <div class="hp-stat">
+        <span class="hp-stat-val" id="hp-stat-dl">—</span>
+        <span class="hp-stat-lbl">Downloads</span>
+      </div>
+      <div class="hp-stat-sep"></div>
+      <div class="hp-stat">
+        <span class="hp-stat-val" id="hp-stat-size">—</span>
+        <span class="hp-stat-lbl">Storage Hosted</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating file type pills -->
+  <div class="hp-pills" aria-hidden="true">
+    <span class="hp-pill hp-pill-red"><i class="fa-solid fa-file-video"></i> MP4</span>
+    <span class="hp-pill hp-pill-amber"><i class="fa-solid fa-file-zipper"></i> ZIP</span>
+    <span class="hp-pill hp-pill-blue"><i class="fa-solid fa-file-image"></i> PNG</span>
+    <span class="hp-pill hp-pill-purple"><i class="fa-solid fa-file-audio"></i> MP3</span>
+    <span class="hp-pill hp-pill-red2"><i class="fa-solid fa-file-pdf"></i> PDF</span>
+    <span class="hp-pill hp-pill-green"><i class="fa-solid fa-gamepad"></i> NSP</span>
+  </div>
+</section>
+
+<!-- ── Features ── -->
+<section class="hp-section hp-features-section">
+  <div class="hp-section-inner">
+    <div class="hp-section-label"><i class="fa-solid fa-star"></i> Why DataDock</div>
+    <h2 class="hp-section-h2">Everything you need to<br>share files effortlessly</h2>
+    <p class="hp-section-sub">Built for speed, privacy, and simplicity — without the bloat.</p>
+
+    <div class="hp-features-grid">
+      <div class="hp-feat-card">
+        <div class="hp-feat-icon hp-feat-icon-orange"><i class="fa-solid fa-bolt"></i></div>
+        <h3>Blazing Fast CDN</h3>
+        <p>Files are served from distributed cloud storage so downloads start instantly, anywhere in the world.</p>
+      </div>
+      <div class="hp-feat-card">
+        <div class="hp-feat-icon hp-feat-icon-green"><i class="fa-solid fa-shield-halved"></i></div>
+        <h3>Secure Downloads</h3>
+        <p>Token-protected download links prevent hotlinking and direct access — every download is safe.</p>
+      </div>
+      <div class="hp-feat-card">
+        <div class="hp-feat-icon hp-feat-icon-purple"><i class="fa-solid fa-infinity"></i></div>
+        <h3>Unlimited Downloads</h3>
+        <p>No per-file or per-day download caps. Share with thousands of people and it just works.</p>
+      </div>
+      <div class="hp-feat-card">
+        <div class="hp-feat-icon hp-feat-icon-blue"><i class="fa-solid fa-user-slash"></i></div>
+        <h3>No Account Needed</h3>
+        <p>Anyone can browse and download files with zero sign-up friction. Just click and go.</p>
+      </div>
+      <div class="hp-feat-card">
+        <div class="hp-feat-icon hp-feat-icon-teal"><i class="fa-solid fa-clock"></i></div>
+        <h3>24 / 7 Active Links</h3>
+        <p>Links stay live as long as the file exists. No 24-hour expiry, no broken URLs.</p>
+      </div>
+      <div class="hp-feat-card">
+        <div class="hp-feat-icon hp-feat-icon-rose"><i class="fa-solid fa-link"></i></div>
+        <h3>Instant Share Links</h3>
+        <p>Copy a share link with one click from the file page or the public browse gallery.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── How it works ── -->
+<section class="hp-section hp-how-section">
+  <div class="hp-section-inner">
+    <div class="hp-section-label"><i class="fa-solid fa-map"></i> How It Works</div>
+    <h2 class="hp-section-h2">Up and running in<br>three simple steps</h2>
+
+    <div class="hp-steps">
+      <div class="hp-step">
+        <div class="hp-step-num">1</div>
+        <div class="hp-step-icon"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+        <h3>Upload</h3>
+        <p>Admin uploads files via the dashboard — drag &amp; drop or import from a URL directly to cloud storage.</p>
+      </div>
+      <div class="hp-step-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+      <div class="hp-step">
+        <div class="hp-step-num">2</div>
+        <div class="hp-step-icon"><i class="fa-solid fa-link"></i></div>
+        <h3>Get a Link</h3>
+        <p>A unique share link is generated instantly. The file gets its own download page with full metadata.</p>
+      </div>
+      <div class="hp-step-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+      <div class="hp-step">
+        <div class="hp-step-num">3</div>
+        <div class="hp-step-icon"><i class="fa-solid fa-download"></i></div>
+        <h3>Share &amp; Download</h3>
+        <p>Share the link anywhere. Anyone can browse the public gallery or download directly — no login required.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Latest files preview ── -->
+<section class="hp-section hp-preview-section">
+  <div class="hp-section-inner">
+    <div class="hp-preview-header">
+      <div>
+        <div class="hp-section-label"><i class="fa-solid fa-clock-rotate-left"></i> Recently Added</div>
+        <h2 class="hp-section-h2" style="margin-bottom:.5rem">Latest files</h2>
+      </div>
+      <a href="/browse" class="hp-btn-outline hp-view-all">
+        View all files <i class="fa-solid fa-arrow-right"></i>
+      </a>
+    </div>
+
+    <div id="hp-preview-loading" class="hp-preview-loading">
+      <div class="hp-mini-spinner"></div>
+      <span>Loading files…</span>
+    </div>
+    <div id="hp-preview-grid" class="hp-preview-grid" hidden></div>
+    <div id="hp-preview-empty" class="hp-preview-empty" hidden>
+      <i class="fa-solid fa-folder-open"></i>
+      <p>No files yet — check back soon.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── CTA ── -->
+<section class="hp-cta-section">
+  <div class="hp-cta-inner">
+    <div class="hp-cta-icon"><i class="fa-solid fa-rocket"></i></div>
+    <h2>Ready to explore?</h2>
+    <p>Browse the full file library and download anything instantly — no registration needed.</p>
+    <a href="/browse" class="hp-btn-primary hp-btn-lg">
+      <i class="fa-solid fa-folder-open"></i>
+      Browse All Files
+      <i class="fa-solid fa-arrow-right hp-btn-arrow"></i>
+    </a>
+  </div>
+</section>
+
+<!-- ── Footer ── -->
+<footer class="hp-footer">
+  <div class="hp-footer-inner">
+    <div class="hp-footer-brand">
+      <img src="/logo.webp" alt="DataDock" style="height:24px;width:auto;opacity:.5">
+      <span class="hp-footer-tagline">Fast &amp; Private File Sharing</span>
+    </div>
+    <div class="hp-footer-links">
+      <a href="/browse">Browse Files</a>
+      <a href="/admin">Admin Login</a>
+    </div>
+  </div>
+</footer>
+
+<script src="/home.js"></script>
+</body>
+</html>
