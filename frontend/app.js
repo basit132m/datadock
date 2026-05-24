@@ -1722,9 +1722,9 @@ async function loadRequestsPage() {
   }
 
   const statusBadge = s => {
-    if (s === 'pending')  return '<span class="team-role" style="background:rgba(251,191,36,.18);color:#fbbf24">Pending</span>';
-    if (s === 'approved') return '<span class="team-role team-role-member" style="background:rgba(52,211,153,.18);color:#34d399">Approved</span>';
-    return '<span class="team-role" style="background:rgba(248,113,113,.18);color:#f87171">Rejected</span>';
+    if (s === 'pending')  return '<span class="team-role" style="background:#fef3c7;color:#92400e">Pending</span>';
+    if (s === 'approved') return '<span class="team-role team-role-member" style="background:#dcfce7;color:#166534">Approved</span>';
+    return '<span class="team-role" style="background:#fee2e2;color:#991b1b">Rejected</span>';
   };
 
   listEl.innerHTML = `
