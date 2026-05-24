@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DataDock – Request Access</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+  <link rel="stylesheet" href="/style.css" />
+  <meta name="google-site-verification" content="izGRPK44VTISSaaNbqXElZZNyRPMs7UjcQHrZbUHbZ4" />
+</head>
+<body class="rq-body">
+
+<!-- Header -->
+<header class="rq-header">
+  <div class="rq-header-inner">
+    <a href="/" class="rq-logo"><img src="/logo.webp" alt="DataDock" style="height:30px;width:auto"></a>
+    <nav class="rq-nav">
+      <a href="/" class="rq-nav-link"><i class="fa-solid fa-house"></i> Home</a>
+      <a href="/browse" class="rq-nav-link"><i class="fa-solid fa-folder-open"></i> Browse</a>
+    </nav>
+    <button class="rq-theme-toggle" id="rq-theme-toggle" title="Toggle dark mode">
+      <i class="fa-solid fa-moon"></i>
+    </button>
+  </div>
+</header>
+
+<!-- Main -->
+<main class="rq-main">
+
+  <!-- Form card -->
+  <div class="rq-card" id="rq-card">
+    <div class="rq-card-icon">
+      <i class="fa-solid fa-key"></i>
+    </div>
+    <h1 class="rq-title">Request Access</h1>
+    <p class="rq-subtitle">Fill in your details and we'll review your request and send you an API key.</p>
+
+    <form class="rq-form" id="rq-form" novalidate>
+      <div class="rq-field">
+        <label class="rq-label" for="rq-name">Full Name <span class="rq-required">*</span></label>
+        <input class="rq-input" id="rq-name" type="text" placeholder="John Smith" autocomplete="name" required />
+      </div>
+
+      <div class="rq-field">
+        <label class="rq-label" for="rq-email">Email Address <span class="rq-required">*</span></label>
+        <input class="rq-input" id="rq-email" type="email" placeholder="you@example.com" autocomplete="email" required />
+      </div>
+
+      <div class="rq-field">
+        <label class="rq-label" for="rq-reason">
+          Why do you need access?
+          <span class="rq-optional">optional</span>
+        </label>
+        <textarea class="rq-input rq-textarea" id="rq-reason" rows="3" placeholder="Tell us briefly how you plan to use DataDock…"></textarea>
+      </div>
+
+      <div class="rq-error" id="rq-error" hidden></div>
+
+      <button class="rq-submit" id="rq-submit" type="submit">
+        <span id="rq-submit-inner">
+          <i class="fa-solid fa-paper-plane"></i> Submit Request
+        </span>
+      </button>
+    </form>
+
+    <p class="rq-note">
+      <i class="fa-solid fa-shield-halved"></i>
+      Your information is only used for account access and will never be shared.
+    </p>
+  </div>
+
+  <!-- Success state -->
+  <div class="rq-success" id="rq-success" hidden>
+    <div class="rq-success-icon"><i class="fa-solid fa-circle-check"></i></div>
+    <h2>Request Submitted!</h2>
+    <p>Thanks, <strong id="rq-success-name"></strong>! We received your request and will review it shortly. Your API key will be sent to <strong id="rq-success-email"></strong>.</p>
+    <div class="rq-success-actions">
+      <a href="/browse" class="rq-btn-primary"><i class="fa-solid fa-folder-open"></i> Browse Files</a>
+      <a href="/" class="rq-btn-outline"><i class="fa-solid fa-house"></i> Go Home</a>
+    </div>
+  </div>
+
+</main>
+
+<!-- Footer -->
+<footer class="rq-footer">
+  <a href="/"><img src="/logo.webp" alt="DataDock" style="height:18px;width:auto;opacity:.4;vertical-align:middle"></a>
+  <span class="rq-footer-dot">·</span>
+  <span>Fast &amp; Private File Sharing</span>
+  <span class="rq-footer-dot">·</span>
+  <a href="/">Go to DataDock</a>
+</footer>
+
+<script src="/request.js"></script>
+</body>
+</html>

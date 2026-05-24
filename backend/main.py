@@ -23,7 +23,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db, init_db
-from models import Ad, ApiKey, DownloadEvent, Part, SiteSetting, StorageProvider, Upload
+from models import AccessRequest, Ad, ApiKey, DownloadEvent, Part, SiteSetting, StorageProvider, Upload
 from storage import B2Storage, BunnyStorage, S3Storage
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -1911,6 +1911,112 @@ async def delete_team_key(key_id: str, db: Session = Depends(get_db), _=Depends(
     return {"ok": True}
 
 
+# ── Access Requests ───────────────────────────────────────────────────────────
+
+class AccessRequestIn(BaseModel):
+    name: str
+    email: str
+    reason: Optional[str] = None
+
+
+def _req_dict(r: AccessRequest) -> dict:
+    return {
+        "id": r.id,
+        "name": r.name,
+        "email": r.email,
+        "reason": r.reason,
+        "status": r.status,
+        "key_id": r.key_id,
+        "created_at": r.created_at.isoformat(),
+        "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+    }
+
+
+@app.post("/api/access-requests")
+async def submit_access_request(body: AccessRequestIn, db: Session = Depends(get_db)):
+    """Public: submit an access key request."""
+    name = body.name.strip()
+    email = body.email.strip().lower()
+    if not name or not email or "@" not in email:
+        raise HTTPException(400, "Valid name and email are required")
+    existing = db.query(AccessRequest).filter(
+        AccessRequest.email == email,
+        AccessRequest.status.in_(["pending", "approved"]),
+    ).first()
+    if existing:
+        raise HTTPException(409, "A request with this email already exists")
+    req = AccessRequest(
+        id=str(uuid.uuid4()),
+        name=name,
+        email=email,
+        reason=body.reason.strip() if body.reason else None,
+        status="pending",
+        created_at=datetime.utcnow(),
+    )
+    db.add(req)
+    db.commit()
+    return {"ok": True, "id": req.id}
+
+
+@app.get("/api/admin/access-requests")
+async def list_access_requests(
+    status: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    q = db.query(AccessRequest)
+    if status:
+        q = q.filter(AccessRequest.status == status)
+    rows = q.order_by(AccessRequest.created_at.desc()).all()
+    pending = db.query(func.count(AccessRequest.id)).filter(AccessRequest.status == "pending").scalar()
+    return {"requests": [_req_dict(r) for r in rows], "pending_count": pending}
+
+
+@app.post("/api/admin/access-requests/{req_id}/approve")
+async def approve_access_request(req_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Approve request and auto-generate a member API key."""
+    req = db.query(AccessRequest).filter(AccessRequest.id == req_id).first()
+    if not req:
+        raise HTTPException(404, "Request not found")
+    if req.status == "approved":
+        raise HTTPException(409, "Already approved")
+    new_key = ApiKey(
+        id=str(uuid.uuid4()),
+        name=req.name,
+        key=secrets.token_urlsafe(32),
+        role="member",
+        active=1,
+        created_at=datetime.utcnow(),
+    )
+    db.add(new_key)
+    req.status = "approved"
+    req.key_id = new_key.id
+    req.updated_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True, "key": new_key.key, "key_id": new_key.id, "name": req.name, "email": req.email}
+
+
+@app.post("/api/admin/access-requests/{req_id}/reject")
+async def reject_access_request(req_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
+    req = db.query(AccessRequest).filter(AccessRequest.id == req_id).first()
+    if not req:
+        raise HTTPException(404, "Request not found")
+    req.status = "rejected"
+    req.updated_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True}
+
+
+@app.delete("/api/admin/access-requests/{req_id}")
+async def delete_access_request(req_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
+    req = db.query(AccessRequest).filter(AccessRequest.id == req_id).first()
+    if not req:
+        raise HTTPException(404, "Request not found")
+    db.delete(req)
+    db.commit()
+    return {"ok": True}
+
+
 @app.post("/api/admin/change-master-key")
 async def change_master_key(db: Session = Depends(get_db), _=Depends(require_admin)):
     """Generate a new master admin key. The old key is immediately invalidated."""
@@ -1953,6 +2059,16 @@ async def serve_home_js():
 @app.get("/admin", include_in_schema=False)
 async def serve_index():
     return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+
+
+@app.get("/request", include_in_schema=False)
+async def serve_request():
+    return FileResponse(os.path.join(FRONTEND_DIR, "request.html"))
+
+
+@app.get("/request.js", include_in_schema=False)
+async def serve_request_js():
+    return FileResponse(os.path.join(FRONTEND_DIR, "request.js"))
 
 
 @app.get("/app.js", include_in_schema=False)

@@ -100,3 +100,16 @@ class DownloadEvent(Base):
     os_name = Column(String(50), nullable=True)       # Windows / macOS / iOS / Android / Linux
     user_agent = Column(Text, nullable=True)
     created_at = Column(DateTime, nullable=False, index=True)
+
+
+class AccessRequest(Base):
+    __tablename__ = "access_requests"
+
+    id         = Column(String(36), primary_key=True)
+    name       = Column(String(200), nullable=False)
+    email      = Column(String(300), nullable=False, index=True)
+    reason     = Column(Text, nullable=True)
+    status     = Column(String(20), default="pending", nullable=False, index=True)
+    key_id     = Column(String(36), nullable=True)   # set after approval
+    created_at = Column(DateTime, nullable=False)
+    updated_at = Column(DateTime, nullable=True)

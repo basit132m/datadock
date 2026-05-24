@@ -57,6 +57,10 @@
       <button class="nav-item" data-page="team">
         <i class="fa-solid fa-users-gear ni-icon"></i> Team
       </button>
+      <button class="nav-item" data-page="requests">
+        <i class="fa-solid fa-inbox ni-icon"></i> Requests
+        <span class="nav-badge" id="req-nav-badge" hidden>0</span>
+      </button>
     </nav>
     <div class="sidebar-footer">
       <div id="key-badge" class="key-badge">
@@ -429,6 +433,68 @@
       <div class="card">
         <div class="card-header">Top Downloaded Files</div>
         <div id="dl-top-files"><p class="dl-empty">Loading…</p></div>
+      </div>
+    </div>
+
+    <!-- ── Access Requests ── -->
+    <div id="page-requests" class="page">
+      <div class="page-header">
+        <h1>Access Requests</h1>
+      </div>
+
+      <div class="stats-grid" style="margin-bottom:1.5rem">
+        <div class="stat-card">
+          <div class="stat-icon" style="background:#fef3c7;color:#d97706"><i class="fa-solid fa-clock"></i></div>
+          <div>
+            <div class="stat-label">Pending</div>
+            <div class="stat-value" id="req-stat-pending">—</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:#dcfce7;color:#16a34a"><i class="fa-solid fa-circle-check"></i></div>
+          <div>
+            <div class="stat-label">Approved</div>
+            <div class="stat-value" id="req-stat-approved">—</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:#fee2e2;color:#dc2626"><i class="fa-solid fa-circle-xmark"></i></div>
+          <div>
+            <div class="stat-label">Rejected</div>
+            <div class="stat-value" id="req-stat-rejected">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Approved key reveal -->
+      <div id="req-key-reveal" class="card key-reveal-card" style="margin-bottom:1.5rem" hidden>
+        <div class="card-header key-reveal-header">
+          <i class="fa-solid fa-triangle-exclamation"></i> Copy this key and send it to the user — it won't be shown again
+        </div>
+        <div style="padding:.75rem 1.25rem .5rem;font-size:.82rem;color:var(--muted)">
+          For: <strong id="req-key-for-name"></strong> &nbsp;·&nbsp; <span id="req-key-for-email"></span>
+        </div>
+        <div class="key-reveal-wrap">
+          <code id="req-key-value"></code>
+          <button class="btn-primary-sm" id="req-key-copy">
+            <i class="fa-solid fa-copy"></i> Copy Key
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header" style="display:flex;align-items:center;gap:.75rem">
+          All Requests
+          <div style="display:flex;gap:.4rem;margin-left:auto">
+            <button class="btn-sm req-filter-btn req-filter-active" data-status="">All</button>
+            <button class="btn-sm req-filter-btn" data-status="pending">Pending</button>
+            <button class="btn-sm req-filter-btn" data-status="approved">Approved</button>
+            <button class="btn-sm req-filter-btn" data-status="rejected">Rejected</button>
+          </div>
+        </div>
+        <div id="req-list">
+          <p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">Loading…</p>
+        </div>
       </div>
     </div>
 

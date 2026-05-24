@@ -1681,9 +1681,126 @@ async function loadDownloadsPage() {
 
 }
 
+// ── Access Requests ───────────────────────────────────────────────────────────
+
+let reqActiveFilter = '';
+
+async function loadRequestsPage() {
+  const listEl = document.getElementById('req-list');
+  listEl.innerHTML = '<p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">Loading…</p>';
+
+  let data;
+  try {
+    const qs = reqActiveFilter ? `?status=${reqActiveFilter}` : '';
+    data = await apiFetch('GET', `/api/admin/access-requests${qs}`);
+  } catch (e) {
+    listEl.innerHTML = `<p style="padding:1.5rem;color:var(--danger);font-size:.875rem;text-align:center">${e.message}</p>`;
+    return;
+  }
+
+  // Update stats
+  document.getElementById('req-stat-pending').textContent  = data.requests.filter(r => r.status === 'pending').length;
+  document.getElementById('req-stat-approved').textContent = data.requests.filter(r => r.status === 'approved').length;
+  document.getElementById('req-stat-rejected').textContent = data.requests.filter(r => r.status === 'rejected').length;
+  updateReqBadge(data.pending_count);
+
+  if (!data.requests.length) {
+    listEl.innerHTML = '<p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">No requests found.</p>';
+    return;
+  }
+
+  const statusBadge = s => {
+    if (s === 'pending')  return '<span class="team-role" style="background:#fef3c7;color:#92400e">Pending</span>';
+    if (s === 'approved') return '<span class="team-role team-role-member" style="background:#dcfce7;color:#166534">Approved</span>';
+    return '<span class="team-role" style="background:#fee2e2;color:#991b1b">Rejected</span>';
+  };
+
+  listEl.innerHTML = `
+    <table class="files-table">
+      <thead><tr>
+        <th>Name</th><th>Email</th><th>Reason</th><th>Status</th><th>Date</th><th>Actions</th>
+      </tr></thead>
+      <tbody>
+        ${data.requests.map(r => `
+          <tr>
+            <td class="tf-name">${r.name}</td>
+            <td style="font-size:.82rem">${r.email}</td>
+            <td style="font-size:.8rem;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                title="${r.reason || ''}">${r.reason || '—'}</td>
+            <td>${statusBadge(r.status)}</td>
+            <td style="color:var(--muted);font-size:.8rem">${formatDate(r.created_at)}</td>
+            <td><div class="tf-actions">
+              ${r.status === 'pending' ? `
+                <button class="btn-primary-sm" onclick="approveRequest('${r.id}')">
+                  <i class="fa-solid fa-key"></i> Approve &amp; Generate Key
+                </button>
+                <button class="btn-sm danger" onclick="rejectRequest('${r.id}')">Reject</button>
+              ` : ''}
+              <button class="btn-sm danger" onclick="deleteRequest('${r.id}')">Delete</button>
+            </div></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function updateReqBadge(count) {
+  const badge = document.getElementById('req-nav-badge');
+  if (!badge) return;
+  if (count > 0) {
+    badge.textContent = count > 99 ? '99+' : count;
+    badge.hidden = false;
+  } else {
+    badge.hidden = true;
+  }
+}
+
+async function approveRequest(id) {
+  if (!confirm('Approve this request and generate a member API key?')) return;
+  try {
+    const result = await apiFetch('POST', `/api/admin/access-requests/${id}/approve`);
+    document.getElementById('req-key-value').textContent   = result.key;
+    document.getElementById('req-key-for-name').textContent  = result.name;
+    document.getElementById('req-key-for-email').textContent = result.email;
+    const revealEl = document.getElementById('req-key-reveal');
+    revealEl.hidden = false;
+    revealEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    loadRequestsPage();
+  } catch (e) { alert(e.message); }
+}
+
+async function rejectRequest(id) {
+  if (!confirm('Reject this request?')) return;
+  try { await apiFetch('POST', `/api/admin/access-requests/${id}/reject`); loadRequestsPage(); }
+  catch (e) { alert(e.message); }
+}
+
+async function deleteRequest(id) {
+  if (!confirm('Delete this request permanently?')) return;
+  try { await apiFetch('DELETE', `/api/admin/access-requests/${id}`); loadRequestsPage(); }
+  catch (e) { alert(e.message); }
+}
+
+function initRequestsPage() {
+  document.getElementById('req-key-copy').addEventListener('click', function () {
+    const val = document.getElementById('req-key-value').textContent;
+    navigator.clipboard.writeText(val).catch(() => {});
+    this.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
+    setTimeout(() => { this.innerHTML = '<i class="fa-solid fa-copy"></i> Copy Key'; }, 2500);
+  });
+
+  document.querySelectorAll('.req-filter-btn').forEach(btn => {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.req-filter-btn').forEach(b => b.classList.remove('req-filter-active'));
+      this.classList.add('req-filter-active');
+      reqActiveFilter = this.dataset.status;
+      loadRequestsPage();
+    });
+  });
+}
+
 // ── Page navigation ───────────────────────────────────────────────────────────
 
-const ADMIN_PAGES = ['dashboard', 'ads', 'storage', 'downloads', 'team'];
+const ADMIN_PAGES = ['dashboard', 'ads', 'storage', 'downloads', 'team', 'requests'];
 
 function applyRoleUI() {
   ADMIN_PAGES.forEach(page => {
@@ -1706,6 +1823,7 @@ function showPage(page) {
   if (page === 'storage')   loadStoragePage();
   if (page === 'downloads') loadDownloadsPage();
   if (page === 'team')      loadTeamPage();
+  if (page === 'requests')  loadRequestsPage();
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -1767,7 +1885,15 @@ function initApp() {
   initRedirectUrlForm();
   initStorageForm();
   initKeyForm();
+  initRequestsPage();
   applyRoleUI();
+
+  // Fetch pending request badge silently after login
+  if (userRole === 'admin') {
+    apiFetch('GET', '/api/admin/access-requests')
+      .then(d => updateReqBadge(d.pending_count))
+      .catch(() => {});
+  }
 
   document.querySelectorAll('.dl-period-btn').forEach(btn => {
     btn.addEventListener('click', () => {
