@@ -184,6 +184,21 @@
       </div>
 
       <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-header"><i class="fa-solid fa-arrow-up-right-from-square"></i> Pop-up Ad URL</div>
+        <div style="padding:1rem 1.25rem">
+          <p style="color:var(--muted);font-size:.875rem;margin:0 0 1rem 0">
+            When set, the very <strong>first click anywhere</strong> on a download page opens this URL in a new tab — regardless of where the visitor clicks. After that one pop-up, the page works normally. Leave blank to disable.
+          </p>
+          <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
+            <input id="popup-url-input" type="url" placeholder="https://example.com (leave blank to disable)" style="flex:1;min-width:220px" />
+            <button id="popup-url-save" class="btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+            <button id="popup-url-clear" class="btn-sm"><i class="fa-solid fa-xmark"></i> Clear</button>
+          </div>
+          <div id="popup-url-msg" class="ad-form-msg" style="margin-top:.6rem"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:1.5rem">
         <div class="card-header">Add New Ad</div>
         <form id="ad-form" class="ad-form">
           <div class="ad-form-row">

@@ -1260,17 +1260,18 @@ async function loadRedirectUrlSetting() {
   try {
     const s = await apiFetch('GET', '/api/settings');
     document.getElementById('redirect-url-input').value = s.redirect_url || '';
+    document.getElementById('popup-url-input').value    = s.popup_url    || '';
   } catch {}
 }
 
-async function saveRedirectUrl(url) {
-  const msg = document.getElementById('redirect-url-msg');
+async function saveSetting(field, url, msgId, inputId) {
+  const msg = document.getElementById(msgId);
   msg.textContent = '';
   try {
-    await apiFetch('POST', '/api/admin/settings', { redirect_url: url || null });
+    await apiFetch('POST', '/api/admin/settings', { [field]: url || null });
     msg.style.color = 'var(--success)';
-    msg.textContent = url ? 'Redirect URL saved!' : 'Redirect URL cleared.';
-    document.getElementById('redirect-url-input').value = url || '';
+    msg.textContent = url ? 'Saved!' : 'Cleared.';
+    document.getElementById(inputId).value = url || '';
     setTimeout(() => { msg.textContent = ''; }, 3000);
   } catch (e) {
     msg.style.color = 'var(--danger)';
@@ -1279,15 +1280,26 @@ async function saveRedirectUrl(url) {
 }
 
 function initRedirectUrlForm() {
+  // Redirect URL
   document.getElementById('redirect-url-save').addEventListener('click', () => {
-    const url = document.getElementById('redirect-url-input').value.trim();
-    saveRedirectUrl(url);
+    saveSetting('redirect_url', document.getElementById('redirect-url-input').value.trim(), 'redirect-url-msg', 'redirect-url-input');
   });
   document.getElementById('redirect-url-clear').addEventListener('click', () => {
-    saveRedirectUrl('');
+    saveSetting('redirect_url', '', 'redirect-url-msg', 'redirect-url-input');
   });
   document.getElementById('redirect-url-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('redirect-url-save').click();
+  });
+
+  // Popup URL
+  document.getElementById('popup-url-save').addEventListener('click', () => {
+    saveSetting('popup_url', document.getElementById('popup-url-input').value.trim(), 'popup-url-msg', 'popup-url-input');
+  });
+  document.getElementById('popup-url-clear').addEventListener('click', () => {
+    saveSetting('popup_url', '', 'popup-url-msg', 'popup-url-input');
+  });
+  document.getElementById('popup-url-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('popup-url-save').click();
   });
 }
 

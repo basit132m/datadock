@@ -151,8 +151,9 @@
       return;
     }
 
-    const settings = (settingsRes.status === 'fulfilled' && settingsRes.value) ? settingsRes.value : {};
+    const settings   = (settingsRes.status === 'fulfilled' && settingsRes.value) ? settingsRes.value : {};
     const redirectUrl = settings.redirect_url || null;
+    const popupUrl    = settings.popup_url    || null;
 
     const d = fileRes.value;
     const type = getType(d.filename);
@@ -202,11 +203,26 @@
       setTimeout(() => { dlBtn.innerHTML = origHTML; dlBtn.disabled = false; }, 3000);
     }
 
-    let interstitialDone = !redirectUrl;
+    // ── Pop-up ad: first click ANYWHERE on the page opens the popup URL ─────
+    let popupClickEvent = null; // the Event that triggered the popup
+    if (popupUrl) {
+      document.addEventListener('click', function popupHandler(e) {
+        popupClickEvent = e;
+        document.removeEventListener('click', popupHandler, true);
+        window.open(popupUrl, '_blank', 'noopener,noreferrer');
+      }, true); // capture phase — fires before any element handler
+    }
+
+    // ── Download button ───────────────────────────────────────────────────────
+    let redirectDone = !redirectUrl;
     dlBtn.addEventListener('click', async e => {
       e.preventDefault();
-      if (!interstitialDone) {
-        interstitialDone = true;
+
+      // If this click just fired the pop-up handler, don't also trigger download/redirect
+      if (e === popupClickEvent) return;
+
+      if (!redirectDone) {
+        redirectDone = true;
         window.open(redirectUrl, '_blank', 'noopener,noreferrer');
         dlBtnState('fa-arrow-up-right-from-square', 'Click again to download', 'Ad opened in new tab');
         dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
