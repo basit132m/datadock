@@ -232,6 +232,98 @@
       await triggerDownload();
     });
 
+    // ── File preview ──────────────────────────────────────────────────────────
+    const PREVIEW_IMAGES = new Set(['jpg','jpeg','png','gif','webp','svg','bmp','ico','avif']);
+    const PREVIEW_VIDEO  = new Set(['mp4','webm','mov']);
+    const PREVIEW_AUDIO  = new Set(['mp3','wav','ogg','flac','aac','m4a','opus']);
+    const PREVIEW_PDF    = new Set(['pdf']);
+    const PREVIEW_TEXT   = new Set(['txt','md','js','ts','jsx','tsx','py','rb','go','rs','java',
+                                    'c','cpp','h','cs','php','sh','bash','html','css','json',
+                                    'xml','yaml','yml','toml','ini','conf','log','csv','sql']);
+
+    function getPreviewType(name) {
+      const ext = (name || '').split('.').pop().toLowerCase();
+      if (PREVIEW_IMAGES.has(ext)) return 'image';
+      if (PREVIEW_VIDEO.has(ext))  return 'video';
+      if (PREVIEW_AUDIO.has(ext))  return 'audio';
+      if (PREVIEW_PDF.has(ext))    return 'pdf';
+      if (PREVIEW_TEXT.has(ext))   return 'text';
+      return null;
+    }
+
+    async function loadPreview(filename) {
+      const type = getPreviewType(filename);
+      if (!type) return;
+
+      const card  = document.getElementById('lp-preview');
+      const body  = document.getElementById('lp-preview-body');
+      const label = document.getElementById('lp-preview-label');
+      const previewUrl = `/api/f/${shareId}/preview`;
+
+      label.textContent = type.toUpperCase();
+      card.hidden = false;
+
+      if (type === 'image') {
+        const el = document.createElement('img');
+        el.src = previewUrl;
+        el.alt = filename;
+        el.className = 'lp-preview-img';
+        el.onload  = () => { body.innerHTML = ''; body.appendChild(el); };
+        el.onerror = () => { body.innerHTML = '<p class="lp-preview-err"><i class="fa-solid fa-circle-exclamation"></i> Preview unavailable</p>'; };
+
+      } else if (type === 'video') {
+        const el = document.createElement('video');
+        el.src = previewUrl;
+        el.controls = true;
+        el.preload = 'metadata';
+        el.className = 'lp-preview-video';
+        el.onerror = () => { body.innerHTML = '<p class="lp-preview-err"><i class="fa-solid fa-circle-exclamation"></i> Preview unavailable for this video format</p>'; };
+        body.innerHTML = ''; body.appendChild(el);
+
+      } else if (type === 'audio') {
+        const el = document.createElement('audio');
+        el.src = previewUrl;
+        el.controls = true;
+        el.preload = 'metadata';
+        el.className = 'lp-preview-audio';
+        el.onerror = () => { body.innerHTML = '<p class="lp-preview-err"><i class="fa-solid fa-circle-exclamation"></i> Preview unavailable for this audio format</p>'; };
+        body.innerHTML = ''; body.appendChild(el);
+
+      } else if (type === 'pdf') {
+        const el = document.createElement('iframe');
+        el.src = previewUrl;
+        el.className = 'lp-preview-pdf';
+        el.title = filename;
+        body.innerHTML = ''; body.appendChild(el);
+
+      } else if (type === 'text') {
+        try {
+          const res = await fetch(`/api/f/${shareId}/preview-text`);
+          if (!res.ok) throw new Error();
+          const text = await res.text();
+          const truncated = res.headers.get('X-Preview-Truncated') === '1';
+
+          const pre = document.createElement('pre');
+          pre.className = 'lp-preview-text';
+          pre.textContent = text;
+
+          const wrap = document.createElement('div');
+          wrap.appendChild(pre);
+          if (truncated) {
+            const note = document.createElement('p');
+            note.className = 'lp-preview-truncated';
+            note.innerHTML = '<i class="fa-solid fa-circle-info"></i> Showing first 50 KB — download to see the full file.';
+            wrap.appendChild(note);
+          }
+          body.innerHTML = ''; body.appendChild(wrap);
+        } catch {
+          body.innerHTML = '<p class="lp-preview-err"><i class="fa-solid fa-circle-exclamation"></i> Could not load preview</p>';
+        }
+      }
+    }
+
+    loadPreview(d.filename);
+
     // ── Copy share link button ─────────────────────────────────────────────
     const copyBtn = document.getElementById('lp-copy-btn');
     copyBtn.addEventListener('click', async () => {

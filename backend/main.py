@@ -871,6 +871,51 @@ async def download_file(
     return RedirectResponse(url=download_url)
 
 
+# ── File Preview ─────────────────────────────────────────────────────────────
+
+@app.get("/api/f/{share_id}/preview")
+async def preview_file(share_id: str, db: Session = Depends(get_db)):
+    """Redirect to the raw file URL for inline media preview. No token, no download count."""
+    upload = (
+        db.query(Upload)
+        .filter(Upload.share_id == share_id, Upload.status == "completed")
+        .first()
+    )
+    if not upload:
+        raise HTTPException(404, "File not found")
+    url = _get_storage(upload.storage_provider_id, db).get_download_url(upload.b2_file_key)
+    return RedirectResponse(url=url, status_code=302)
+
+
+@app.get("/api/f/{share_id}/preview-text")
+async def preview_text(share_id: str, db: Session = Depends(get_db)):
+    """Fetch and return the first 50 KB of a text/code file for inline preview."""
+    upload = (
+        db.query(Upload)
+        .filter(Upload.share_id == share_id, Upload.status == "completed")
+        .first()
+    )
+    if not upload:
+        raise HTTPException(404, "File not found")
+    url = _get_storage(upload.storage_provider_id, db).get_download_url(upload.b2_file_key)
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
+            resp = await client.get(url, headers={"Range": "bytes=0-51199"})
+        raw = resp.content[:51200]
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            text = raw.decode("latin-1", errors="replace")
+        truncated = len(raw) >= 51200
+        return Response(
+            content=text,
+            media_type="text/plain; charset=utf-8",
+            headers={"X-Preview-Truncated": "1" if truncated else "0"},
+        )
+    except Exception:
+        raise HTTPException(502, "Could not fetch preview")
+
+
 # ── Download Analytics ───────────────────────────────────────────────────────
 
 

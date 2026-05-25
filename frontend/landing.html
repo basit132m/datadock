@@ -121,6 +121,21 @@
     </div>
   </div>
 
+  <!-- File preview (injected by JS for supported types) -->
+  <div id="lp-preview" class="lp-preview-card" hidden>
+    <div class="lp-preview-header">
+      <i class="fa-solid fa-eye lp-preview-hdr-icon"></i>
+      <span>Preview</span>
+      <span id="lp-preview-label" class="lp-preview-type-label"></span>
+    </div>
+    <div id="lp-preview-body" class="lp-preview-body">
+      <div class="lp-preview-loading">
+        <div class="lp-spinner lp-preview-spinner"></div>
+        <span>Loading preview…</span>
+      </div>
+    </div>
+  </div>
+
   <!-- Feature highlights (shown after file loads) -->
   <div class="lp-features" id="lp-features" hidden>
     <div class="lp-feature">
