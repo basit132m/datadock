@@ -2,6 +2,7 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import html as _html
 import json
 import os
 import secrets
@@ -46,6 +47,59 @@ _geo_cache:         dict = {}    # ip -> (country, country_code)
 _geoip_reader             = None  # geoip2 Reader singleton
 _recent_downloads:  dict = {}    # (ip, upload_id) -> last download datetime
 _dl_tokens:         dict = {}    # token -> {share_id, expires}
+_landing_tpl:       str  = ""    # landing.html cached template
+
+# Extensions whose /preview URL is a usable og:image
+_OG_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".bmp", ".svg"}
+
+
+def _fmt_bytes(n: int) -> str:
+    if n >= 1_000_000_000: return f"{n/1_000_000_000:.2f} GB"
+    if n >= 1_000_000:     return f"{n/1_000_000:.1f} MB"
+    if n >= 1_000:         return f"{n/1_000:.0f} KB"
+    return f"{n} B"
+
+
+def _landing_template() -> str:
+    """Return the landing.html template, reading from disk on first call."""
+    global _landing_tpl
+    if not _landing_tpl:
+        with open(os.path.join(FRONTEND_DIR, "landing.html"), "r", encoding="utf-8") as f:
+            _landing_tpl = f.read()
+    return _landing_tpl
+
+
+def _build_og_html(share_id: str, upload, base_url: str) -> str:
+    """Render landing.html with OG/Twitter meta tags injected into <head>."""
+    tpl = _landing_template()
+
+    ext   = os.path.splitext(upload.filename or "")[1].lower()
+    title = _html.escape(upload.filename or "File")
+    size  = _fmt_bytes(upload.file_size or 0)
+    dls   = f"{upload.downloads or 0:,}"
+    desc  = _html.escape(f"{size} · {ext.lstrip('.').upper() or 'FILE'} · {dls} downloads — Download on DataDock")
+
+    is_image  = ext in _OG_IMAGE_EXTS
+    og_image  = (f"{base_url}/api/f/{share_id}/preview" if is_image
+                 else f"{base_url}/logo.webp")
+    page_url  = f"{base_url}/f/{share_id}"
+    tw_card   = "summary_large_image" if is_image else "summary"
+
+    og_block = (
+        f'<title>DataDock – {title}</title>\n'
+        f'    <meta property="og:type"         content="website" />\n'
+        f'    <meta property="og:url"          content="{page_url}" />\n'
+        f'    <meta property="og:site_name"    content="DataDock" />\n'
+        f'    <meta property="og:title"        content="{title}" />\n'
+        f'    <meta property="og:description"  content="{desc}" />\n'
+        f'    <meta property="og:image"        content="{og_image}" />\n'
+        f'    <meta name="twitter:card"        content="{tw_card}" />\n'
+        f'    <meta name="twitter:title"       content="{title}" />\n'
+        f'    <meta name="twitter:description" content="{desc}" />\n'
+        f'    <meta name="twitter:image"       content="{og_image}" />\n'
+        f'    <meta name="description"         content="{desc}" />'
+    )
+    return tpl.replace("<title>DataDock – Download</title>", og_block, 1)
 
 GEOIP_DB_PATH      = os.getenv("GEOIP_DB_PATH", "/app/backend/data/GeoLite2-Country.mmdb")
 DEDUP_WINDOW_SECS  = 3600  # same IP + same file within 1 hour = duplicate
@@ -2095,8 +2149,18 @@ async def change_master_key(db: Session = Depends(get_db), _=Depends(require_adm
 
 
 @app.get("/f/{share_id}", include_in_schema=False)
-async def share_page(share_id: str):
-    return FileResponse(os.path.join(FRONTEND_DIR, "landing.html"))
+async def share_page(share_id: str, request: Request, db: Session = Depends(get_db)):
+    upload = (
+        db.query(Upload)
+        .filter(Upload.share_id == share_id, Upload.status == "completed")
+        .first()
+    )
+    if not upload:
+        return FileResponse(os.path.join(FRONTEND_DIR, "landing.html"))
+
+    base_url = str(request.base_url).rstrip("/")
+    html = _build_og_html(share_id, upload, base_url)
+    return Response(content=html, media_type="text/html; charset=utf-8")
 
 
 @app.get("/", include_in_schema=False)
