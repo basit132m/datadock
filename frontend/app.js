@@ -1821,6 +1821,7 @@ function initRequestsPage() {
 let _supPollTimer = null;
 let _supAdminFilter = '';
 let _memberDrafts = {};   // msgId -> draft text, survives DOM re-renders
+let _adminDrafts  = {};   // msgId -> draft text, survives DOM re-renders
 
 function supStatusBadge(status) {
   const map = {
@@ -1948,6 +1949,15 @@ async function loadAdminSupportList() {
           </div>
         ` : ''}
       </div>`).join('');
+
+    // Restore admin drafts and wire up input → _adminDrafts
+    msgs.forEach(m => {
+      if (m.status === 'closed') return;
+      const ta = document.getElementById(`sup-reply-input-${m.id}`);
+      if (!ta) return;
+      if (_adminDrafts[m.id]) ta.value = _adminDrafts[m.id];
+      ta.addEventListener('input', () => { _adminDrafts[m.id] = ta.value; });
+    });
   } catch (e) {
     el.innerHTML = `<p style="padding:1.5rem;color:var(--danger);font-size:.875rem;text-align:center">${e.message}</p>`;
   }
@@ -1960,13 +1970,16 @@ function escHtml(str) {
 async function sendSupportReply(msgId) {
   const input   = document.getElementById(`sup-reply-input-${msgId}`);
   const msgEl   = document.getElementById(`sup-reply-msg-${msgId}`);
-  const reply   = (input.value || '').trim();
+  const reply   = (input ? input.value : '').trim();
   if (!reply) return;
   msgEl.textContent = '';
   try {
     await apiFetch('POST', `/api/admin/support/messages/${msgId}/reply`, { reply });
+    delete _adminDrafts[msgId];
+    if (input) input.value = '';
     msgEl.style.color = 'var(--success)';
     msgEl.textContent = 'Sent!';
+    await sleep(1200);
     await loadAdminSupportList();
   } catch (e) {
     msgEl.style.color = 'var(--danger)';
