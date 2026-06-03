@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from pydantic import BaseModel
@@ -38,6 +38,13 @@ IMPORT_QUEUE_MAX = 8                   # max buffered parts in queue
 IMPORT_READ_SIZE = 2 * 1024 * 1024    # 2 MB HTTP read chunks
 
 WORKER_URL    = os.getenv("WORKER_URL", "").rstrip("/")   # e.g. https://datadock-dl.abc.workers.dev
+SUPPORT_MEDIA_DIR = os.path.abspath(
+    os.getenv("SUPPORT_MEDIA_DIR", os.path.join(os.path.dirname(__file__), "data", "support-media"))
+)
+os.makedirs(SUPPORT_MEDIA_DIR, exist_ok=True)
+_ALLOWED_IMG_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp"}
+_IMG_EXT_MAP = {"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif",
+                "image/webp": ".webp", "image/bmp": ".bmp"}
 WORKER_SECRET = os.getenv("WORKER_SECRET", "")
 WORKER_TOKEN_TTL = 300  # seconds — token expires after 5 minutes
 
@@ -2151,10 +2158,12 @@ async def change_master_key(db: Session = Depends(get_db), _=Depends(require_adm
 class SupportMessageIn(BaseModel):
     subject: str
     body: str
+    attachment_url: Optional[str] = None
 
 
 class SupportReplyIn(BaseModel):
     reply: str
+    attachment_url: Optional[str] = None
 
 
 def _support_replies(msg_id: str, db: Session) -> list:
@@ -2165,20 +2174,22 @@ def _support_replies(msg_id: str, db: Session) -> list:
         .all()
     )
     return [{"id": r.id, "sender": r.sender, "body": r.body,
+             "attachment_url": r.attachment_url,
              "created_at": r.created_at.isoformat() if r.created_at else None} for r in rows]
 
 
 def _support_dict(m: SupportMessage, db: Session = None) -> dict:
     return {
-        "id":          m.id,
-        "key_id":      m.key_id,
-        "member_name": m.member_name,
-        "subject":     m.subject,
-        "body":        m.body,
-        "status":      m.status,
-        "created_at":  m.created_at.isoformat() if m.created_at else None,
-        "replied_at":  m.replied_at.isoformat() if m.replied_at else None,
-        "replies":     _support_replies(m.id, db) if db else [],
+        "id":             m.id,
+        "key_id":         m.key_id,
+        "member_name":    m.member_name,
+        "subject":        m.subject,
+        "body":           m.body,
+        "attachment_url": m.attachment_url,
+        "status":         m.status,
+        "created_at":     m.created_at.isoformat() if m.created_at else None,
+        "replied_at":     m.replied_at.isoformat() if m.replied_at else None,
+        "replies":        _support_replies(m.id, db) if db else [],
     }
 
 
@@ -2198,6 +2209,7 @@ async def submit_support_message(
         member_name=name,
         subject=body.subject.strip()[:500],
         body=body.body.strip(),
+        attachment_url=body.attachment_url,
         status="open",
         created_at=datetime.utcnow(),
     )
@@ -2246,6 +2258,7 @@ async def member_reply_support(
         message_id=msg_id,
         sender="member",
         body=body.reply.strip(),
+        attachment_url=body.attachment_url,
         created_at=datetime.utcnow(),
     )
     db.add(r)
@@ -2292,6 +2305,7 @@ async def admin_reply_support(
         message_id=msg_id,
         sender="admin",
         body=body.reply.strip(),
+        attachment_url=body.attachment_url,
         created_at=datetime.utcnow(),
     )
     db.add(r)
@@ -2315,6 +2329,33 @@ async def admin_close_support(
     db.commit()
     db.refresh(msg)
     return _support_dict(msg, db)
+
+
+@app.post("/api/support/upload-image")
+async def upload_support_image(
+    file: UploadFile = File(...),
+    _: dict = Depends(require_auth),
+):
+    if file.content_type not in _ALLOWED_IMG_TYPES:
+        raise HTTPException(400, "Only JPEG, PNG, GIF, WebP, or BMP images are allowed")
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(400, "Image too large — max 10 MB")
+    ext = _IMG_EXT_MAP.get(file.content_type, ".jpg")
+    filename = str(uuid.uuid4()) + ext
+    with open(os.path.join(SUPPORT_MEDIA_DIR, filename), "wb") as f:
+        f.write(content)
+    return {"url": f"/api/support/media/{filename}"}
+
+
+@app.get("/api/support/media/{filename}", include_in_schema=False)
+async def serve_support_media(filename: str):
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(400, "Invalid filename")
+    path = os.path.join(SUPPORT_MEDIA_DIR, filename)
+    if not os.path.isfile(path):
+        raise HTTPException(404, "Not found")
+    return FileResponse(path)
 
 
 @app.delete("/api/admin/support/messages/{msg_id}")

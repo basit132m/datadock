@@ -535,10 +535,19 @@
               <div style="display:flex;flex-direction:column;gap:.75rem">
                 <input id="support-subject" type="text" placeholder="Subject — e.g. Upload stuck at 95%" required style="width:100%;box-sizing:border-box" />
                 <textarea id="support-body" rows="5" placeholder="Describe your issue in detail…" required style="width:100%;box-sizing:border-box;resize:vertical;padding:.6rem .8rem;border:1.5px solid var(--border);border-radius:.5rem;font-family:inherit;font-size:.875rem;background:var(--surface);color:var(--text)"></textarea>
+                <div id="support-init-imgpreview" class="sup-img-preview" style="display:none">
+                  <img id="support-init-thumb" class="sup-img-thumb" src="" alt="preview">
+                  <button type="button" class="sup-img-clear" onclick="_initMsgImg=null;this.closest('.sup-img-preview').style.display='none'"><i class="fa-solid fa-xmark"></i></button>
+                </div>
                 <div style="display:flex;gap:.75rem;align-items:center">
                   <button type="submit" class="btn-primary" id="support-submit-btn">
                     <i class="fa-solid fa-paper-plane"></i> Send Message
                   </button>
+                  <label class="sup-attach-btn" title="Attach screenshot">
+                    <i class="fa-solid fa-image"></i>
+                    <input type="file" id="support-init-file" accept="image/*" style="display:none"
+                      onchange="(function(f){if(!f)return;_initMsgImg={file:f,previewUrl:URL.createObjectURL(f)};var t=document.getElementById('support-init-thumb');t.src=_initMsgImg.previewUrl;document.getElementById('support-init-imgpreview').style.display='flex';})(this.files[0])">
+                  </label>
                   <span id="support-form-msg" class="ad-form-msg"></span>
                 </div>
               </div>

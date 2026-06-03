@@ -1820,8 +1820,11 @@ function initRequestsPage() {
 
 let _supPollTimer = null;
 let _supAdminFilter = '';
-let _memberDrafts = {};   // msgId -> draft text, survives DOM re-renders
-let _adminDrafts  = {};   // msgId -> draft text, survives DOM re-renders
+let _memberDrafts      = {};   // msgId -> draft text
+let _adminDrafts       = {};   // msgId -> draft text
+let _memberImgDrafts   = {};   // msgId -> { file, previewUrl }
+let _adminImgDrafts    = {};   // msgId -> { file, previewUrl }
+let _initMsgImg        = null; // { file, previewUrl } for the new-message form
 
 function supStatusBadge(status) {
   const map = {
@@ -1850,6 +1853,11 @@ async function loadSupportPage() {
   }
 }
 
+function supImgHtml(url) {
+  if (!url) return '';
+  return `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" class="sup-bubble-img" alt="attachment"></a>`;
+}
+
 function renderConversation(m, isAdmin) {
   const bubbles = [];
   // First bubble: original member message
@@ -1857,6 +1865,7 @@ function renderConversation(m, isAdmin) {
     <div class="sup-bubble sup-bubble-member">
       <div class="sup-bubble-meta">${isAdmin ? `<i class="fa-solid fa-user"></i> ${escHtml(m.member_name)}` : '<i class="fa-solid fa-user"></i> You'} · ${formatDateTime(m.created_at)}</div>
       <div class="sup-bubble-body">${escHtml(m.body)}</div>
+      ${supImgHtml(m.attachment_url)}
     </div>`);
   // Follow-up replies in order
   (m.replies || []).forEach(r => {
@@ -1865,6 +1874,7 @@ function renderConversation(m, isAdmin) {
       <div class="sup-bubble ${isAdminBubble ? 'sup-bubble-admin' : 'sup-bubble-member'}">
         <div class="sup-bubble-meta">${isAdminBubble ? '<i class="fa-solid fa-shield-halved"></i> Admin' : (isAdmin ? `<i class="fa-solid fa-user"></i> ${escHtml(m.member_name)}` : '<i class="fa-solid fa-user"></i> You')} · ${formatDateTime(r.created_at)}</div>
         <div class="sup-bubble-body">${escHtml(r.body)}</div>
+        ${supImgHtml(r.attachment_url)}
       </div>`);
   });
   return bubbles.join('');
@@ -1890,8 +1900,16 @@ async function loadMemberThreads() {
         ${m.status === 'replied' ? `
           <div class="sup-member-reply-form">
             <textarea id="sup-mreply-input-${m.id}" rows="3" placeholder="Reply to admin…" style="width:100%;box-sizing:border-box;resize:vertical;padding:.5rem .75rem;border:1.5px solid var(--border);border-radius:.45rem;font-family:inherit;font-size:.85rem;background:var(--surface);color:var(--text)"></textarea>
+            <div id="sup-mreply-imgpreview-${m.id}" class="sup-img-preview" style="display:none">
+              <img id="sup-mreply-thumb-${m.id}" class="sup-img-thumb" src="" alt="preview">
+              <button type="button" class="sup-img-clear" onclick="clearSupImg('member','${m.id}')"><i class="fa-solid fa-xmark"></i></button>
+            </div>
             <div style="display:flex;gap:.6rem;margin-top:.5rem;align-items:center">
               <button class="btn-primary-sm" onclick="sendMemberReply('${m.id}')"><i class="fa-solid fa-paper-plane"></i> Send Reply</button>
+              <label class="sup-attach-btn" title="Attach image">
+                <i class="fa-solid fa-image"></i>
+                <input type="file" accept="image/*" style="display:none" onchange="selectSupImg('member','${m.id}',this)">
+              </label>
               <span id="sup-mreply-msg-${m.id}" class="ad-form-msg"></span>
             </div>
           </div>
@@ -1900,13 +1918,20 @@ async function loadMemberThreads() {
         ` : ''}
       </div>`).join('');
 
-    // Restore any in-progress drafts and wire up input → _memberDrafts
+    // Restore text drafts and image previews, wire up input listeners
     msgs.forEach(m => {
       if (m.status !== 'replied') return;
       const ta = document.getElementById(`sup-mreply-input-${m.id}`);
-      if (!ta) return;
-      if (_memberDrafts[m.id]) ta.value = _memberDrafts[m.id];
-      ta.addEventListener('input', () => { _memberDrafts[m.id] = ta.value; });
+      if (ta) {
+        if (_memberDrafts[m.id]) ta.value = _memberDrafts[m.id];
+        ta.addEventListener('input', () => { _memberDrafts[m.id] = ta.value; });
+      }
+      const imgDraft = _memberImgDrafts[m.id];
+      if (imgDraft) {
+        const preview = document.getElementById(`sup-mreply-imgpreview-${m.id}`);
+        const thumb   = document.getElementById(`sup-mreply-thumb-${m.id}`);
+        if (preview && thumb) { thumb.src = imgDraft.previewUrl; preview.style.display = 'flex'; }
+      }
     });
   } catch (e) {
     el.innerHTML = `<p style="padding:1.5rem;color:var(--danger);font-size:.875rem;text-align:center">${e.message}</p>`;
@@ -1944,25 +1969,77 @@ async function loadAdminSupportList() {
         ${m.status !== 'closed' ? `
           <div class="sup-reply-form" id="sup-reply-form-${m.id}">
             <textarea id="sup-reply-input-${m.id}" rows="3" placeholder="Write a reply…" style="width:100%;box-sizing:border-box;resize:vertical;padding:.5rem .75rem;border:1.5px solid var(--border);border-radius:.45rem;font-family:inherit;font-size:.8rem;background:var(--surface);color:var(--text)"></textarea>
-            <div style="display:flex;gap:.6rem;margin-top:.5rem">
+            <div id="sup-reply-imgpreview-${m.id}" class="sup-img-preview" style="display:none">
+              <img id="sup-reply-thumb-${m.id}" class="sup-img-thumb" src="" alt="preview">
+              <button type="button" class="sup-img-clear" onclick="clearSupImg('admin','${m.id}')"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div style="display:flex;gap:.6rem;margin-top:.5rem;align-items:center">
               <button class="btn-primary-sm" onclick="sendSupportReply('${m.id}')"><i class="fa-solid fa-paper-plane"></i> Reply</button>
+              <label class="sup-attach-btn" title="Attach image">
+                <i class="fa-solid fa-image"></i>
+                <input type="file" accept="image/*" style="display:none" onchange="selectSupImg('admin','${m.id}',this)">
+              </label>
               <span id="sup-reply-msg-${m.id}" class="ad-form-msg"></span>
             </div>
           </div>
         ` : ''}
       </div>`).join('');
 
-    // Restore admin drafts and wire up input → _adminDrafts
+    // Restore text drafts, image previews, wire up input listeners
     msgs.forEach(m => {
       if (m.status === 'closed') return;
       const ta = document.getElementById(`sup-reply-input-${m.id}`);
-      if (!ta) return;
-      if (_adminDrafts[m.id]) ta.value = _adminDrafts[m.id];
-      ta.addEventListener('input', () => { _adminDrafts[m.id] = ta.value; });
+      if (ta) {
+        if (_adminDrafts[m.id]) ta.value = _adminDrafts[m.id];
+        ta.addEventListener('input', () => { _adminDrafts[m.id] = ta.value; });
+      }
+      const imgDraft = _adminImgDrafts[m.id];
+      if (imgDraft) {
+        const preview = document.getElementById(`sup-reply-imgpreview-${m.id}`);
+        const thumb   = document.getElementById(`sup-reply-thumb-${m.id}`);
+        if (preview && thumb) { thumb.src = imgDraft.previewUrl; preview.style.display = 'flex'; }
+      }
     });
   } catch (e) {
     el.innerHTML = `<p style="padding:1.5rem;color:var(--danger);font-size:.875rem;text-align:center">${e.message}</p>`;
   }
+}
+
+async function uploadSupImg(file) {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch('/api/support/upload-image', {
+    method: 'POST',
+    headers: { 'X-API-Key': apiKey },
+    body: form,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Upload failed: HTTP ${res.status}`);
+  }
+  return (await res.json()).url;
+}
+
+function selectSupImg(side, msgId, input) {
+  const file = input.files[0];
+  if (!file) return;
+  const previewUrl = URL.createObjectURL(file);
+  const store = side === 'admin' ? _adminImgDrafts : _memberImgDrafts;
+  store[msgId] = { file, previewUrl };
+  const prefix = side === 'admin' ? 'sup-reply' : 'sup-mreply';
+  const preview = document.getElementById(`${prefix}-imgpreview-${msgId}`);
+  const thumb   = document.getElementById(`${prefix}-thumb-${msgId}`);
+  if (preview && thumb) { thumb.src = previewUrl; preview.style.display = 'flex'; }
+}
+
+function clearSupImg(side, msgId) {
+  const store = side === 'admin' ? _adminImgDrafts : _memberImgDrafts;
+  if (store[msgId]) { URL.revokeObjectURL(store[msgId].previewUrl); delete store[msgId]; }
+  const prefix = side === 'admin' ? 'sup-reply' : 'sup-mreply';
+  const preview = document.getElementById(`${prefix}-imgpreview-${msgId}`);
+  if (preview) preview.style.display = 'none';
+  const thumb = document.getElementById(`${prefix}-thumb-${msgId}`);
+  if (thumb) thumb.src = '';
 }
 
 function escHtml(str) {
@@ -1973,10 +2050,17 @@ async function sendSupportReply(msgId) {
   const input   = document.getElementById(`sup-reply-input-${msgId}`);
   const msgEl   = document.getElementById(`sup-reply-msg-${msgId}`);
   const reply   = (input ? input.value : '').trim();
-  if (!reply) return;
+  const imgDraft = _adminImgDrafts[msgId];
+  if (!reply && !imgDraft) return;
   msgEl.textContent = '';
   try {
-    await apiFetch('POST', `/api/admin/support/messages/${msgId}/reply`, { reply });
+    let attachment_url = null;
+    if (imgDraft) {
+      msgEl.textContent = 'Uploading image…';
+      attachment_url = await uploadSupImg(imgDraft.file);
+      clearSupImg('admin', msgId);
+    }
+    await apiFetch('POST', `/api/admin/support/messages/${msgId}/reply`, { reply: reply || '📎', attachment_url });
     delete _adminDrafts[msgId];
     if (input) input.value = '';
     msgEl.style.color = 'var(--success)';
@@ -1990,15 +2074,22 @@ async function sendSupportReply(msgId) {
 }
 
 async function sendMemberReply(msgId) {
-  const input = document.getElementById(`sup-mreply-input-${msgId}`);
-  const msgEl = document.getElementById(`sup-mreply-msg-${msgId}`);
-  const btn   = input ? input.closest('.sup-member-reply-form').querySelector('button') : null;
-  const reply = (input ? input.value : '').trim();
-  if (!reply) return;
+  const input    = document.getElementById(`sup-mreply-input-${msgId}`);
+  const msgEl    = document.getElementById(`sup-mreply-msg-${msgId}`);
+  const btn      = input ? input.closest('.sup-member-reply-form').querySelector('button') : null;
+  const reply    = (input ? input.value : '').trim();
+  const imgDraft = _memberImgDrafts[msgId];
+  if (!reply && !imgDraft) return;
   if (btn) btn.disabled = true;
   msgEl.textContent = '';
   try {
-    await apiFetch('POST', `/api/support/messages/${msgId}/reply`, { reply });
+    let attachment_url = null;
+    if (imgDraft) {
+      msgEl.textContent = 'Uploading image…';
+      attachment_url = await uploadSupImg(imgDraft.file);
+      clearSupImg('member', msgId);
+    }
+    await apiFetch('POST', `/api/support/messages/${msgId}/reply`, { reply: reply || '📎', attachment_url });
     delete _memberDrafts[msgId];
     msgEl.style.color = 'var(--success)';
     msgEl.textContent = 'Reply sent!';
@@ -2062,7 +2153,16 @@ function initSupportPage() {
       btn.disabled = true;
       msgEl.textContent = '';
       try {
-        await apiFetch('POST', '/api/support/messages', { subject, body });
+        let attachment_url = null;
+        if (_initMsgImg) {
+          msgEl.textContent = 'Uploading image…';
+          attachment_url = await uploadSupImg(_initMsgImg.file);
+          URL.revokeObjectURL(_initMsgImg.previewUrl);
+          _initMsgImg = null;
+          const prev = document.getElementById('support-init-imgpreview');
+          if (prev) prev.style.display = 'none';
+        }
+        await apiFetch('POST', '/api/support/messages', { subject, body, attachment_url });
         document.getElementById('support-subject').value = '';
         document.getElementById('support-body').value    = '';
         msgEl.style.color = 'var(--success)';

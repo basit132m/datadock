@@ -2089,6 +2089,41 @@ select { background: var(--surface); color: var(--text); }
 
 .sup-member-reply-form { margin-top: .25rem; padding-top: .75rem; border-top: 1px dashed var(--border); }
 .sup-delete-btn { padding: .2rem .45rem !important; font-size: .72rem !important; margin-left: auto; }
+
+/* Image attachments */
+.sup-bubble-img {
+  display: block; max-width: 260px; max-height: 220px;
+  border-radius: .5rem; margin-top: .5rem; cursor: pointer;
+  border: 1px solid rgba(0,0,0,.08); object-fit: cover;
+  transition: opacity .15s;
+}
+.sup-bubble-img:hover { opacity: .88; }
+
+.sup-attach-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: .4rem; cursor: pointer;
+  background: var(--bg); border: 1.5px solid var(--border);
+  color: var(--muted); font-size: .85rem; flex-shrink: 0;
+  transition: background .15s, color .15s;
+}
+.sup-attach-btn:hover { background: #eef2ff; color: #6366f1; border-color: #6366f1; }
+
+.sup-img-preview {
+  display: flex; align-items: flex-start; gap: .5rem;
+  margin-top: .5rem; padding: .4rem .6rem;
+  background: var(--bg); border: 1.5px solid var(--border);
+  border-radius: .45rem;
+}
+.sup-img-thumb {
+  max-width: 120px; max-height: 90px; border-radius: .3rem;
+  object-fit: cover; border: 1px solid rgba(0,0,0,.08);
+}
+.sup-img-clear {
+  background: none; border: none; cursor: pointer;
+  color: var(--muted); font-size: .9rem; padding: .1rem .3rem;
+  line-height: 1; border-radius: .25rem;
+}
+.sup-img-clear:hover { color: #ef4444; background: #fee2e2; }
 .sup-awaiting {
   font-size: .78rem; color: var(--muted); font-style: italic;
   margin: .5rem 0 0; padding-top: .5rem; border-top: 1px dashed var(--border);
