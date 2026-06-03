@@ -1884,6 +1884,7 @@ async function loadMemberThreads() {
           <span class="sup-thread-subject">${escHtml(m.subject)}</span>
           ${supStatusBadge(m.status)}
           <span class="sup-thread-time">${formatDateTime(m.created_at)}</span>
+          <button class="btn-sm danger sup-delete-btn" onclick="memberDeleteSupportMsg('${m.id}')"><i class="fa-solid fa-trash"></i></button>
         </div>
         <div class="sup-conversation">${renderConversation(m, false)}</div>
         ${m.status === 'replied' ? `
@@ -1937,6 +1938,7 @@ async function loadAdminSupportList() {
           ${supStatusBadge(m.status)}
           <span class="sup-thread-time">${formatDateTime(m.created_at)}</span>
           ${m.status !== 'closed' ? `<button class="btn-sm" onclick="closeSupportMsg('${m.id}')"><i class="fa-solid fa-xmark"></i> Close</button>` : ''}
+          <button class="btn-sm danger" onclick="adminDeleteSupportMsg('${m.id}')"><i class="fa-solid fa-trash"></i> Delete</button>
         </div>
         <div class="sup-conversation">${renderConversation(m, true)}</div>
         ${m.status !== 'closed' ? `
@@ -2015,6 +2017,24 @@ async function closeSupportMsg(msgId) {
   try {
     await apiFetch('POST', `/api/admin/support/messages/${msgId}/close`);
     await loadAdminSupportList();
+  } catch (e) { alert(e.message); }
+}
+
+async function adminDeleteSupportMsg(msgId) {
+  if (!confirm('Permanently delete this conversation? This cannot be undone.')) return;
+  try {
+    await apiFetch('DELETE', `/api/admin/support/messages/${msgId}`);
+    delete _adminDrafts[msgId];
+    await loadAdminSupportList();
+  } catch (e) { alert(e.message); }
+}
+
+async function memberDeleteSupportMsg(msgId) {
+  if (!confirm('Delete this conversation?')) return;
+  try {
+    await apiFetch('DELETE', `/api/support/messages/${msgId}`);
+    delete _memberDrafts[msgId];
+    await loadMemberThreads();
   } catch (e) { alert(e.message); }
 }
 

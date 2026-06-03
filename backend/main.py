@@ -2317,6 +2317,41 @@ async def admin_close_support(
     return _support_dict(msg, db)
 
 
+@app.delete("/api/admin/support/messages/{msg_id}")
+async def admin_delete_support(
+    msg_id: str,
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    msg = db.query(SupportMessage).filter(SupportMessage.id == msg_id).first()
+    if not msg:
+        raise HTTPException(404, "Message not found")
+    db.query(SupportReply).filter(SupportReply.message_id == msg_id).delete()
+    db.delete(msg)
+    db.commit()
+    return {"ok": True}
+
+
+@app.delete("/api/support/messages/{msg_id}")
+async def member_delete_support(
+    msg_id: str,
+    auth: dict = Depends(require_auth),
+    x_api_key: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    msg = db.query(SupportMessage).filter(SupportMessage.id == msg_id).first()
+    if not msg:
+        raise HTTPException(404, "Message not found")
+    key_obj = db.query(ApiKey).filter(ApiKey.key == x_api_key, ApiKey.active == 1).first()
+    key_id = key_obj.id if key_obj else "env-admin"
+    if msg.key_id != key_id:
+        raise HTTPException(403, "Not your message")
+    db.query(SupportReply).filter(SupportReply.message_id == msg_id).delete()
+    db.delete(msg)
+    db.commit()
+    return {"ok": True}
+
+
 # ── Serve frontend ────────────────────────────────────────────────────────────
 
 
