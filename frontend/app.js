@@ -1267,8 +1267,14 @@ async function loadRedirectUrlSetting() {
 async function saveSetting(field, url, msgId, inputId) {
   const msg = document.getElementById(msgId);
   msg.textContent = '';
+  // Always send both fields together so saving one never clears the other
+  const body = {
+    redirect_url: document.getElementById('redirect-url-input').value.trim() || null,
+    popup_url:    document.getElementById('popup-url-input').value.trim()    || null,
+    [field]:      url || null,
+  };
   try {
-    await apiFetch('POST', '/api/admin/settings', { [field]: url || null });
+    await apiFetch('POST', '/api/admin/settings', body);
     msg.style.color = 'var(--success)';
     msg.textContent = url ? 'Saved!' : 'Cleared.';
     document.getElementById(inputId).value = url || '';
