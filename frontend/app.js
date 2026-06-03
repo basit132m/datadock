@@ -1870,15 +1870,16 @@ function renderConversation(m, isAdmin) {
 
 async function loadMemberThreads() {
   const el = document.getElementById('support-thread-list');
-
-  // Save any unsent reply text before re-rendering
-  const savedDrafts = {};
-  el.querySelectorAll('.sup-member-reply-form textarea').forEach(ta => {
-    if (ta.value.trim()) savedDrafts[ta.id] = ta.value;
-  });
-
   try {
     const msgs = await apiFetch('GET', '/api/support/messages');
+
+    // Save drafts AFTER the fetch, right before replacing HTML —
+    // this captures everything the user typed while the request was in-flight.
+    const savedDrafts = {};
+    el.querySelectorAll('.sup-member-reply-form textarea').forEach(ta => {
+      savedDrafts[ta.id] = ta.value;
+    });
+
     if (!msgs.length) {
       el.innerHTML = '<p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">No messages yet. Use the form above to contact admin.</p>';
       return;
@@ -1904,7 +1905,7 @@ async function loadMemberThreads() {
         ` : ''}
       </div>`).join('');
 
-    // Restore any drafts the user was typing
+    // Restore every draft immediately after render
     Object.entries(savedDrafts).forEach(([id, val]) => {
       const ta = document.getElementById(id);
       if (ta) ta.value = val;
