@@ -1820,6 +1820,7 @@ function initRequestsPage() {
 
 let _supPollTimer = null;
 let _supAdminFilter = '';
+let _memberDrafts = {};   // msgId -> draft text, survives DOM re-renders
 
 function supStatusBadge(status) {
   const map = {
@@ -1872,14 +1873,6 @@ async function loadMemberThreads() {
   const el = document.getElementById('support-thread-list');
   try {
     const msgs = await apiFetch('GET', '/api/support/messages');
-
-    // Save drafts AFTER the fetch, right before replacing HTML —
-    // this captures everything the user typed while the request was in-flight.
-    const savedDrafts = {};
-    el.querySelectorAll('.sup-member-reply-form textarea').forEach(ta => {
-      savedDrafts[ta.id] = ta.value;
-    });
-
     if (!msgs.length) {
       el.innerHTML = '<p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">No messages yet. Use the form above to contact admin.</p>';
       return;
@@ -1905,10 +1898,13 @@ async function loadMemberThreads() {
         ` : ''}
       </div>`).join('');
 
-    // Restore every draft immediately after render
-    Object.entries(savedDrafts).forEach(([id, val]) => {
-      const ta = document.getElementById(id);
-      if (ta) ta.value = val;
+    // Restore any in-progress drafts and wire up input → _memberDrafts
+    msgs.forEach(m => {
+      if (m.status !== 'replied') return;
+      const ta = document.getElementById(`sup-mreply-input-${m.id}`);
+      if (!ta) return;
+      if (_memberDrafts[m.id]) ta.value = _memberDrafts[m.id];
+      ta.addEventListener('input', () => { _memberDrafts[m.id] = ta.value; });
     });
   } catch (e) {
     el.innerHTML = `<p style="padding:1.5rem;color:var(--danger);font-size:.875rem;text-align:center">${e.message}</p>`;
@@ -1988,6 +1984,7 @@ async function sendMemberReply(msgId) {
   msgEl.textContent = '';
   try {
     await apiFetch('POST', `/api/support/messages/${msgId}/reply`, { reply });
+    delete _memberDrafts[msgId];
     msgEl.style.color = 'var(--success)';
     msgEl.textContent = 'Reply sent!';
     if (input) input.value = '';
