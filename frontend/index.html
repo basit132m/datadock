@@ -61,6 +61,10 @@
         <i class="fa-solid fa-inbox ni-icon"></i> Requests
         <span class="nav-badge" id="req-nav-badge" hidden>0</span>
       </button>
+      <button class="nav-item" data-page="support">
+        <i class="fa-solid fa-headset ni-icon"></i> Support
+        <span class="nav-badge" id="support-nav-badge" hidden>0</span>
+      </button>
     </nav>
     <div class="sidebar-footer">
       <div id="key-badge" class="key-badge">
@@ -509,6 +513,86 @@
         </div>
         <div id="req-list">
           <p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">Loading…</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Support ── -->
+    <div id="page-support" class="page">
+      <div class="page-header">
+        <h1>Support</h1>
+      </div>
+
+      <!-- Member view: submit form + thread list -->
+      <div id="support-member-view">
+        <div class="card" style="margin-bottom:1.5rem">
+          <div class="card-header"><i class="fa-solid fa-pen-to-square"></i> Contact Admin</div>
+          <div style="padding:1rem 1.25rem">
+            <p style="color:var(--muted);font-size:.875rem;margin:0 0 1rem 0">
+              Facing an upload issue or need help? Send a message and the admin will reply as soon as possible.
+            </p>
+            <form id="support-form">
+              <div style="display:flex;flex-direction:column;gap:.75rem">
+                <input id="support-subject" type="text" placeholder="Subject — e.g. Upload stuck at 95%" required style="width:100%;box-sizing:border-box" />
+                <textarea id="support-body" rows="5" placeholder="Describe your issue in detail…" required style="width:100%;box-sizing:border-box;resize:vertical;padding:.6rem .8rem;border:1.5px solid var(--border);border-radius:.5rem;font-family:inherit;font-size:.875rem;background:var(--surface);color:var(--text)"></textarea>
+                <div style="display:flex;gap:.75rem;align-items:center">
+                  <button type="submit" class="btn-primary" id="support-submit-btn">
+                    <i class="fa-solid fa-paper-plane"></i> Send Message
+                  </button>
+                  <span id="support-form-msg" class="ad-form-msg"></span>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><i class="fa-solid fa-comments"></i> My Messages</div>
+          <div id="support-thread-list">
+            <p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">Loading…</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Admin view: all messages -->
+      <div id="support-admin-view" hidden>
+        <div class="stats-grid" style="margin-bottom:1.5rem">
+          <div class="stat-card">
+            <div class="stat-icon" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;box-shadow:0 4px 12px rgba(245,158,11,.35)"><i class="fa-solid fa-envelope-open"></i></div>
+            <div>
+              <div class="stat-label">Open</div>
+              <div class="stat-value" id="sup-stat-open">—</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;box-shadow:0 4px 12px rgba(59,130,246,.35)"><i class="fa-solid fa-reply"></i></div>
+            <div>
+              <div class="stat-label">Replied</div>
+              <div class="stat-value" id="sup-stat-replied">—</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;box-shadow:0 4px 12px rgba(16,185,129,.35)"><i class="fa-solid fa-circle-check"></i></div>
+            <div>
+              <div class="stat-label">Closed</div>
+              <div class="stat-value" id="sup-stat-closed">—</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header" style="display:flex;align-items:center;gap:.75rem">
+            All Support Messages
+            <div style="display:flex;gap:.4rem;margin-left:auto">
+              <button class="btn-sm sup-filter-btn sup-filter-active" data-status="">All</button>
+              <button class="btn-sm sup-filter-btn" data-status="open">Open</button>
+              <button class="btn-sm sup-filter-btn" data-status="replied">Replied</button>
+              <button class="btn-sm sup-filter-btn" data-status="closed">Closed</button>
+            </div>
+          </div>
+          <div id="support-admin-list">
+            <p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">Loading…</p>
+          </div>
         </div>
       </div>
     </div>

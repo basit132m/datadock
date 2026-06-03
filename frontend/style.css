@@ -2050,6 +2050,57 @@ select { background: var(--surface); color: var(--text); }
   line-height: 1;
 }
 
+/* ── Support page ── */
+.sup-thread {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+.sup-thread:last-child { border-bottom: none; }
+.sup-thread-replied { background: #f0fdf4; }
+.sup-thread-head {
+  display: flex; align-items: center; flex-wrap: wrap; gap: .5rem;
+  margin-bottom: .5rem;
+}
+.sup-thread-subject {
+  font-weight: 600; font-size: .9rem; color: var(--text); flex: 1; min-width: 120px;
+}
+.sup-thread-time { font-size: .75rem; color: var(--muted); margin-left: auto; }
+.sup-thread-body {
+  font-size: .85rem; color: var(--text-secondary, var(--muted));
+  white-space: pre-wrap; word-break: break-word;
+  background: var(--bg); padding: .6rem .85rem; border-radius: .45rem;
+  border: 1px solid var(--border);
+}
+.sup-reply-box {
+  margin-top: .75rem; padding: .6rem .85rem;
+  background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 0 .45rem .45rem 0;
+}
+.sup-reply-label {
+  font-size: .72rem; font-weight: 600; color: #2563eb; margin-bottom: .35rem;
+}
+.sup-reply-text {
+  font-size: .85rem; color: #1e40af; white-space: pre-wrap; word-break: break-word;
+}
+.sup-reply-form { margin-top: .75rem; }
+
+/* Admin support message card */
+.sup-admin-msg {
+  padding: 1.1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+.sup-admin-msg:last-child { border-bottom: none; }
+.sup-admin-head {
+  display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-bottom: .6rem;
+}
+.sup-admin-who {
+  font-size: .78rem; font-weight: 600; color: #6366f1;
+  background: #eef2ff; padding: .15rem .55rem; border-radius: .75rem;
+}
+
+/* Support filter buttons (same style as req-filter) */
+.sup-filter-btn { font-size: .78rem; }
+.sup-filter-active { background: #6366f1 !important; color: #fff !important; border-color: #6366f1 !important; }
+
 @media (max-width: 560px) {
   .rq-header-inner { padding: 0 1rem; }
   .rq-main { padding: 1.5rem 1rem 3rem; }

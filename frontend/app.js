@@ -1816,9 +1816,212 @@ function initRequestsPage() {
   });
 }
 
+// ── Support ───────────────────────────────────────────────────────────────────
+
+let _supPollTimer = null;
+let _supAdminFilter = '';
+
+function supStatusBadge(status) {
+  const map = {
+    open:    { bg: '#fef3c7', color: '#92400e', label: 'Open' },
+    replied: { bg: '#dbeafe', color: '#1e40af', label: 'Replied' },
+    closed:  { bg: '#dcfce7', color: '#166534', label: 'Closed' },
+  };
+  const s = map[status] || { bg: '#f1f5f9', color: '#475569', label: status };
+  return `<span style="display:inline-block;padding:.15rem .55rem;border-radius:.75rem;font-size:.72rem;font-weight:600;background:${s.bg};color:${s.color}">${s.label}</span>`;
+}
+
+function formatDateTime(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+async function loadSupportPage() {
+  if (userRole === 'admin') {
+    document.getElementById('support-admin-view').hidden = false;
+    document.getElementById('support-member-view').hidden = true;
+    await loadAdminSupportList();
+  } else {
+    document.getElementById('support-admin-view').hidden = true;
+    document.getElementById('support-member-view').hidden = false;
+    await loadMemberThreads();
+  }
+}
+
+async function loadMemberThreads() {
+  const el = document.getElementById('support-thread-list');
+  try {
+    const msgs = await apiFetch('GET', '/api/support/messages');
+    if (!msgs.length) {
+      el.innerHTML = '<p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">No messages yet. Use the form above to contact admin.</p>';
+      return;
+    }
+    el.innerHTML = msgs.map(m => `
+      <div class="sup-thread ${m.status === 'replied' ? 'sup-thread-replied' : ''}">
+        <div class="sup-thread-head">
+          <span class="sup-thread-subject">${escHtml(m.subject)}</span>
+          ${supStatusBadge(m.status)}
+          <span class="sup-thread-time">${formatDateTime(m.created_at)}</span>
+        </div>
+        <div class="sup-thread-body">${escHtml(m.body)}</div>
+        ${m.reply ? `
+          <div class="sup-reply-box">
+            <div class="sup-reply-label"><i class="fa-solid fa-reply"></i> Admin replied ${formatDateTime(m.replied_at)}</div>
+            <div class="sup-reply-text">${escHtml(m.reply)}</div>
+          </div>
+        ` : ''}
+      </div>`).join('');
+  } catch (e) {
+    el.innerHTML = `<p style="padding:1.5rem;color:var(--danger);font-size:.875rem;text-align:center">${e.message}</p>`;
+  }
+}
+
+async function loadAdminSupportList() {
+  const el = document.getElementById('support-admin-list');
+  try {
+    const url = _supAdminFilter ? `/api/admin/support/messages?status=${_supAdminFilter}` : '/api/admin/support/messages';
+    const msgs = await apiFetch('GET', url);
+
+    const counts = { open: 0, replied: 0, closed: 0 };
+    msgs.forEach(m => { if (counts[m.status] !== undefined) counts[m.status]++; });
+    document.getElementById('sup-stat-open').textContent    = counts.open;
+    document.getElementById('sup-stat-replied').textContent = counts.replied;
+    document.getElementById('sup-stat-closed').textContent  = counts.closed;
+    updateSupportBadge(counts.open);
+
+    if (!msgs.length) {
+      el.innerHTML = '<p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">No messages.</p>';
+      return;
+    }
+    el.innerHTML = msgs.map(m => `
+      <div class="sup-admin-msg" id="sup-msg-${m.id}">
+        <div class="sup-admin-head">
+          <span class="sup-admin-who"><i class="fa-solid fa-user"></i> ${escHtml(m.member_name)}</span>
+          <span class="sup-thread-subject">${escHtml(m.subject)}</span>
+          ${supStatusBadge(m.status)}
+          <span class="sup-thread-time">${formatDateTime(m.created_at)}</span>
+          ${m.status !== 'closed' ? `<button class="btn-sm" onclick="closeSupportMsg('${m.id}')"><i class="fa-solid fa-xmark"></i> Close</button>` : ''}
+        </div>
+        <div class="sup-thread-body">${escHtml(m.body)}</div>
+        ${m.reply ? `
+          <div class="sup-reply-box">
+            <div class="sup-reply-label"><i class="fa-solid fa-reply"></i> Your reply · ${formatDateTime(m.replied_at)}</div>
+            <div class="sup-reply-text">${escHtml(m.reply)}</div>
+          </div>
+        ` : ''}
+        ${m.status !== 'closed' ? `
+          <div class="sup-reply-form" id="sup-reply-form-${m.id}">
+            <textarea id="sup-reply-input-${m.id}" rows="3" placeholder="Write a reply…" style="width:100%;box-sizing:border-box;resize:vertical;padding:.5rem .75rem;border:1.5px solid var(--border);border-radius:.45rem;font-family:inherit;font-size:.8rem;background:var(--surface);color:var(--text)"></textarea>
+            <div style="display:flex;gap:.6rem;margin-top:.5rem">
+              <button class="btn-primary-sm" onclick="sendSupportReply('${m.id}')"><i class="fa-solid fa-paper-plane"></i> Reply</button>
+              <span id="sup-reply-msg-${m.id}" class="ad-form-msg"></span>
+            </div>
+          </div>
+        ` : ''}
+      </div>`).join('');
+  } catch (e) {
+    el.innerHTML = `<p style="padding:1.5rem;color:var(--danger);font-size:.875rem;text-align:center">${e.message}</p>`;
+  }
+}
+
+function escHtml(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function sendSupportReply(msgId) {
+  const input   = document.getElementById(`sup-reply-input-${msgId}`);
+  const msgEl   = document.getElementById(`sup-reply-msg-${msgId}`);
+  const reply   = (input.value || '').trim();
+  if (!reply) return;
+  msgEl.textContent = '';
+  try {
+    await apiFetch('POST', `/api/admin/support/messages/${msgId}/reply`, { reply });
+    msgEl.style.color = 'var(--success)';
+    msgEl.textContent = 'Sent!';
+    await loadAdminSupportList();
+  } catch (e) {
+    msgEl.style.color = 'var(--danger)';
+    msgEl.textContent = e.message;
+  }
+}
+
+async function closeSupportMsg(msgId) {
+  if (!confirm('Close this support message?')) return;
+  try {
+    await apiFetch('POST', `/api/admin/support/messages/${msgId}/close`);
+    await loadAdminSupportList();
+  } catch (e) { alert(e.message); }
+}
+
+function updateSupportBadge(count) {
+  const badge = document.getElementById('support-nav-badge');
+  if (!badge) return;
+  if (count > 0) {
+    badge.textContent = count > 99 ? '99+' : count;
+    badge.hidden = false;
+  } else {
+    badge.hidden = true;
+  }
+}
+
+function initSupportPage() {
+  const form = document.getElementById('support-form');
+  if (form) {
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const subject = document.getElementById('support-subject').value.trim();
+      const body    = document.getElementById('support-body').value.trim();
+      const msgEl   = document.getElementById('support-form-msg');
+      const btn     = document.getElementById('support-submit-btn');
+      if (!subject || !body) return;
+      btn.disabled = true;
+      msgEl.textContent = '';
+      try {
+        await apiFetch('POST', '/api/support/messages', { subject, body });
+        document.getElementById('support-subject').value = '';
+        document.getElementById('support-body').value    = '';
+        msgEl.style.color = 'var(--success)';
+        msgEl.textContent = 'Message sent! Admin will reply soon.';
+        setTimeout(() => { msgEl.textContent = ''; }, 4000);
+        await loadMemberThreads();
+      } catch (err) {
+        msgEl.style.color = 'var(--danger)';
+        msgEl.textContent = err.message;
+      }
+      btn.disabled = false;
+    });
+  }
+
+  document.querySelectorAll('.sup-filter-btn').forEach(btn => {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.sup-filter-btn').forEach(b => b.classList.remove('sup-filter-active'));
+      this.classList.add('sup-filter-active');
+      _supAdminFilter = this.dataset.status;
+      loadAdminSupportList();
+    });
+  });
+
+  // Poll every 10 seconds for live feel
+  if (_supPollTimer) clearInterval(_supPollTimer);
+  _supPollTimer = setInterval(() => {
+    if (userRole === 'admin') {
+      // Always refresh badge count even when not on support page
+      apiFetch('GET', '/api/admin/support/messages/count')
+        .then(d => updateSupportBadge(d.open || 0))
+        .catch(() => {});
+      const page = document.getElementById('page-support');
+      if (page && page.classList.contains('active')) loadAdminSupportList();
+    } else {
+      const page = document.getElementById('page-support');
+      if (page && page.classList.contains('active')) loadMemberThreads();
+    }
+  }, 10000);
+}
+
 // ── Page navigation ───────────────────────────────────────────────────────────
 
 const ADMIN_PAGES = ['dashboard', 'ads', 'storage', 'downloads', 'team', 'requests'];
+// 'support' is visible to both roles — intentionally not in ADMIN_PAGES
 
 function applyRoleUI() {
   ADMIN_PAGES.forEach(page => {
@@ -1842,6 +2045,7 @@ function showPage(page) {
   if (page === 'downloads') loadDownloadsPage();
   if (page === 'team')      loadTeamPage();
   if (page === 'requests')  loadRequestsPage();
+  if (page === 'support')   loadSupportPage();
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -1904,6 +2108,7 @@ function initApp() {
   initStorageForm();
   initKeyForm();
   initRequestsPage();
+  initSupportPage();
   applyRoleUI();
 
   document.querySelectorAll('.dl-period-btn').forEach(btn => {

@@ -113,3 +113,17 @@ class AccessRequest(Base):
     key_id     = Column(String(36), nullable=True)   # set after approval
     created_at = Column(DateTime, nullable=False)
     updated_at = Column(DateTime, nullable=True)
+
+
+class SupportMessage(Base):
+    __tablename__ = "support_messages"
+
+    id          = Column(String(36), primary_key=True)
+    key_id      = Column(String(36), nullable=False, index=True)
+    member_name = Column(String(200), nullable=False)
+    subject     = Column(String(500), nullable=False)
+    body        = Column(Text, nullable=False)
+    reply       = Column(Text, nullable=True)
+    status      = Column(String(20), default="open", nullable=False, index=True)
+    created_at  = Column(DateTime, nullable=False)
+    replied_at  = Column(DateTime, nullable=True)

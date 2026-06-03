@@ -24,7 +24,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db, init_db
-from models import AccessRequest, Ad, ApiKey, DownloadEvent, Part, SiteSetting, StorageProvider, Upload
+from models import AccessRequest, Ad, ApiKey, DownloadEvent, Part, SiteSetting, StorageProvider, SupportMessage, Upload
 from storage import B2Storage, BunnyStorage, S3Storage
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -2143,6 +2143,129 @@ async def change_master_key(db: Session = Depends(get_db), _=Depends(require_adm
         ))
     db.commit()
     return {"new_key": new_key_value}
+
+
+# ── Support messages ──────────────────────────────────────────────────────────
+
+
+class SupportMessageIn(BaseModel):
+    subject: str
+    body: str
+
+
+class SupportReplyIn(BaseModel):
+    reply: str
+
+
+def _support_dict(m: SupportMessage) -> dict:
+    return {
+        "id":          m.id,
+        "key_id":      m.key_id,
+        "member_name": m.member_name,
+        "subject":     m.subject,
+        "body":        m.body,
+        "reply":       m.reply,
+        "status":      m.status,
+        "created_at":  m.created_at.isoformat() if m.created_at else None,
+        "replied_at":  m.replied_at.isoformat() if m.replied_at else None,
+    }
+
+
+@app.post("/api/support/messages")
+async def submit_support_message(
+    body: SupportMessageIn,
+    auth: dict = Depends(require_auth),
+    x_api_key: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    key_obj = db.query(ApiKey).filter(ApiKey.key == x_api_key, ApiKey.active == 1).first()
+    key_id = key_obj.id if key_obj else "env-admin"
+    name   = key_obj.name if key_obj else auth.get("name", "Admin")
+    msg = SupportMessage(
+        id=str(uuid.uuid4()),
+        key_id=key_id,
+        member_name=name,
+        subject=body.subject.strip()[:500],
+        body=body.body.strip(),
+        status="open",
+        created_at=datetime.utcnow(),
+    )
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+    return _support_dict(msg)
+
+
+@app.get("/api/support/messages")
+async def get_my_support_messages(
+    auth: dict = Depends(require_auth),
+    x_api_key: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    key_obj = db.query(ApiKey).filter(ApiKey.key == x_api_key, ApiKey.active == 1).first()
+    key_id = key_obj.id if key_obj else "env-admin"
+    msgs = (
+        db.query(SupportMessage)
+        .filter(SupportMessage.key_id == key_id)
+        .order_by(SupportMessage.created_at.desc())
+        .all()
+    )
+    return [_support_dict(m) for m in msgs]
+
+
+@app.get("/api/admin/support/messages")
+async def admin_list_support_messages(
+    status: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    q = db.query(SupportMessage)
+    if status:
+        q = q.filter(SupportMessage.status == status)
+    msgs = q.order_by(SupportMessage.created_at.desc()).all()
+    return [_support_dict(m) for m in msgs]
+
+
+@app.get("/api/admin/support/messages/count")
+async def admin_support_open_count(
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    count = db.query(SupportMessage).filter(SupportMessage.status == "open").count()
+    return {"open": count}
+
+
+@app.post("/api/admin/support/messages/{msg_id}/reply")
+async def admin_reply_support(
+    msg_id: str,
+    body: SupportReplyIn,
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    msg = db.query(SupportMessage).filter(SupportMessage.id == msg_id).first()
+    if not msg:
+        raise HTTPException(404, "Message not found")
+    msg.reply = body.reply.strip()
+    msg.status = "replied"
+    msg.replied_at = datetime.utcnow()
+    db.commit()
+    db.refresh(msg)
+    return _support_dict(msg)
+
+
+@app.post("/api/admin/support/messages/{msg_id}/close")
+async def admin_close_support(
+    msg_id: str,
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    msg = db.query(SupportMessage).filter(SupportMessage.id == msg_id).first()
+    if not msg:
+        raise HTTPException(404, "Message not found")
+    msg.status = "closed"
+    db.commit()
+    db.refresh(msg)
+    return _support_dict(msg)
 
 
 # ── Serve frontend ────────────────────────────────────────────────────────────
