@@ -2054,7 +2054,12 @@ function initSupportPage() {
       if (page && page.classList.contains('active')) loadAdminSupportList();
     } else {
       const page = document.getElementById('page-support');
-      if (page && page.classList.contains('active')) loadMemberThreads();
+      if (page && page.classList.contains('active')) {
+        // Skip re-render while user is typing in a reply box
+        const replyTA = document.querySelector('.sup-member-reply-form textarea');
+        const userTyping = replyTA && (document.activeElement === replyTA || replyTA.value.trim() !== '');
+        if (!userTyping) loadMemberThreads();
+      }
     }
   }, 10000);
 }
