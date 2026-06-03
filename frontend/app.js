@@ -1870,6 +1870,13 @@ function renderConversation(m, isAdmin) {
 
 async function loadMemberThreads() {
   const el = document.getElementById('support-thread-list');
+
+  // Save any unsent reply text before re-rendering
+  const savedDrafts = {};
+  el.querySelectorAll('.sup-member-reply-form textarea').forEach(ta => {
+    if (ta.value.trim()) savedDrafts[ta.id] = ta.value;
+  });
+
   try {
     const msgs = await apiFetch('GET', '/api/support/messages');
     if (!msgs.length) {
@@ -1896,6 +1903,12 @@ async function loadMemberThreads() {
           <p class="sup-awaiting"><i class="fa-solid fa-clock"></i> Awaiting admin reply…</p>
         ` : ''}
       </div>`).join('');
+
+    // Restore any drafts the user was typing
+    Object.entries(savedDrafts).forEach(([id, val]) => {
+      const ta = document.getElementById(id);
+      if (ta) ta.value = val;
+    });
   } catch (e) {
     el.innerHTML = `<p style="padding:1.5rem;color:var(--danger);font-size:.875rem;text-align:center">${e.message}</p>`;
   }
@@ -2054,12 +2067,7 @@ function initSupportPage() {
       if (page && page.classList.contains('active')) loadAdminSupportList();
     } else {
       const page = document.getElementById('page-support');
-      if (page && page.classList.contains('active')) {
-        // Skip re-render while user is typing in a reply box
-        const replyTA = document.querySelector('.sup-member-reply-form textarea');
-        const userTyping = replyTA && (document.activeElement === replyTA || replyTA.value.trim() !== '');
-        if (!userTyping) loadMemberThreads();
-      }
+      if (page && page.classList.contains('active')) loadMemberThreads();
     }
   }, 10000);
 }
