@@ -1967,15 +1967,20 @@ async function sendSupportReply(msgId) {
 async function sendMemberReply(msgId) {
   const input = document.getElementById(`sup-mreply-input-${msgId}`);
   const msgEl = document.getElementById(`sup-mreply-msg-${msgId}`);
+  const btn   = input ? input.closest('.sup-member-reply-form').querySelector('button') : null;
   const reply = (input ? input.value : '').trim();
   if (!reply) return;
+  if (btn) btn.disabled = true;
   msgEl.textContent = '';
   try {
     await apiFetch('POST', `/api/support/messages/${msgId}/reply`, { reply });
     msgEl.style.color = 'var(--success)';
-    msgEl.textContent = 'Sent!';
+    msgEl.textContent = 'Reply sent!';
+    if (input) input.value = '';
+    await sleep(1200);
     await loadMemberThreads();
   } catch (e) {
+    if (btn) btn.disabled = false;
     msgEl.style.color = 'var(--danger)';
     msgEl.textContent = e.message;
   }
