@@ -1848,6 +1848,26 @@ async function loadSupportPage() {
   }
 }
 
+function renderConversation(m, isAdmin) {
+  const bubbles = [];
+  // First bubble: original member message
+  bubbles.push(`
+    <div class="sup-bubble sup-bubble-member">
+      <div class="sup-bubble-meta">${isAdmin ? `<i class="fa-solid fa-user"></i> ${escHtml(m.member_name)}` : '<i class="fa-solid fa-user"></i> You'} · ${formatDateTime(m.created_at)}</div>
+      <div class="sup-bubble-body">${escHtml(m.body)}</div>
+    </div>`);
+  // Follow-up replies in order
+  (m.replies || []).forEach(r => {
+    const isAdminBubble = r.sender === 'admin';
+    bubbles.push(`
+      <div class="sup-bubble ${isAdminBubble ? 'sup-bubble-admin' : 'sup-bubble-member'}">
+        <div class="sup-bubble-meta">${isAdminBubble ? '<i class="fa-solid fa-shield-halved"></i> Admin' : (isAdmin ? `<i class="fa-solid fa-user"></i> ${escHtml(m.member_name)}` : '<i class="fa-solid fa-user"></i> You')} · ${formatDateTime(r.created_at)}</div>
+        <div class="sup-bubble-body">${escHtml(r.body)}</div>
+      </div>`);
+  });
+  return bubbles.join('');
+}
+
 async function loadMemberThreads() {
   const el = document.getElementById('support-thread-list');
   try {
@@ -1857,18 +1877,23 @@ async function loadMemberThreads() {
       return;
     }
     el.innerHTML = msgs.map(m => `
-      <div class="sup-thread ${m.status === 'replied' ? 'sup-thread-replied' : ''}">
+      <div class="sup-thread">
         <div class="sup-thread-head">
           <span class="sup-thread-subject">${escHtml(m.subject)}</span>
           ${supStatusBadge(m.status)}
           <span class="sup-thread-time">${formatDateTime(m.created_at)}</span>
         </div>
-        <div class="sup-thread-body">${escHtml(m.body)}</div>
-        ${m.reply ? `
-          <div class="sup-reply-box">
-            <div class="sup-reply-label"><i class="fa-solid fa-reply"></i> Admin replied ${formatDateTime(m.replied_at)}</div>
-            <div class="sup-reply-text">${escHtml(m.reply)}</div>
+        <div class="sup-conversation">${renderConversation(m, false)}</div>
+        ${m.status === 'replied' ? `
+          <div class="sup-member-reply-form">
+            <textarea id="sup-mreply-input-${m.id}" rows="3" placeholder="Reply to admin…" style="width:100%;box-sizing:border-box;resize:vertical;padding:.5rem .75rem;border:1.5px solid var(--border);border-radius:.45rem;font-family:inherit;font-size:.85rem;background:var(--surface);color:var(--text)"></textarea>
+            <div style="display:flex;gap:.6rem;margin-top:.5rem;align-items:center">
+              <button class="btn-primary-sm" onclick="sendMemberReply('${m.id}')"><i class="fa-solid fa-paper-plane"></i> Send Reply</button>
+              <span id="sup-mreply-msg-${m.id}" class="ad-form-msg"></span>
+            </div>
           </div>
+        ` : m.status === 'open' && (m.replies || []).length > 0 ? `
+          <p class="sup-awaiting"><i class="fa-solid fa-clock"></i> Awaiting admin reply…</p>
         ` : ''}
       </div>`).join('');
   } catch (e) {
@@ -1902,13 +1927,7 @@ async function loadAdminSupportList() {
           <span class="sup-thread-time">${formatDateTime(m.created_at)}</span>
           ${m.status !== 'closed' ? `<button class="btn-sm" onclick="closeSupportMsg('${m.id}')"><i class="fa-solid fa-xmark"></i> Close</button>` : ''}
         </div>
-        <div class="sup-thread-body">${escHtml(m.body)}</div>
-        ${m.reply ? `
-          <div class="sup-reply-box">
-            <div class="sup-reply-label"><i class="fa-solid fa-reply"></i> Your reply · ${formatDateTime(m.replied_at)}</div>
-            <div class="sup-reply-text">${escHtml(m.reply)}</div>
-          </div>
-        ` : ''}
+        <div class="sup-conversation">${renderConversation(m, true)}</div>
         ${m.status !== 'closed' ? `
           <div class="sup-reply-form" id="sup-reply-form-${m.id}">
             <textarea id="sup-reply-input-${m.id}" rows="3" placeholder="Write a reply…" style="width:100%;box-sizing:border-box;resize:vertical;padding:.5rem .75rem;border:1.5px solid var(--border);border-radius:.45rem;font-family:inherit;font-size:.8rem;background:var(--surface);color:var(--text)"></textarea>
@@ -1939,6 +1958,23 @@ async function sendSupportReply(msgId) {
     msgEl.style.color = 'var(--success)';
     msgEl.textContent = 'Sent!';
     await loadAdminSupportList();
+  } catch (e) {
+    msgEl.style.color = 'var(--danger)';
+    msgEl.textContent = e.message;
+  }
+}
+
+async function sendMemberReply(msgId) {
+  const input = document.getElementById(`sup-mreply-input-${msgId}`);
+  const msgEl = document.getElementById(`sup-mreply-msg-${msgId}`);
+  const reply = (input ? input.value : '').trim();
+  if (!reply) return;
+  msgEl.textContent = '';
+  try {
+    await apiFetch('POST', `/api/support/messages/${msgId}/reply`, { reply });
+    msgEl.style.color = 'var(--success)';
+    msgEl.textContent = 'Sent!';
+    await loadMemberThreads();
   } catch (e) {
     msgEl.style.color = 'var(--danger)';
     msgEl.textContent = e.message;

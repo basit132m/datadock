@@ -24,7 +24,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db, init_db
-from models import AccessRequest, Ad, ApiKey, DownloadEvent, Part, SiteSetting, StorageProvider, SupportMessage, Upload
+from models import AccessRequest, Ad, ApiKey, DownloadEvent, Part, SiteSetting, StorageProvider, SupportMessage, SupportReply, Upload
 from storage import B2Storage, BunnyStorage, S3Storage
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -2157,17 +2157,28 @@ class SupportReplyIn(BaseModel):
     reply: str
 
 
-def _support_dict(m: SupportMessage) -> dict:
+def _support_replies(msg_id: str, db: Session) -> list:
+    rows = (
+        db.query(SupportReply)
+        .filter(SupportReply.message_id == msg_id)
+        .order_by(SupportReply.created_at.asc())
+        .all()
+    )
+    return [{"id": r.id, "sender": r.sender, "body": r.body,
+             "created_at": r.created_at.isoformat() if r.created_at else None} for r in rows]
+
+
+def _support_dict(m: SupportMessage, db: Session = None) -> dict:
     return {
         "id":          m.id,
         "key_id":      m.key_id,
         "member_name": m.member_name,
         "subject":     m.subject,
         "body":        m.body,
-        "reply":       m.reply,
         "status":      m.status,
         "created_at":  m.created_at.isoformat() if m.created_at else None,
         "replied_at":  m.replied_at.isoformat() if m.replied_at else None,
+        "replies":     _support_replies(m.id, db) if db else [],
     }
 
 
@@ -2193,7 +2204,7 @@ async def submit_support_message(
     db.add(msg)
     db.commit()
     db.refresh(msg)
-    return _support_dict(msg)
+    return _support_dict(msg, db)
 
 
 @app.get("/api/support/messages")
@@ -2210,7 +2221,38 @@ async def get_my_support_messages(
         .order_by(SupportMessage.created_at.desc())
         .all()
     )
-    return [_support_dict(m) for m in msgs]
+    return [_support_dict(m, db) for m in msgs]
+
+
+@app.post("/api/support/messages/{msg_id}/reply")
+async def member_reply_support(
+    msg_id: str,
+    body: SupportReplyIn,
+    auth: dict = Depends(require_auth),
+    x_api_key: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    msg = db.query(SupportMessage).filter(SupportMessage.id == msg_id).first()
+    if not msg:
+        raise HTTPException(404, "Message not found")
+    key_obj = db.query(ApiKey).filter(ApiKey.key == x_api_key, ApiKey.active == 1).first()
+    key_id = key_obj.id if key_obj else "env-admin"
+    if msg.key_id != key_id:
+        raise HTTPException(403, "Not your message")
+    if msg.status == "closed":
+        raise HTTPException(400, "This thread is closed")
+    r = SupportReply(
+        id=str(uuid.uuid4()),
+        message_id=msg_id,
+        sender="member",
+        body=body.reply.strip(),
+        created_at=datetime.utcnow(),
+    )
+    db.add(r)
+    msg.status = "open"   # re-open so admin sees it needs attention
+    db.commit()
+    db.refresh(msg)
+    return _support_dict(msg, db)
 
 
 @app.get("/api/admin/support/messages")
@@ -2223,7 +2265,7 @@ async def admin_list_support_messages(
     if status:
         q = q.filter(SupportMessage.status == status)
     msgs = q.order_by(SupportMessage.created_at.desc()).all()
-    return [_support_dict(m) for m in msgs]
+    return [_support_dict(m, db) for m in msgs]
 
 
 @app.get("/api/admin/support/messages/count")
@@ -2245,12 +2287,19 @@ async def admin_reply_support(
     msg = db.query(SupportMessage).filter(SupportMessage.id == msg_id).first()
     if not msg:
         raise HTTPException(404, "Message not found")
-    msg.reply = body.reply.strip()
+    r = SupportReply(
+        id=str(uuid.uuid4()),
+        message_id=msg_id,
+        sender="admin",
+        body=body.reply.strip(),
+        created_at=datetime.utcnow(),
+    )
+    db.add(r)
     msg.status = "replied"
     msg.replied_at = datetime.utcnow()
     db.commit()
     db.refresh(msg)
-    return _support_dict(msg)
+    return _support_dict(msg, db)
 
 
 @app.post("/api/admin/support/messages/{msg_id}/close")
@@ -2265,7 +2314,7 @@ async def admin_close_support(
     msg.status = "closed"
     db.commit()
     db.refresh(msg)
-    return _support_dict(msg)
+    return _support_dict(msg, db)
 
 
 # ── Serve frontend ────────────────────────────────────────────────────────────

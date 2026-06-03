@@ -123,7 +123,17 @@ class SupportMessage(Base):
     member_name = Column(String(200), nullable=False)
     subject     = Column(String(500), nullable=False)
     body        = Column(Text, nullable=False)
-    reply       = Column(Text, nullable=True)
+    reply       = Column(Text, nullable=True)   # legacy single-reply field (kept for migration)
     status      = Column(String(20), default="open", nullable=False, index=True)
     created_at  = Column(DateTime, nullable=False)
     replied_at  = Column(DateTime, nullable=True)
+
+
+class SupportReply(Base):
+    __tablename__ = "support_replies"
+
+    id         = Column(String(36), primary_key=True)
+    message_id = Column(String(36), nullable=False, index=True)
+    sender     = Column(String(10), nullable=False)   # 'member' or 'admin'
+    body       = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False)

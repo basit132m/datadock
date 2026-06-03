@@ -2056,32 +2056,42 @@ select { background: var(--surface); color: var(--text); }
   border-bottom: 1px solid var(--border);
 }
 .sup-thread:last-child { border-bottom: none; }
-.sup-thread-replied { background: #f0fdf4; }
 .sup-thread-head {
   display: flex; align-items: center; flex-wrap: wrap; gap: .5rem;
-  margin-bottom: .5rem;
+  margin-bottom: .75rem;
 }
 .sup-thread-subject {
   font-weight: 600; font-size: .9rem; color: var(--text); flex: 1; min-width: 120px;
 }
 .sup-thread-time { font-size: .75rem; color: var(--muted); margin-left: auto; }
-.sup-thread-body {
-  font-size: .85rem; color: var(--text-secondary, var(--muted));
-  white-space: pre-wrap; word-break: break-word;
-  background: var(--bg); padding: .6rem .85rem; border-radius: .45rem;
-  border: 1px solid var(--border);
+
+/* Conversation bubbles */
+.sup-conversation { display: flex; flex-direction: column; gap: .6rem; margin-bottom: .75rem; }
+
+.sup-bubble { max-width: 90%; padding: .6rem .9rem; border-radius: .75rem; }
+.sup-bubble-member {
+  background: var(--bg); border: 1px solid var(--border);
+  align-self: flex-start; border-bottom-left-radius: .2rem;
 }
-.sup-reply-box {
-  margin-top: .75rem; padding: .6rem .85rem;
-  background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 0 .45rem .45rem 0;
+.sup-bubble-admin {
+  background: #eff6ff; border: 1px solid #bfdbfe;
+  align-self: flex-end; border-bottom-right-radius: .2rem;
 }
-.sup-reply-label {
-  font-size: .72rem; font-weight: 600; color: #2563eb; margin-bottom: .35rem;
+.sup-bubble-meta {
+  font-size: .7rem; font-weight: 600; margin-bottom: .3rem;
+  color: var(--muted);
 }
-.sup-reply-text {
-  font-size: .85rem; color: #1e40af; white-space: pre-wrap; word-break: break-word;
+.sup-bubble-admin .sup-bubble-meta { color: #2563eb; text-align: right; }
+.sup-bubble-body {
+  font-size: .85rem; color: var(--text); white-space: pre-wrap; word-break: break-word;
 }
-.sup-reply-form { margin-top: .75rem; }
+.sup-bubble-admin .sup-bubble-body { color: #1e40af; }
+
+.sup-member-reply-form { margin-top: .25rem; padding-top: .75rem; border-top: 1px dashed var(--border); }
+.sup-awaiting {
+  font-size: .78rem; color: var(--muted); font-style: italic;
+  margin: .5rem 0 0; padding-top: .5rem; border-top: 1px dashed var(--border);
+}
 
 /* Admin support message card */
 .sup-admin-msg {
@@ -2090,12 +2100,13 @@ select { background: var(--surface); color: var(--text); }
 }
 .sup-admin-msg:last-child { border-bottom: none; }
 .sup-admin-head {
-  display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-bottom: .6rem;
+  display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-bottom: .75rem;
 }
 .sup-admin-who {
   font-size: .78rem; font-weight: 600; color: #6366f1;
   background: #eef2ff; padding: .15rem .55rem; border-radius: .75rem;
 }
+.sup-reply-form { margin-top: .75rem; padding-top: .75rem; border-top: 1px dashed var(--border); }
 
 /* Support filter buttons (same style as req-filter) */
 .sup-filter-btn { font-size: .78rem; }
