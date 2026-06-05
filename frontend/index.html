@@ -366,6 +366,24 @@
       <div id="storage-list">
         <p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">Loading…</p>
       </div>
+
+      <div class="card" id="bw-card" style="margin-top:1.5rem">
+        <div class="card-header" style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+          <span><i class="fa-solid fa-chart-area" style="color:var(--primary)"></i> Bandwidth Analytics</span>
+          <div style="display:flex;gap:.3rem;margin-left:auto" id="bw-period-tabs">
+            <button class="bw-period-btn" data-days="7">7 Days</button>
+            <button class="bw-period-btn active" data-days="30">30 Days</button>
+            <button class="bw-period-btn" data-days="90">90 Days</button>
+          </div>
+        </div>
+        <div style="padding:1rem 1.25rem 1.25rem">
+          <div class="dl-stats-grid" id="bw-stats" style="margin-bottom:1.25rem">
+            <p style="color:var(--muted);font-size:.875rem;grid-column:1/-1;text-align:center">Loading…</p>
+          </div>
+          <canvas id="bw-chart" height="80" style="margin-bottom:1.5rem;display:block"></canvas>
+          <div id="bw-providers"></div>
+        </div>
+      </div>
     </div>
 
     <!-- ── Team ── -->

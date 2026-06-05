@@ -2191,6 +2191,33 @@ select { background: var(--surface); color: var(--text); }
   .rq-card, .rq-success { padding: 1.75rem 1.25rem; }
 }
 
+/* ── Bandwidth Analytics ── */
+.bw-period-btn {
+  cursor: pointer; font-family: var(--font); font-size: .8rem; font-weight: 600;
+  border: 1px solid var(--border); border-radius: 7px;
+  background: var(--surface); color: var(--muted); padding: .35rem .85rem;
+  transition: all .15s;
+}
+.bw-period-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.bw-period-btn:hover:not(.active) { border-color: var(--primary); color: var(--primary); }
+
+.bw-provider-row {
+  display: flex; align-items: center; gap: .75rem;
+  padding: .55rem 0; border-bottom: 1px solid var(--border);
+}
+.bw-provider-row:last-child { border-bottom: none; }
+.bw-provider-name { font-size: .82rem; font-weight: 600; color: var(--text); min-width: 140px; flex-shrink: 0; }
+.bw-bar-track { flex: 1; height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; min-width: 60px; }
+.bw-bar-fill  { height: 100%; background: linear-gradient(90deg,#6366f1,#a5b4fc); border-radius: 4px; transition: width .4s ease; }
+.bw-pct    { font-size: .76rem; font-weight: 700; color: var(--primary); min-width: 36px; text-align: right; flex-shrink: 0; }
+.bw-bytes  { font-size: .8rem; font-weight: 600; color: var(--text2); min-width: 80px; text-align: right; flex-shrink: 0; }
+.bw-dl-cnt { font-size: .76rem; color: var(--muted); min-width: 80px; text-align: right; flex-shrink: 0; }
+
+@media (max-width: 640px) {
+  .bw-provider-name { min-width: 80px; }
+  .bw-dl-cnt { display: none; }
+}
+
 /* ── File Manager (admin) ── */
 .fm-tabs {
   display: flex; flex-wrap: wrap; gap: .25rem;

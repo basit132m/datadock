@@ -1091,6 +1091,7 @@ function providerMeta(endpointUrl) {
 }
 
 async function loadStoragePage() {
+  loadBandwidthStats();
   const list = document.getElementById('storage-list');
   try {
     const providers = await apiFetch('GET', '/api/admin/storage');
@@ -1569,6 +1570,109 @@ async function changeMasterKey() {
     alert('Failed: ' + e.message);
     btn.disabled = false;
   }
+}
+
+// ── Bandwidth Analytics ────────────────────────────────────────────────────────
+
+let bwChart      = null;
+let bwActiveDays = 30;
+
+async function loadBandwidthStats() {
+  const statsEl     = document.getElementById('bw-stats');
+  const providersEl = document.getElementById('bw-providers');
+  statsEl.innerHTML = '<p style="color:var(--muted);font-size:.875rem;grid-column:1/-1;text-align:center"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</p>';
+  providersEl.innerHTML = '';
+
+  let data;
+  try {
+    data = await apiFetch('GET', `/api/admin/bandwidth?days=${bwActiveDays}`);
+  } catch (e) {
+    statsEl.innerHTML = `<p style="color:var(--danger);grid-column:1/-1">${escHtml(e.message)}</p>`;
+    return;
+  }
+
+  const avgPerDl = data.period_downloads > 0
+    ? formatBytes(Math.round(data.period_bytes / data.period_downloads))
+    : '—';
+
+  statsEl.innerHTML = `
+    <div class="stat-card">
+      <div class="stat-icon" style="background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;box-shadow:0 4px 12px rgba(99,102,241,.35)"><i class="fa-solid fa-arrow-right-arrow-left"></i></div>
+      <div><div class="stat-label">Bandwidth Served</div><div class="stat-value">${formatBytes(data.period_bytes)}</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;box-shadow:0 4px 12px rgba(16,185,129,.35)"><i class="fa-solid fa-download"></i></div>
+      <div><div class="stat-label">Downloads</div><div class="stat-value">${data.period_downloads.toLocaleString()}</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;box-shadow:0 4px 12px rgba(245,158,11,.35)"><i class="fa-solid fa-scale-balanced"></i></div>
+      <div><div class="stat-label">Avg per Download</div><div class="stat-value">${avgPerDl}</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:linear-gradient(135deg,#8b5cf6,#7c3aed);color:#fff;box-shadow:0 4px 12px rgba(139,92,246,.35)"><i class="fa-solid fa-database"></i></div>
+      <div><div class="stat-label">All-Time Total</div><div class="stat-value">${formatBytes(data.alltime_bytes)}</div></div>
+    </div>`;
+
+  // Daily bar chart
+  const ctx = document.getElementById('bw-chart').getContext('2d');
+  if (bwChart) bwChart.destroy();
+  bwChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: data.daily.map(d => d.date),
+      datasets: [{
+        label: 'Bandwidth',
+        data: data.daily.map(d => d.bytes),
+        backgroundColor: 'rgba(99,102,241,0.75)',
+        borderRadius: 4,
+        borderSkipped: false,
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: c => formatBytes(c.parsed.y) + ' served',
+            afterLabel: (c) => {
+              const d = data.daily[c.dataIndex];
+              return d.downloads + ' download' + (d.downloads !== 1 ? 's' : '');
+            },
+          },
+        },
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { callback: v => formatBytes(v), font: { size: 11 } },
+          grid: { color: 'rgba(0,0,0,.05)' },
+        },
+        x: { ticks: { font: { size: 11 } } },
+      },
+    },
+  });
+
+  // Provider breakdown
+  if (!data.providers.length) {
+    providersEl.innerHTML = '<p style="color:var(--muted);font-size:.85rem;text-align:center;padding:.75rem 0">No data for this period.</p>';
+    return;
+  }
+
+  const totalBytes = data.period_bytes || 1;
+  providersEl.innerHTML = `
+    <div style="font-size:.75rem;font-weight:700;color:var(--muted);letter-spacing:.04em;margin-bottom:.75rem;text-transform:uppercase">Provider Breakdown</div>
+    ${data.providers.map(p => {
+      const pct = Math.max(1, Math.round((p.bytes / totalBytes) * 100));
+      return `
+        <div class="bw-provider-row">
+          <div class="bw-provider-name">${escHtml(p.name)}</div>
+          <div class="bw-bar-track"><div class="bw-bar-fill" style="width:${pct}%"></div></div>
+          <div class="bw-pct">${pct}%</div>
+          <div class="bw-bytes">${formatBytes(p.bytes)}</div>
+          <div class="bw-dl-cnt"><i class="fa-solid fa-download" style="font-size:.65rem"></i> ${p.downloads.toLocaleString()}</div>
+        </div>`;
+    }).join('')}`;
 }
 
 // ── Downloads Analytics ───────────────────────────────────────────────────────
@@ -2874,6 +2978,14 @@ function initApp() {
     btn.addEventListener('click', () => {
       dlActiveDays = parseInt(btn.dataset.days);
       loadDownloadsPage();
+    });
+  });
+
+  document.querySelectorAll('.bw-period-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      bwActiveDays = parseInt(btn.dataset.days);
+      document.querySelectorAll('.bw-period-btn').forEach(b => b.classList.toggle('active', b === btn));
+      loadBandwidthStats();
     });
   });
 

@@ -1333,6 +1333,96 @@ async def get_download_analytics(
     }
 
 
+@app.get("/api/admin/bandwidth")
+async def get_bandwidth_analytics(
+    days: int = Query(30, ge=1, le=365),
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    since = datetime.utcnow() - timedelta(days=days)
+
+    # Per-provider per-day bytes served (join download_events → uploads for file_size)
+    rows = (
+        db.query(
+            Upload.storage_provider_id,
+            func.date(DownloadEvent.created_at).label("day"),
+            func.sum(Upload.file_size).label("bytes"),
+            func.count(DownloadEvent.id).label("cnt"),
+        )
+        .join(Upload, DownloadEvent.upload_id == Upload.id)
+        .filter(DownloadEvent.created_at >= since)
+        .group_by(Upload.storage_provider_id, func.date(DownloadEvent.created_at))
+        .all()
+    )
+
+    # All-time totals per provider (for all-time-total stat card)
+    alltime_rows = (
+        db.query(
+            Upload.storage_provider_id,
+            func.sum(Upload.file_size).label("bytes"),
+            func.count(DownloadEvent.id).label("cnt"),
+        )
+        .join(Upload, DownloadEvent.upload_id == Upload.id)
+        .group_by(Upload.storage_provider_id)
+        .all()
+    )
+
+    # Collect provider IDs to resolve names in one query
+    all_pids = {r.storage_provider_id for r in rows} | {r.storage_provider_id for r in alltime_rows}
+    pnames: dict = {}
+    real_pids = [p for p in all_pids if p]
+    if real_pids:
+        for p in db.query(StorageProvider.id, StorageProvider.name).filter(StorageProvider.id.in_(real_pids)).all():
+            pnames[p.id] = p.name
+
+    def _pname(pid):
+        if not pid:
+            return "Default (env vars)"
+        return pnames.get(pid, "Unknown")
+
+    # Aggregate period data
+    daily_map: dict = {}
+    provider_period: dict = {}
+    for r in rows:
+        day_str = str(r.day)
+        daily_map.setdefault(day_str, {"bytes": 0, "cnt": 0})
+        daily_map[day_str]["bytes"] += r.bytes or 0
+        daily_map[day_str]["cnt"]   += r.cnt or 0
+
+        pid = r.storage_provider_id or ""
+        provider_period.setdefault(pid, {"bytes": 0, "cnt": 0})
+        provider_period[pid]["bytes"] += r.bytes or 0
+        provider_period[pid]["cnt"]   += r.cnt or 0
+
+    # Fill daily series (no gaps)
+    today = datetime.utcnow().date()
+    daily = []
+    for i in range(days):
+        day = today - timedelta(days=days - 1 - i)
+        day_str = day.strftime("%Y-%m-%d")
+        d = daily_map.get(day_str, {"bytes": 0, "cnt": 0})
+        daily.append({"date": day.strftime("%b %d"), "bytes": d["bytes"], "downloads": d["cnt"]})
+
+    # Provider list sorted by bytes desc
+    providers_out = [
+        {"id": pid, "name": _pname(pid), "bytes": t["bytes"], "downloads": t["cnt"]}
+        for pid, t in provider_period.items()
+    ]
+    providers_out.sort(key=lambda x: x["bytes"], reverse=True)
+
+    alltime_bytes = sum(r.bytes or 0 for r in alltime_rows)
+    period_bytes  = sum(d["bytes"] for d in daily)
+    period_dl     = sum(d["downloads"] for d in daily)
+
+    return {
+        "period_bytes":     period_bytes,
+        "period_downloads": period_dl,
+        "alltime_bytes":    alltime_bytes,
+        "providers":        providers_out,
+        "daily":            daily,
+    }
+
+
 # ── URL Import API ────────────────────────────────────────────────────────────
 
 
