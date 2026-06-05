@@ -740,6 +740,114 @@ async def delete_file(file_id: str, db: Session = Depends(get_db), _=Depends(req
     return {"ok": True}
 
 
+class MergeUploadIn(BaseModel):
+    redirect_to: str  # share_id of the canonical file to redirect to
+
+
+@app.get("/api/admin/duplicates")
+async def get_duplicates(db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Return groups of completed uploads that share the same file_hash."""
+    from collections import defaultdict
+
+    dup_hashes = (
+        db.query(Upload.file_hash)
+        .filter(Upload.status == "completed", Upload.file_hash.isnot(None), Upload.file_hash != "")
+        .group_by(Upload.file_hash)
+        .having(func.count(Upload.id) > 1)
+        .all()
+    )
+    if not dup_hashes:
+        return {"groups": [], "total_groups": 0, "total_wasted_bytes": 0, "total_duplicate_files": 0}
+
+    hash_list = [h[0] for h in dup_hashes]
+    uploads = (
+        db.query(Upload)
+        .filter(Upload.file_hash.in_(hash_list), Upload.status == "completed")
+        .order_by(Upload.file_hash, Upload.completed_at)
+        .all()
+    )
+
+    key_ids = list({u.uploaded_by_key_id for u in uploads if u.uploaded_by_key_id})
+    key_map: dict = {}
+    if key_ids:
+        keys = db.query(ApiKey).filter(ApiKey.id.in_(key_ids)).all()
+        key_map = {k.id: k.name for k in keys}
+
+    groups: dict = defaultdict(list)
+    for u in uploads:
+        groups[u.file_hash].append(u)
+
+    result_groups = []
+    total_wasted = 0
+    total_duplicates = 0
+
+    for h, files in groups.items():
+        file_size = files[0].file_size or 0
+        wasted = file_size * (len(files) - 1)
+        total_wasted += wasted
+        total_duplicates += len(files) - 1
+        files_sorted = sorted(files, key=lambda u: (-(u.downloads or 0), u.created_at or datetime.min))
+        result_groups.append({
+            "file_hash": h,
+            "count": len(files),
+            "wasted_bytes": wasted,
+            "files": [
+                {
+                    "id": u.id,
+                    "share_id": u.share_id,
+                    "filename": u.filename,
+                    "file_size": u.file_size,
+                    "downloads": u.downloads or 0,
+                    "views": u.views or 0,
+                    "completed_at": u.completed_at.isoformat() if u.completed_at else None,
+                    "uploaded_by": key_map.get(u.uploaded_by_key_id, "Unknown") if u.uploaded_by_key_id else "Admin",
+                }
+                for u in files_sorted
+            ],
+        })
+
+    result_groups.sort(key=lambda g: g["wasted_bytes"], reverse=True)
+    return {
+        "groups": result_groups,
+        "total_groups": len(result_groups),
+        "total_wasted_bytes": total_wasted,
+        "total_duplicate_files": total_duplicates,
+    }
+
+
+@app.post("/api/admin/files/{file_id}/merge")
+async def merge_duplicate(
+    file_id: str,
+    body: MergeUploadIn,
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    """Soft-delete a duplicate: remove from storage, redirect its share link to the canonical."""
+    duplicate = db.query(Upload).filter(Upload.id == file_id, Upload.status == "completed").first()
+    if not duplicate:
+        raise HTTPException(404, "Duplicate file not found")
+
+    canonical = db.query(Upload).filter(Upload.share_id == body.redirect_to, Upload.status == "completed").first()
+    if not canonical:
+        raise HTTPException(404, "Canonical file not found")
+
+    if duplicate.id == canonical.id:
+        raise HTTPException(400, "Source and target are the same file")
+
+    if duplicate.file_hash != canonical.file_hash:
+        raise HTTPException(400, "Files do not share the same content hash")
+
+    try:
+        _get_storage(duplicate.storage_provider_id, db).delete_object(duplicate.b2_file_key)
+    except Exception:
+        pass
+
+    duplicate.status = "redirected"
+    duplicate.redirects_to = canonical.share_id
+    db.commit()
+    return {"ok": True, "redirects_to": canonical.share_id}
+
+
 @app.post("/api/auth/verify")
 async def verify_auth(auth=Depends(require_auth)):
     return {"ok": True, "role": auth["role"], "name": auth["name"]}
@@ -792,12 +900,13 @@ async def get_stats(db: Session = Depends(get_db), _=Depends(require_admin)):
 
 @app.get("/api/f/{share_id}")
 async def get_share_info(share_id: str, db: Session = Depends(get_db)):
-    upload = (
-        db.query(Upload)
-        .filter(Upload.share_id == share_id, Upload.status == "completed")
-        .first()
-    )
-    if not upload:
+    upload = db.query(Upload).filter(Upload.share_id == share_id).first()
+    if upload and upload.status == "redirected":
+        canonical = _resolve_canonical(share_id, db)
+        if canonical and canonical != share_id:
+            return RedirectResponse(f"/api/f/{canonical}", status_code=301)
+        raise HTTPException(404, "File not found")
+    if not upload or upload.status != "completed":
         raise HTTPException(404, "File not found")
 
     upload.views = (upload.views or 0) + 1
@@ -812,6 +921,20 @@ async def get_share_info(share_id: str, db: Session = Depends(get_db)):
         "downloads": upload.downloads or 0,
         "completed_at": upload.completed_at.isoformat() if upload.completed_at else None,
     }
+
+
+def _resolve_canonical(share_id: str, db: Session, _depth: int = 0) -> Optional[str]:
+    """Follow redirects_to chain and return the final canonical share_id, or None if broken."""
+    if _depth > 10:
+        return None
+    upload = db.query(Upload).filter(Upload.share_id == share_id).first()
+    if not upload:
+        return None
+    if upload.status == "completed":
+        return share_id
+    if upload.status == "redirected" and upload.redirects_to:
+        return _resolve_canonical(upload.redirects_to, db, _depth + 1)
+    return None
 
 
 def _chained_download_url(upload: Upload, db: Session) -> str:
@@ -861,12 +984,13 @@ def _chained_download_url(upload: Upload, db: Session) -> str:
 @app.post("/api/f/{share_id}/token")
 async def create_download_token(share_id: str, db: Session = Depends(get_db)):
     """Issue a short-lived single-use download token for the share page."""
-    upload = (
-        db.query(Upload)
-        .filter(Upload.share_id == share_id, Upload.status == "completed")
-        .first()
-    )
-    if not upload:
+    upload = db.query(Upload).filter(Upload.share_id == share_id).first()
+    if upload and upload.status == "redirected":
+        canonical = _resolve_canonical(share_id, db)
+        if canonical and canonical != share_id:
+            return RedirectResponse(f"/api/f/{canonical}/token", status_code=307)
+        raise HTTPException(404, "File not found")
+    if not upload or upload.status != "completed":
         raise HTTPException(404, "File not found")
     token = secrets.token_urlsafe(24)
     expires = datetime.utcnow() + timedelta(seconds=120)
@@ -886,12 +1010,13 @@ async def download_file(
     token: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    upload = (
-        db.query(Upload)
-        .filter(Upload.share_id == share_id, Upload.status == "completed")
-        .first()
-    )
-    if not upload:
+    upload = db.query(Upload).filter(Upload.share_id == share_id).first()
+    if upload and upload.status == "redirected":
+        canonical = _resolve_canonical(share_id, db)
+        if canonical and canonical != share_id:
+            return RedirectResponse(f"/api/f/{canonical}/download?token={token}", status_code=302)
+        raise HTTPException(404, "File not found")
+    if not upload or upload.status != "completed":
         raise HTTPException(404, "File not found")
 
     # Require a valid single-use token — prevents hotlinking the download URL
@@ -937,6 +1062,11 @@ async def download_file(
 @app.get("/api/f/{share_id}/preview")
 async def preview_file(share_id: str, db: Session = Depends(get_db)):
     """Redirect to the raw file URL for inline media preview. No token, no download count."""
+    upload = db.query(Upload).filter(Upload.share_id == share_id).first()
+    if upload and upload.status == "redirected":
+        canonical = _resolve_canonical(share_id, db)
+        if canonical and canonical != share_id:
+            return RedirectResponse(f"/api/f/{canonical}/preview", status_code=301)
     upload = (
         db.query(Upload)
         .filter(Upload.share_id == share_id, Upload.status == "completed")
@@ -2407,6 +2537,11 @@ async def member_delete_support(
 
 @app.get("/f/{share_id}", include_in_schema=False)
 async def share_page(share_id: str, request: Request, db: Session = Depends(get_db)):
+    upload = db.query(Upload).filter(Upload.share_id == share_id).first()
+    if upload and upload.status == "redirected":
+        canonical = _resolve_canonical(share_id, db)
+        if canonical and canonical != share_id:
+            return RedirectResponse(f"/f/{canonical}", status_code=301)
     upload = (
         db.query(Upload)
         .filter(Upload.share_id == share_id, Upload.status == "completed")

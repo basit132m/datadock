@@ -65,6 +65,9 @@
         <i class="fa-solid fa-headset ni-icon"></i> Support
         <span class="nav-badge" id="support-nav-badge" hidden>0</span>
       </button>
+      <button class="nav-item" data-page="duplicates">
+        <i class="fa-solid fa-copy ni-icon"></i> Duplicates
+      </button>
     </nav>
     <div class="sidebar-footer">
       <div id="key-badge" class="key-badge">
@@ -655,6 +658,44 @@
             <p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">Loading…</p>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- ── Duplicates ── -->
+    <div id="page-duplicates" class="page">
+      <div class="page-header">
+        <h1>Duplicate Files</h1>
+      </div>
+
+      <!-- Stats bar -->
+      <div class="stats-grid" id="dup-stats" style="margin-bottom:1.5rem;display:none">
+        <div class="stat-card" style="border-left:4px solid #f59e0b">
+          <div class="stat-icon" style="background:#fef3c7;color:#d97706"><i class="fa-solid fa-copy"></i></div>
+          <div>
+            <div class="stat-label">Duplicate Groups</div>
+            <div class="stat-value" id="dup-stat-groups">—</div>
+          </div>
+        </div>
+        <div class="stat-card" style="border-left:4px solid #ef4444">
+          <div class="stat-icon" style="background:#fee2e2;color:#dc2626"><i class="fa-solid fa-hard-drive"></i></div>
+          <div>
+            <div class="stat-label">Wasted Storage</div>
+            <div class="stat-value" id="dup-stat-wasted">—</div>
+          </div>
+        </div>
+        <div class="stat-card" style="border-left:4px solid #8b5cf6">
+          <div class="stat-icon" style="background:#ede9fe;color:#7c3aed"><i class="fa-solid fa-file-circle-xmark"></i></div>
+          <div>
+            <div class="stat-label">Redundant Files</div>
+            <div class="stat-value" id="dup-stat-files">—</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="dup-list">
+        <p style="padding:2rem;color:var(--muted);font-size:.875rem;text-align:center">
+          <i class="fa-solid fa-spinner fa-spin"></i> Scanning for duplicates…
+        </p>
       </div>
     </div>
 

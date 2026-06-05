@@ -2233,9 +2233,148 @@ function initSupportPage() {
   }, 10000);
 }
 
+// ── Duplicates ────────────────────────────────────────────────────────────────
+
+async function loadDuplicatesPage() {
+  const list = document.getElementById('dup-list');
+  const statsDiv = document.getElementById('dup-stats');
+  list.innerHTML = '<p style="padding:2rem;color:var(--muted);font-size:.875rem;text-align:center"><i class="fa-solid fa-spinner fa-spin"></i> Scanning for duplicates…</p>';
+  statsDiv.style.display = 'none';
+
+  let data;
+  try {
+    data = await apiFetch('GET', '/api/admin/duplicates');
+  } catch (e) {
+    list.innerHTML = `<p style="padding:2rem;color:var(--danger);text-align:center">${e.message}</p>`;
+    return;
+  }
+
+  if (!data.groups.length) {
+    list.innerHTML = `
+      <div style="text-align:center;padding:3rem 2rem;color:var(--muted)">
+        <i class="fa-solid fa-circle-check" style="font-size:2.5rem;color:#22c55e;display:block;margin-bottom:.75rem"></i>
+        <strong style="color:var(--text)">No duplicates found!</strong><br>
+        <span style="font-size:.875rem">Your storage is clean — every file is unique.</span>
+      </div>`;
+    return;
+  }
+
+  // Stats
+  document.getElementById('dup-stat-groups').textContent  = data.total_groups.toLocaleString();
+  document.getElementById('dup-stat-wasted').textContent  = formatBytes(data.total_wasted_bytes);
+  document.getElementById('dup-stat-files').textContent   = data.total_duplicate_files.toLocaleString();
+  statsDiv.style.display = '';
+
+  list.innerHTML = '';
+
+  data.groups.forEach(group => {
+    const canonicalShareId = group.files[0].share_id; // first = most downloads
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.marginBottom = '1.5rem';
+
+    // Group header
+    const hdr = document.createElement('div');
+    hdr.className = 'card-header';
+    hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem';
+    hdr.innerHTML = `
+      <span>
+        <i class="fa-solid fa-copy" style="color:#f59e0b;margin-right:.4rem"></i>
+        <strong>${group.count} copies</strong>
+        <span style="color:var(--muted);font-size:.8rem;margin-left:.75rem">
+          · <span style="color:#ef4444">${formatBytes(group.wasted_bytes)} wasted</span>
+          · hash: <code style="font-size:.75rem">${group.file_hash.slice(0, 16)}…</code>
+        </span>
+      </span>`;
+    card.appendChild(hdr);
+
+    // Table
+    const wrap = document.createElement('div');
+    wrap.style.overflowX = 'auto';
+    const table = document.createElement('table');
+    table.className = 'files-table';
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th>File</th>
+          <th>Uploader</th>
+          <th>Uploaded</th>
+          <th>Downloads</th>
+          <th>Views</th>
+          <th>Share Link</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody></tbody>`;
+    const tbody = table.querySelector('tbody');
+
+    group.files.forEach((file, idx) => {
+      const isKeep = idx === 0;
+      const tr = document.createElement('tr');
+      if (isKeep) tr.style.background = 'rgba(34,197,94,.06)';
+
+      const date = file.completed_at ? new Date(file.completed_at).toLocaleDateString() : '—';
+      tr.innerHTML = `
+        <td class="tf-name" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${file.filename}">
+          ${isKeep ? '<i class="fa-solid fa-shield-halved" style="color:#22c55e;margin-right:.35rem" title="Recommended to keep"></i>' : ''}
+          ${file.filename}
+          ${isKeep ? '<span style="font-size:.68rem;font-weight:700;background:#dcfce7;color:#166534;padding:.15rem .4rem;border-radius:4px;margin-left:.4rem">KEEP</span>' : ''}
+        </td>
+        <td style="white-space:nowrap">${file.uploaded_by}</td>
+        <td style="white-space:nowrap">${date}</td>
+        <td style="white-space:nowrap">${file.downloads.toLocaleString()}</td>
+        <td style="white-space:nowrap">${file.views.toLocaleString()}</td>
+        <td><a href="/f/${file.share_id}" target="_blank" style="font-size:.8rem;font-family:monospace">/f/${file.share_id}</a></td>
+        <td>
+          ${isKeep
+            ? '<span style="font-size:.78rem;color:var(--muted)">Canonical</span>'
+            : `<button class="btn-danger btn-sm dup-merge-btn"
+                data-file-id="${file.id}"
+                data-share-id="${file.share_id}"
+                data-redirect-to="${canonicalShareId}"
+                data-filename="${file.filename}">
+                <i class="fa-solid fa-code-merge"></i> Delete &amp; Redirect Links
+              </button>`}
+        </td>`;
+      tbody.appendChild(tr);
+    });
+
+    wrap.appendChild(table);
+    card.appendChild(wrap);
+    list.appendChild(card);
+  });
+
+  // Wire up merge buttons
+  list.querySelectorAll('.dup-merge-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const { fileId, shareId, redirectTo, filename } = btn.dataset;
+      if (!confirm(
+        `Delete duplicate and redirect its links?\n\n` +
+        `File: ${filename}\n` +
+        `Share link /f/${shareId} will permanently redirect to /f/${redirectTo}\n\n` +
+        `• The file will be removed from storage\n` +
+        `• All existing shared links will continue to work (redirected)\n\n` +
+        `This cannot be undone.`
+      )) return;
+
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+      try {
+        await apiFetch('POST', `/api/admin/files/${fileId}/merge`, { redirect_to: redirectTo });
+        loadDuplicatesPage();
+      } catch (e) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-code-merge"></i> Delete &amp; Redirect Links';
+        alert('Error: ' + e.message);
+      }
+    });
+  });
+}
+
 // ── Page navigation ───────────────────────────────────────────────────────────
 
-const ADMIN_PAGES = ['dashboard', 'ads', 'storage', 'downloads', 'team', 'requests'];
+const ADMIN_PAGES = ['dashboard', 'ads', 'storage', 'downloads', 'team', 'requests', 'duplicates'];
 // 'support' is visible to both roles — intentionally not in ADMIN_PAGES
 
 function applyRoleUI() {
@@ -2259,8 +2398,9 @@ function showPage(page) {
   if (page === 'storage')   loadStoragePage();
   if (page === 'downloads') loadDownloadsPage();
   if (page === 'team')      loadTeamPage();
-  if (page === 'requests')  loadRequestsPage();
-  if (page === 'support')   loadSupportPage();
+  if (page === 'requests')   loadRequestsPage();
+  if (page === 'support')    loadSupportPage();
+  if (page === 'duplicates') loadDuplicatesPage();
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────

@@ -53,6 +53,8 @@ def _migrate():
             "CREATE INDEX IF NOT EXISTS ix_uploads_status_completed_at ON uploads (status, completed_at)",
             "ALTER TABLE support_messages ADD COLUMN attachment_url VARCHAR(500)",
             "ALTER TABLE support_replies ADD COLUMN attachment_url VARCHAR(500)",
+            "ALTER TABLE uploads ADD COLUMN redirects_to VARCHAR(12)",
+            "CREATE INDEX IF NOT EXISTS ix_uploads_redirects_to ON uploads (redirects_to)",
         ]:
             try:
                 conn.execute(text(sql))
