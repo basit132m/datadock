@@ -203,6 +203,41 @@
       </div>
 
       <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-header"><i class="fa-solid fa-rectangle-ad"></i> Monetag Ad Scripts</div>
+        <div style="padding:1rem 1.25rem">
+          <p style="color:var(--muted);font-size:.875rem;margin:0 0 1rem 0">
+            Paste Monetag script codes here. They are injected into every download page automatically. Leave blank to disable.
+          </p>
+
+          <label style="display:block;font-size:.8125rem;font-weight:600;margin-bottom:.35rem;color:var(--muted)">
+            <i class="fa-solid fa-head-side-virus"></i> &lt;head&gt; Script (e.g. push-notification / native ad tag)
+          </label>
+          <textarea id="monetag-head-input" rows="4"
+            placeholder="Paste the full &lt;script&gt;...&lt;/script&gt; code that Monetag tells you to add to &lt;head&gt;"
+            style="width:100%;font-family:monospace;font-size:.8rem;resize:vertical;box-sizing:border-box"></textarea>
+          <div style="display:flex;gap:.75rem;margin-top:.5rem;align-items:center">
+            <button id="monetag-head-save" class="btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+            <button id="monetag-head-clear" class="btn-sm"><i class="fa-solid fa-xmark"></i> Clear</button>
+            <span id="monetag-head-msg" class="ad-form-msg"></span>
+          </div>
+
+          <div style="margin-top:1.25rem"></div>
+
+          <label style="display:block;font-size:.8125rem;font-weight:600;margin-bottom:.35rem;color:var(--muted)">
+            <i class="fa-solid fa-align-center"></i> Banner / In-page Ad Script (shown above features section on download page)
+          </label>
+          <textarea id="monetag-banner-input" rows="4"
+            placeholder="Paste the full &lt;script&gt;...&lt;/script&gt; or &lt;div&gt; code for the banner ad"
+            style="width:100%;font-family:monospace;font-size:.8rem;resize:vertical;box-sizing:border-box"></textarea>
+          <div style="display:flex;gap:.75rem;margin-top:.5rem;align-items:center">
+            <button id="monetag-banner-save" class="btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+            <button id="monetag-banner-clear" class="btn-sm"><i class="fa-solid fa-xmark"></i> Clear</button>
+            <span id="monetag-banner-msg" class="ad-form-msg"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:1.5rem">
         <div class="card-header">Add New Ad</div>
         <form id="ad-form" class="ad-form">
           <div class="ad-form-row">

@@ -1259,25 +1259,29 @@ function initStorageForm() {
 async function loadRedirectUrlSetting() {
   try {
     const s = await apiFetch('GET', '/api/settings');
-    document.getElementById('redirect-url-input').value = s.redirect_url || '';
-    document.getElementById('popup-url-input').value    = s.popup_url    || '';
+    document.getElementById('redirect-url-input').value    = s.redirect_url    || '';
+    document.getElementById('popup-url-input').value       = s.popup_url       || '';
+    document.getElementById('monetag-head-input').value    = s.monetag_head    || '';
+    document.getElementById('monetag-banner-input').value  = s.monetag_banner  || '';
   } catch {}
 }
 
-async function saveSetting(field, url, msgId, inputId) {
+async function saveSetting(field, value, msgId, inputId) {
   const msg = document.getElementById(msgId);
   msg.textContent = '';
-  // Always send both fields together so saving one never clears the other
+  // Always send all fields together so saving one never clears the others
   const body = {
-    redirect_url: document.getElementById('redirect-url-input').value.trim() || null,
-    popup_url:    document.getElementById('popup-url-input').value.trim()    || null,
-    [field]:      url || null,
+    redirect_url:   document.getElementById('redirect-url-input').value.trim()   || null,
+    popup_url:      document.getElementById('popup-url-input').value.trim()       || null,
+    monetag_head:   document.getElementById('monetag-head-input').value.trim()   || null,
+    monetag_banner: document.getElementById('monetag-banner-input').value.trim() || null,
+    [field]:        value || null,
   };
   try {
     await apiFetch('POST', '/api/admin/settings', body);
     msg.style.color = 'var(--success)';
-    msg.textContent = url ? 'Saved!' : 'Cleared.';
-    document.getElementById(inputId).value = url || '';
+    msg.textContent = value ? 'Saved!' : 'Cleared.';
+    document.getElementById(inputId).value = value || '';
     setTimeout(() => { msg.textContent = ''; }, 3000);
   } catch (e) {
     msg.style.color = 'var(--danger)';
@@ -1306,6 +1310,22 @@ function initRedirectUrlForm() {
   });
   document.getElementById('popup-url-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('popup-url-save').click();
+  });
+
+  // Monetag head script
+  document.getElementById('monetag-head-save').addEventListener('click', () => {
+    saveSetting('monetag_head', document.getElementById('monetag-head-input').value.trim(), 'monetag-head-msg', 'monetag-head-input');
+  });
+  document.getElementById('monetag-head-clear').addEventListener('click', () => {
+    saveSetting('monetag_head', '', 'monetag-head-msg', 'monetag-head-input');
+  });
+
+  // Monetag banner script
+  document.getElementById('monetag-banner-save').addEventListener('click', () => {
+    saveSetting('monetag_banner', document.getElementById('monetag-banner-input').value.trim(), 'monetag-banner-msg', 'monetag-banner-input');
+  });
+  document.getElementById('monetag-banner-clear').addEventListener('click', () => {
+    saveSetting('monetag_banner', '', 'monetag-banner-msg', 'monetag-banner-input');
   });
 }
 

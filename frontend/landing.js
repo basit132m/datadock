@@ -151,9 +151,40 @@
       return;
     }
 
-    const settings   = (settingsRes.status === 'fulfilled' && settingsRes.value) ? settingsRes.value : {};
-    const redirectUrl = settings.redirect_url || null;
-    const popupUrl    = settings.popup_url    || null;
+    const settings      = (settingsRes.status === 'fulfilled' && settingsRes.value) ? settingsRes.value : {};
+    const redirectUrl   = settings.redirect_url   || null;
+    const popupUrl      = settings.popup_url      || null;
+    const monetagHead   = settings.monetag_head   || null;
+    const monetagBanner = settings.monetag_banner || null;
+
+    // Inject Monetag head script (push-notification / native ad tag)
+    if (monetagHead) {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = monetagHead;
+      tmp.querySelectorAll('script').forEach(orig => {
+        const s = document.createElement('script');
+        if (orig.src) { s.src = orig.src; s.async = true; }
+        else s.textContent = orig.textContent;
+        document.head.appendChild(s);
+      });
+    }
+
+    // Inject Monetag banner into #ads-mid slot
+    if (monetagBanner) {
+      const slot = document.getElementById('ads-mid');
+      const tmp = document.createElement('div');
+      tmp.innerHTML = monetagBanner;
+      tmp.querySelectorAll('script').forEach(orig => {
+        const s = document.createElement('script');
+        if (orig.src) { s.src = orig.src; s.async = true; }
+        else s.textContent = orig.textContent;
+        slot.appendChild(s);
+      });
+      // Append non-script nodes (e.g. <div> ad containers)
+      Array.from(tmp.childNodes).forEach(n => {
+        if (n.nodeName !== 'SCRIPT') slot.appendChild(n.cloneNode(true));
+      });
+    }
 
     const d = fileRes.value;
     const type = getType(d.filename);

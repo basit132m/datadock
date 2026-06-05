@@ -1914,14 +1914,18 @@ def _upsert_setting(db: Session, key: str, value: Optional[str]):
 async def get_public_settings(db: Session = Depends(get_db)):
     """Public endpoint — returns settings used by landing pages."""
     return {
-        "redirect_url": _get_setting(db, "redirect_url"),
-        "popup_url":    _get_setting(db, "popup_url"),
+        "redirect_url":    _get_setting(db, "redirect_url"),
+        "popup_url":       _get_setting(db, "popup_url"),
+        "monetag_head":    _get_setting(db, "monetag_head"),
+        "monetag_banner":  _get_setting(db, "monetag_banner"),
     }
 
 
 class UpdateSettingsIn(BaseModel):
-    redirect_url: Optional[str] = None
-    popup_url:    Optional[str] = None
+    redirect_url:   Optional[str] = None
+    popup_url:      Optional[str] = None
+    monetag_head:   Optional[str] = None
+    monetag_banner: Optional[str] = None
 
 
 @app.post("/api/admin/settings")
@@ -1936,8 +1940,10 @@ async def update_settings(
     if body.popup_url:
         if not body.popup_url.startswith(("http://", "https://")):
             raise HTTPException(400, "popup_url must be an http/https URL")
-    _upsert_setting(db, "redirect_url", body.redirect_url or None)
-    _upsert_setting(db, "popup_url",    body.popup_url    or None)
+    _upsert_setting(db, "redirect_url",   body.redirect_url   or None)
+    _upsert_setting(db, "popup_url",      body.popup_url      or None)
+    _upsert_setting(db, "monetag_head",   body.monetag_head   or None)
+    _upsert_setting(db, "monetag_banner", body.monetag_banner or None)
     db.commit()
     return {"ok": True}
 
