@@ -577,15 +577,15 @@ select { background: var(--surface); color: var(--text); }
 .lp-download-btn {
   display: flex; align-items: center; gap: 1rem;
   width: 100%; padding: 1rem 1.1rem;
-  background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);
+  background: linear-gradient(135deg, #1370ab 0%, #1787CA 100%);
   color: #fff; border: none; border-radius: 12px;
   cursor: pointer; font-family: inherit;
-  box-shadow: 0 4px 20px rgba(34,197,94,.3);
+  box-shadow: 0 4px 20px rgba(23,135,202,.3);
   transition: transform .15s, box-shadow .15s;
 }
 .lp-download-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 8px 30px rgba(34,197,94,.45);
+  box-shadow: 0 8px 30px rgba(23,135,202,.45);
 }
 .lp-download-btn:disabled { opacity: .7; cursor: not-allowed; }
 .lp-dl-icon {
