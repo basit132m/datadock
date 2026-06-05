@@ -142,3 +142,16 @@ class SupportReply(Base):
     body           = Column(Text, nullable=False)
     attachment_url = Column(String(500), nullable=True)
     created_at     = Column(DateTime, nullable=False)
+
+
+class FileReport(Base):
+    __tablename__ = "file_reports"
+
+    id         = Column(String(36), primary_key=True)
+    share_id   = Column(String(12), nullable=False, index=True)
+    filename   = Column(String(500), nullable=False)
+    reason     = Column(String(50), nullable=False)   # not_downloading | link_expired | corrupt_or_wrong | other
+    message    = Column(Text, nullable=True)
+    ip         = Column(String(45), nullable=True)
+    status     = Column(String(20), default="open", nullable=False, index=True)
+    created_at = Column(DateTime, nullable=False)

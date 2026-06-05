@@ -98,6 +98,11 @@
             <span>Copy Share Link</span>
           </button>
 
+          <button class="lp-report-btn" id="lp-report-btn">
+            <i class="fa-solid fa-flag"></i>
+            <span>Report an Issue</span>
+          </button>
+
           <!-- Button ads -->
           <div id="ads-buttons" class="ad-slot-buttons"></div>
 
@@ -187,6 +192,62 @@
 <!-- Side ad columns (fixed, only visible on screens ≥ 1220px) -->
 <aside id="ads-left"  class="lp-side-ad"></aside>
 <aside id="ads-right" class="lp-side-ad"></aside>
+
+<!-- Report issue modal -->
+<div id="lp-report-overlay" class="lp-report-overlay" style="display:none" onclick="if(event.target===this)closeLpReport()">
+  <div class="lp-report-modal">
+    <div class="lp-report-header">
+      <span><i class="fa-solid fa-flag" style="color:#ef4444"></i> Report an Issue</span>
+      <button class="lp-report-close" onclick="closeLpReport()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="lp-report-body">
+      <p class="lp-report-sub">Help us fix problems fast — select the issue you're experiencing with this file.</p>
+      <div class="lp-report-opts" id="lp-report-opts">
+        <label class="lp-report-opt selected" data-val="not_downloading">
+          <input type="radio" name="lp-reason" value="not_downloading" checked />
+          <div class="lp-report-opt-icon"><i class="fa-solid fa-circle-xmark"></i></div>
+          <div>
+            <div class="lp-report-opt-label">Not Downloading</div>
+            <div class="lp-report-opt-desc">File won't start or keeps failing</div>
+          </div>
+        </label>
+        <label class="lp-report-opt" data-val="link_expired">
+          <input type="radio" name="lp-reason" value="link_expired" />
+          <div class="lp-report-opt-icon"><i class="fa-solid fa-clock-rotate-left"></i></div>
+          <div>
+            <div class="lp-report-opt-label">Link / Token Expired</div>
+            <div class="lp-report-opt-desc">Getting an expired or access denied error</div>
+          </div>
+        </label>
+        <label class="lp-report-opt" data-val="corrupt_or_wrong">
+          <input type="radio" name="lp-reason" value="corrupt_or_wrong" />
+          <div class="lp-report-opt-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+          <div>
+            <div class="lp-report-opt-label">File Corrupt or Wrong</div>
+            <div class="lp-report-opt-desc">Downloaded file is broken or not what's described</div>
+          </div>
+        </label>
+        <label class="lp-report-opt" data-val="other">
+          <input type="radio" name="lp-reason" value="other" />
+          <div class="lp-report-opt-icon"><i class="fa-solid fa-ellipsis"></i></div>
+          <div>
+            <div class="lp-report-opt-label">Other</div>
+            <div class="lp-report-opt-desc">Something else not listed above</div>
+          </div>
+        </label>
+      </div>
+      <textarea id="lp-report-msg" class="lp-report-textarea" rows="3"
+        placeholder="Add more details (optional)…"></textarea>
+      <div id="lp-report-err" class="lp-report-err"></div>
+    </div>
+    <div class="lp-report-footer">
+      <button class="lp-report-cancel" onclick="closeLpReport()">Cancel</button>
+      <button id="lp-report-submit" class="lp-report-submit" onclick="submitLpReport()">
+        <i class="fa-solid fa-paper-plane"></i> Submit Report
+      </button>
+    </div>
+  </div>
+</div>
 
 <script src="/landing.js"></script>
 </body>

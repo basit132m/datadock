@@ -388,7 +388,68 @@
     document.getElementById('lc-card').hidden = false;
     document.getElementById('ads-mid').hidden = false;
     document.getElementById('lp-features').hidden = false;
+
+    // ── Report button ────────────────────────────────────────────────────────
+    document.getElementById('lp-report-btn').addEventListener('click', openLpReport);
   }
+
+  // ── Report modal ────────────────────────────────────────────────────────────
+
+  function openLpReport() {
+    // Reset state
+    document.querySelectorAll('.lp-report-opt').forEach(o => o.classList.remove('selected'));
+    document.querySelector('.lp-report-opt[data-val="not_downloading"]').classList.add('selected');
+    document.querySelector('input[name="lp-reason"][value="not_downloading"]').checked = true;
+    document.getElementById('lp-report-msg').value = '';
+    document.getElementById('lp-report-err').textContent = '';
+    const btn = document.getElementById('lp-report-submit');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Submit Report';
+    document.getElementById('lp-report-overlay').style.display = 'flex';
+  }
+
+  window.closeLpReport = function () {
+    document.getElementById('lp-report-overlay').style.display = 'none';
+  };
+
+  window.submitLpReport = async function () {
+    const btn   = document.getElementById('lp-report-submit');
+    const errEl = document.getElementById('lp-report-err');
+    errEl.textContent = '';
+    const reason = document.querySelector('input[name="lp-reason"]:checked')?.value || 'other';
+    const message = document.getElementById('lp-report-msg').value.trim();
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submitting…';
+
+    try {
+      const res = await fetch('/api/reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ share_id: shareId, reason, message }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.detail || 'Failed to submit report');
+      }
+      // Success state
+      btn.innerHTML = '<i class="fa-solid fa-check"></i> Reported!';
+      setTimeout(closeLpReport, 1400);
+    } catch (e) {
+      errEl.textContent = e.message;
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Submit Report';
+    }
+  };
+
+  // Radio option click handler (works on the label)
+  document.querySelectorAll('.lp-report-opt').forEach(opt => {
+    opt.addEventListener('click', () => {
+      document.querySelectorAll('.lp-report-opt').forEach(o => o.classList.remove('selected'));
+      opt.classList.add('selected');
+      opt.querySelector('input[type=radio]').checked = true;
+    });
+  });
 
   init();
 })();

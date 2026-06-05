@@ -24,7 +24,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db, init_db
-from models import AccessRequest, Ad, ApiKey, DownloadEvent, Part, SiteSetting, StorageProvider, SupportMessage, SupportReply, Upload
+from models import AccessRequest, Ad, ApiKey, DownloadEvent, FileReport, Part, SiteSetting, StorageProvider, SupportMessage, SupportReply, Upload
 from storage import B2Storage, BunnyStorage, S3Storage
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -2765,6 +2765,92 @@ async def member_delete_support(
         raise HTTPException(403, "Not your message")
     db.query(SupportReply).filter(SupportReply.message_id == msg_id).delete()
     db.delete(msg)
+    db.commit()
+    return {"ok": True}
+
+
+# ── File Reports ──────────────────────────────────────────────────────────────
+
+VALID_REASONS = {"not_downloading", "link_expired", "corrupt_or_wrong", "other"}
+
+
+class FileReportIn(BaseModel):
+    share_id: str
+    reason: str
+    message: Optional[str] = None
+
+
+@app.post("/api/reports")
+async def submit_report(body: FileReportIn, request: Request, db: Session = Depends(get_db)):
+    if body.reason not in VALID_REASONS:
+        raise HTTPException(400, "Invalid reason")
+    upload = db.query(Upload).filter(Upload.share_id == body.share_id, Upload.status == "completed").first()
+    if not upload:
+        raise HTTPException(404, "File not found")
+    ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else None)
+    if ip:
+        ip = ip.split(",")[0].strip()
+    db.add(FileReport(
+        id=str(uuid.uuid4()),
+        share_id=body.share_id,
+        filename=upload.filename,
+        reason=body.reason,
+        message=(body.message or "").strip() or None,
+        ip=ip,
+        status="open",
+        created_at=datetime.utcnow(),
+    ))
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/admin/reports")
+async def list_reports(
+    status: str = Query(""),
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    q = db.query(FileReport)
+    if status:
+        q = q.filter(FileReport.status == status)
+    reports = q.order_by(FileReport.created_at.desc()).all()
+    open_count     = db.query(func.count(FileReport.id)).filter(FileReport.status == "open").scalar() or 0
+    resolved_count = db.query(func.count(FileReport.id)).filter(FileReport.status == "resolved").scalar() or 0
+    return {
+        "open_count":     open_count,
+        "resolved_count": resolved_count,
+        "reports": [
+            {
+                "id":         r.id,
+                "share_id":   r.share_id,
+                "filename":   r.filename,
+                "reason":     r.reason,
+                "message":    r.message,
+                "ip":         r.ip,
+                "status":     r.status,
+                "created_at": r.created_at.isoformat(),
+            }
+            for r in reports
+        ],
+    }
+
+
+@app.post("/api/admin/reports/{report_id}/resolve")
+async def resolve_report(report_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
+    report = db.query(FileReport).filter(FileReport.id == report_id).first()
+    if not report:
+        raise HTTPException(404, "Report not found")
+    report.status = "resolved"
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/api/admin/reports/{report_id}/reopen")
+async def reopen_report(report_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
+    report = db.query(FileReport).filter(FileReport.id == report_id).first()
+    if not report:
+        raise HTTPException(404, "Report not found")
+    report.status = "open"
     db.commit()
     return {"ok": True}
 

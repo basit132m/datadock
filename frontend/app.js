@@ -422,6 +422,15 @@ async function loadDashboard() {
   } catch (e) {
     console.error('Dashboard error:', e);
   }
+  // Refresh report badge count
+  if (userRole === 'admin') {
+    apiFetch('GET', '/api/admin/reports?status=open')
+      .then(d => {
+        const badge = document.getElementById('rpt-nav-badge');
+        if (badge) { badge.hidden = !d.open_count; badge.textContent = d.open_count; }
+      })
+      .catch(() => {});
+  }
 }
 
 function renderChart(data) {
@@ -2929,9 +2938,107 @@ async function confirmFmDelete() {
   }
 }
 
+// ── File Reports ──────────────────────────────────────────────────────────────
+
+const RPT_REASON_LABELS = {
+  not_downloading:  'Not Downloading',
+  link_expired:     'Link / Token Expired',
+  corrupt_or_wrong: 'File Corrupt or Wrong',
+  other:            'Other',
+};
+const RPT_REASON_COLORS = {
+  not_downloading:  '#ef4444',
+  link_expired:     '#f59e0b',
+  corrupt_or_wrong: '#8b5cf6',
+  other:            '#64748b',
+};
+
+let rptActiveFilter = '';
+
+async function loadFileReportsPage() {
+  const listEl = document.getElementById('rpt-list');
+  listEl.innerHTML = '<p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</p>';
+
+  if (!document.getElementById('rpt-list')._rptInit) {
+    document.getElementById('rpt-list')._rptInit = true;
+    document.querySelectorAll('.rpt-filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        rptActiveFilter = btn.dataset.status;
+        document.querySelectorAll('.rpt-filter-btn').forEach(b => b.classList.remove('rpt-filter-active'));
+        btn.classList.add('rpt-filter-active');
+        loadFileReportsPage();
+      });
+    });
+  }
+
+  let data;
+  try {
+    data = await apiFetch('GET', `/api/admin/reports?status=${rptActiveFilter}`);
+  } catch (e) {
+    listEl.innerHTML = `<p style="padding:1.5rem;color:var(--danger)">${escHtml(e.message)}</p>`;
+    return;
+  }
+
+  document.getElementById('rpt-stat-open').textContent     = data.open_count.toLocaleString();
+  document.getElementById('rpt-stat-resolved').textContent = data.resolved_count.toLocaleString();
+
+  // Update nav badge
+  const badge = document.getElementById('rpt-nav-badge');
+  if (badge) {
+    badge.hidden = data.open_count === 0;
+    badge.textContent = data.open_count;
+  }
+
+  if (!data.reports.length) {
+    listEl.innerHTML = '<p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">No reports found.</p>';
+    return;
+  }
+
+  listEl.innerHTML = data.reports.map(r => {
+    const color = RPT_REASON_COLORS[r.reason] || '#64748b';
+    const label = RPT_REASON_LABELS[r.reason] || r.reason;
+    const isOpen = r.status === 'open';
+    return `
+      <div class="rpt-row" id="rpt-${r.id}">
+        <div class="rpt-row-top">
+          <span class="rpt-badge" style="background:${color}18;color:${color};border-color:${color}40">
+            <i class="fa-solid fa-flag"></i> ${label}
+          </span>
+          <span class="rpt-filename" title="${escHtml(r.filename)}">${escHtml(r.filename)}</span>
+          <span class="rpt-time">${formatDate(r.created_at)}</span>
+          ${r.share_id ? `<a href="/f/${r.share_id}" target="_blank" class="btn-sm" style="font-size:.74rem;padding:.2rem .5rem">
+            <i class="fa-solid fa-arrow-up-right-from-square"></i>
+          </a>` : ''}
+        </div>
+        ${r.message ? `<div class="rpt-message"><i class="fa-solid fa-quote-left" style="font-size:.7rem;color:var(--muted)"></i> ${escHtml(r.message)}</div>` : ''}
+        <div class="rpt-row-foot">
+          ${r.ip ? `<span class="rpt-ip"><i class="fa-solid fa-network-wired" style="font-size:.7rem"></i> ${escHtml(r.ip)}</span>` : ''}
+          <span class="rpt-status-badge ${isOpen ? 'rpt-open' : 'rpt-resolved'}">${isOpen ? 'Open' : 'Resolved'}</span>
+          <button class="btn-sm ${isOpen ? 'rpt-resolve-btn' : 'rpt-reopen-btn'}"
+            onclick="${isOpen ? `rptResolve('${r.id}')` : `rptReopen('${r.id}')`}"
+            style="margin-left:auto">
+            ${isOpen
+              ? '<i class="fa-solid fa-circle-check"></i> Resolve'
+              : '<i class="fa-solid fa-rotate-left"></i> Reopen'}
+          </button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function rptResolve(id) {
+  await apiFetch('POST', `/api/admin/reports/${id}/resolve`);
+  loadFileReportsPage();
+}
+
+async function rptReopen(id) {
+  await apiFetch('POST', `/api/admin/reports/${id}/reopen`);
+  loadFileReportsPage();
+}
+
 // ── Page navigation ───────────────────────────────────────────────────────────
 
-const ADMIN_PAGES = ['dashboard', 'ads', 'storage', 'downloads', 'team', 'requests', 'duplicates', 'filemanager'];
+const ADMIN_PAGES = ['dashboard', 'ads', 'storage', 'downloads', 'team', 'requests', 'duplicates', 'filemanager', 'filereports'];
 // 'support' is visible to both roles — intentionally not in ADMIN_PAGES
 
 function applyRoleUI() {
@@ -2959,6 +3066,7 @@ function showPage(page) {
   if (page === 'support')    loadSupportPage();
   if (page === 'duplicates')   loadDuplicatesPage();
   if (page === 'filemanager')  loadFileManagerPage();
+  if (page === 'filereports')  loadFileReportsPage();
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
