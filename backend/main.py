@@ -740,6 +740,58 @@ async def delete_file(file_id: str, db: Session = Depends(get_db), _=Depends(req
     return {"ok": True}
 
 
+class AdminDeleteIn(BaseModel):
+    redirect_type: str = "none"          # "none" | "file" | "url"
+    redirect_to_share_id: Optional[str] = None
+    redirect_to_url:      Optional[str] = None
+
+
+@app.post("/api/admin/files/{file_id}/delete")
+async def admin_delete_file(
+    file_id: str,
+    body: AdminDeleteIn,
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    """Delete a file with optional redirect: none (404), to another file, or to an external URL."""
+    upload = db.query(Upload).filter(Upload.id == file_id, Upload.status == "completed").first()
+    if not upload:
+        raise HTTPException(404, "File not found")
+
+    if body.redirect_type == "file":
+        if not body.redirect_to_share_id:
+            raise HTTPException(400, "redirect_to_share_id required")
+        target = db.query(Upload).filter(
+            Upload.share_id == body.redirect_to_share_id, Upload.status == "completed"
+        ).first()
+        if not target:
+            raise HTTPException(404, "Redirect target file not found")
+        if target.id == upload.id:
+            raise HTTPException(400, "Cannot redirect a file to itself")
+    elif body.redirect_type == "url":
+        if not body.redirect_to_url:
+            raise HTTPException(400, "redirect_to_url required")
+        if not body.redirect_to_url.startswith(("http://", "https://")):
+            raise HTTPException(400, "redirect_to_url must be an http/https URL")
+
+    try:
+        _get_storage(upload.storage_provider_id, db).delete_object(upload.b2_file_key)
+    except Exception:
+        pass
+
+    if body.redirect_type == "none":
+        db.delete(upload)
+    elif body.redirect_type == "file":
+        upload.status = "redirected"
+        upload.redirects_to = body.redirect_to_share_id
+    else:  # url
+        upload.status = "redirected"
+        upload.redirect_url = body.redirect_to_url
+
+    db.commit()
+    return {"ok": True}
+
+
 class MergeUploadIn(BaseModel):
     redirect_to: str  # share_id of the canonical file to redirect to
 
@@ -965,6 +1017,8 @@ async def get_stats(db: Session = Depends(get_db), _=Depends(require_admin)):
 async def get_share_info(share_id: str, db: Session = Depends(get_db)):
     upload = db.query(Upload).filter(Upload.share_id == share_id).first()
     if upload and upload.status == "redirected":
+        if upload.redirect_url:
+            return RedirectResponse(upload.redirect_url, status_code=302)
         canonical = _resolve_canonical(share_id, db)
         if canonical and canonical != share_id:
             return RedirectResponse(f"/api/f/{canonical}", status_code=301)
@@ -1049,6 +1103,8 @@ async def create_download_token(share_id: str, db: Session = Depends(get_db)):
     """Issue a short-lived single-use download token for the share page."""
     upload = db.query(Upload).filter(Upload.share_id == share_id).first()
     if upload and upload.status == "redirected":
+        if upload.redirect_url:
+            return RedirectResponse(upload.redirect_url, status_code=307)
         canonical = _resolve_canonical(share_id, db)
         if canonical and canonical != share_id:
             return RedirectResponse(f"/api/f/{canonical}/token", status_code=307)
@@ -1075,6 +1131,8 @@ async def download_file(
 ):
     upload = db.query(Upload).filter(Upload.share_id == share_id).first()
     if upload and upload.status == "redirected":
+        if upload.redirect_url:
+            return RedirectResponse(upload.redirect_url, status_code=302)
         canonical = _resolve_canonical(share_id, db)
         if canonical and canonical != share_id:
             return RedirectResponse(f"/api/f/{canonical}/download?token={token}", status_code=302)
@@ -1127,6 +1185,8 @@ async def preview_file(share_id: str, db: Session = Depends(get_db)):
     """Redirect to the raw file URL for inline media preview. No token, no download count."""
     upload = db.query(Upload).filter(Upload.share_id == share_id).first()
     if upload and upload.status == "redirected":
+        if upload.redirect_url:
+            return RedirectResponse(upload.redirect_url, status_code=302)
         canonical = _resolve_canonical(share_id, db)
         if canonical and canonical != share_id:
             return RedirectResponse(f"/api/f/{canonical}/preview", status_code=301)
@@ -2602,6 +2662,8 @@ async def member_delete_support(
 async def share_page(share_id: str, request: Request, db: Session = Depends(get_db)):
     upload = db.query(Upload).filter(Upload.share_id == share_id).first()
     if upload and upload.status == "redirected":
+        if upload.redirect_url:
+            return RedirectResponse(upload.redirect_url, status_code=301)
         canonical = _resolve_canonical(share_id, db)
         if canonical and canonical != share_id:
             return RedirectResponse(f"/f/{canonical}", status_code=301)

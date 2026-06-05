@@ -2478,9 +2478,306 @@ async function renderIgnoredFiles(container) {
   container.appendChild(section);
 }
 
+// ── File Manager ──────────────────────────────────────────────────────────────
+
+let fmAllFiles = [];
+let fmPage = 1;
+let fmView = 'grid';
+let fmDeleteTarget = null;
+const FM_PER_PAGE = 30;
+
+const FM_CATS = {
+  archive: ['zip','rar','gz','tar','7z','bz2','xz','tgz','lz4','zst'],
+  video:   ['mp4','mkv','avi','mov','webm','flv','wmv','m4v','ts','vob'],
+  audio:   ['mp3','wav','flac','aac','ogg','m4a','wma','opus','aiff'],
+  image:   ['jpg','jpeg','png','gif','webp','svg','bmp','tiff','ico','avif','heic'],
+  doc:     ['pdf','doc','docx','xls','xlsx','csv','ppt','pptx','txt','md','rtf','odt','ods'],
+  app:     ['exe','msi','dmg','iso','apk','nsp','xci','rom','deb','pkg','run','bin','ipa'],
+};
+
+function fmGetCat(filename) {
+  const ext = (filename || '').split('.').pop().toLowerCase();
+  for (const [cat, exts] of Object.entries(FM_CATS)) {
+    if (exts.includes(ext)) return cat;
+  }
+  return 'other';
+}
+
+async function loadFileManagerPage() {
+  const grid    = document.getElementById('fm-grid');
+  const statusEl = document.getElementById('fm-status');
+  grid.innerHTML = '<p style="padding:2rem;color:var(--muted);font-size:.875rem;text-align:center"><i class="fa-solid fa-spinner fa-spin"></i> Loading files…</p>';
+  statusEl.textContent = '';
+
+  try {
+    fmAllFiles = await apiFetch('GET', '/api/files');
+  } catch (e) {
+    grid.innerHTML = `<p style="padding:2rem;color:#ef4444;text-align:center"><i class="fa-solid fa-triangle-exclamation"></i> ${escHtml(e.message)}</p>`;
+    return;
+  }
+
+  fmPage = 1;
+
+  if (!document.getElementById('fm-search')._fmInit) {
+    document.getElementById('fm-search')._fmInit = true;
+
+    document.getElementById('fm-search').addEventListener('input', () => { fmPage = 1; renderFmGrid(); });
+    document.getElementById('fm-sort').addEventListener('change', () => { fmPage = 1; renderFmGrid(); });
+
+    document.querySelectorAll('#fm-tabs .fm-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#fm-tabs .fm-tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        fmPage = 1;
+        renderFmGrid();
+      });
+    });
+
+    document.getElementById('fm-view-grid').addEventListener('click', () => {
+      fmView = 'grid';
+      document.getElementById('fm-view-grid').classList.add('active');
+      document.getElementById('fm-view-list').classList.remove('active');
+      document.getElementById('fm-grid').classList.remove('list-view');
+      renderFmGrid();
+    });
+
+    document.getElementById('fm-view-list').addEventListener('click', () => {
+      fmView = 'list';
+      document.getElementById('fm-view-list').classList.add('active');
+      document.getElementById('fm-view-grid').classList.remove('active');
+      document.getElementById('fm-grid').classList.add('list-view');
+      renderFmGrid();
+    });
+
+    document.querySelectorAll('#fm-redirect-opts .fm-radio-opt').forEach(opt => {
+      opt.addEventListener('click', () => {
+        document.querySelectorAll('#fm-redirect-opts .fm-radio-opt').forEach(o => o.classList.remove('selected'));
+        opt.classList.add('selected');
+        opt.querySelector('input[type=radio]').checked = true;
+        const val = opt.dataset.val;
+        document.getElementById('fm-redirect-file-panel').style.display = val === 'file' ? '' : 'none';
+        document.getElementById('fm-redirect-url-panel').style.display  = val === 'url'  ? '' : 'none';
+      });
+    });
+
+    document.getElementById('fm-redirect-file-search').addEventListener('input', fmSearchRedirectFiles);
+  }
+
+  renderFmGrid();
+}
+
+function fmGetFiltered() {
+  const search = (document.getElementById('fm-search').value || '').toLowerCase().trim();
+  const cat    = (document.querySelector('#fm-tabs .fm-tab.active') || {}).dataset?.cat ?? '';
+  const sort   = document.getElementById('fm-sort').value || 'newest';
+
+  let files = fmAllFiles.filter(f => {
+    if (search && !f.filename.toLowerCase().includes(search)) return false;
+    if (cat && fmGetCat(f.filename) !== cat) return false;
+    return true;
+  });
+
+  files.sort((a, b) => {
+    if (sort === 'newest')    return new Date(b.completed_at) - new Date(a.completed_at);
+    if (sort === 'oldest')    return new Date(a.completed_at) - new Date(b.completed_at);
+    if (sort === 'largest')   return b.file_size - a.file_size;
+    if (sort === 'smallest')  return a.file_size - b.file_size;
+    if (sort === 'name')      return a.filename.localeCompare(b.filename);
+    if (sort === 'downloads') return (b.downloads || 0) - (a.downloads || 0);
+    return 0;
+  });
+
+  return files;
+}
+
+function renderFmGrid() {
+  const grid       = document.getElementById('fm-grid');
+  const statusEl   = document.getElementById('fm-status');
+  const pagination = document.getElementById('fm-pagination');
+
+  const filtered   = fmGetFiltered();
+  const total      = filtered.length;
+  const totalPages = Math.ceil(total / FM_PER_PAGE) || 1;
+  if (fmPage > totalPages) fmPage = totalPages;
+
+  const slice = filtered.slice((fmPage - 1) * FM_PER_PAGE, fmPage * FM_PER_PAGE);
+
+  statusEl.textContent = total === fmAllFiles.length
+    ? `${total.toLocaleString()} files`
+    : `${total.toLocaleString()} of ${fmAllFiles.length.toLocaleString()} files`;
+
+  if (!slice.length) {
+    grid.innerHTML = '<p style="padding:2rem;color:var(--muted);font-size:.875rem;text-align:center"><i class="fa-solid fa-magnifying-glass"></i> No files match your search</p>';
+    pagination.innerHTML = '';
+    return;
+  }
+
+  grid.innerHTML = slice.map(f => {
+    const uploaderStr = f.uploaded_by
+      ? `<span><i class="fa-solid fa-user" style="font-size:.68rem"></i> ${escHtml(f.uploaded_by)}</span>`
+      : '';
+    const openBtn = f.share_url
+      ? `<a href="${f.share_url}" target="_blank" class="btn-primary-sm" title="Open file page"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>`
+      : '';
+    const delBtn  = `<button class="btn-danger" onclick="openFmDeleteModal('${f.id}')"><i class="fa-solid fa-trash-can"></i> Delete</button>`;
+    const delBtnSm = `<button class="btn-danger" style="padding:.35rem .65rem" onclick="openFmDeleteModal('${f.id}')"><i class="fa-solid fa-trash-can"></i></button>`;
+
+    if (fmView === 'list') {
+      return `
+        <div class="fm-card fm-card-list">
+          <div class="fm-card-icon">${fileIcon(f.filename)}</div>
+          <div class="fm-card-body">
+            <div class="fm-card-title">${escHtml(f.filename)}</div>
+            <div class="fm-card-meta">
+              <span>${formatBytes(f.file_size)}</span>
+              ${uploaderStr}
+              <span>${formatDate(f.completed_at)}</span>
+              <span><i class="fa-solid fa-eye" style="font-size:.68rem"></i> ${f.views}</span>
+              <span><i class="fa-solid fa-download" style="font-size:.68rem"></i> ${f.downloads}</span>
+            </div>
+          </div>
+          <div class="fm-card-actions">${openBtn}${delBtnSm}</div>
+        </div>`;
+    }
+
+    return `
+      <div class="fm-card">
+        <div class="fm-card-head">
+          <div class="fm-card-icon">${fileIcon(f.filename)}</div>
+          <div style="min-width:0;flex:1">
+            <div class="fm-card-title">${escHtml(f.filename)}</div>
+            <div class="fm-card-meta">
+              <span>${formatBytes(f.file_size)}</span>
+              ${uploaderStr}
+            </div>
+          </div>
+        </div>
+        <div class="fm-card-stats">
+          <span><i class="fa-solid fa-eye" style="font-size:.7rem"></i> ${f.views} views</span>
+          <span><i class="fa-solid fa-download" style="font-size:.7rem"></i> ${f.downloads} dl</span>
+          <span style="margin-left:auto">${formatDate(f.completed_at)}</span>
+        </div>
+        <div class="fm-card-actions">
+          ${f.share_url ? `<a href="${f.share_url}" target="_blank" class="btn-primary-sm" style="flex:1;text-align:center"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open</a>` : ''}
+          ${delBtn}
+        </div>
+      </div>`;
+  }).join('');
+
+  if (totalPages <= 1) { pagination.innerHTML = ''; return; }
+
+  let pHtml = `<button class="fm-page-btn" onclick="fmGoPage(${fmPage - 1})" ${fmPage <= 1 ? 'disabled' : ''}>&#8249; Prev</button>`;
+  const start = Math.max(1, fmPage - 2);
+  const end   = Math.min(totalPages, fmPage + 2);
+  if (start > 1) pHtml += `<button class="fm-page-btn" onclick="fmGoPage(1)">1</button>${start > 2 ? '<span style="color:var(--muted);padding:0 .25rem">…</span>' : ''}`;
+  for (let p = start; p <= end; p++) {
+    pHtml += `<button class="fm-page-btn${p === fmPage ? ' active' : ''}" onclick="fmGoPage(${p})">${p}</button>`;
+  }
+  if (end < totalPages) pHtml += `${end < totalPages - 1 ? '<span style="color:var(--muted);padding:0 .25rem">…</span>' : ''}<button class="fm-page-btn" onclick="fmGoPage(${totalPages})">${totalPages}</button>`;
+  pHtml += `<button class="fm-page-btn" onclick="fmGoPage(${fmPage + 1})" ${fmPage >= totalPages ? 'disabled' : ''}>Next &#8250;</button>`;
+  pagination.innerHTML = pHtml;
+}
+
+function fmGoPage(p) {
+  fmPage = p;
+  renderFmGrid();
+  document.getElementById('main').scrollTop = 0;
+}
+
+function openFmDeleteModal(id) {
+  fmDeleteTarget = fmAllFiles.find(f => f.id === id) || null;
+  if (!fmDeleteTarget) return;
+  document.getElementById('fm-modal-filename').textContent = fmDeleteTarget.filename;
+  document.getElementById('fm-modal-err').textContent = '';
+  document.querySelectorAll('#fm-redirect-opts .fm-radio-opt').forEach(o => o.classList.remove('selected'));
+  document.querySelector('#fm-redirect-opts .fm-radio-opt[data-val="none"]').classList.add('selected');
+  document.querySelector('#fm-redirect-opts input[value="none"]').checked = true;
+  document.getElementById('fm-redirect-file-panel').style.display = 'none';
+  document.getElementById('fm-redirect-url-panel').style.display  = 'none';
+  document.getElementById('fm-redirect-file-search').value        = '';
+  document.getElementById('fm-redirect-file-results').innerHTML   = '';
+  document.getElementById('fm-redirect-file-id').value            = '';
+  document.getElementById('fm-redirect-file-selected').textContent = '';
+  document.getElementById('fm-redirect-url-input').value          = '';
+  const btn = document.getElementById('fm-modal-confirm');
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> Delete File';
+  document.getElementById('fm-delete-modal').style.display = 'flex';
+}
+
+function closeFmDeleteModal() {
+  document.getElementById('fm-delete-modal').style.display = 'none';
+  fmDeleteTarget = null;
+}
+
+function fmSearchRedirectFiles() {
+  const q       = document.getElementById('fm-redirect-file-search').value.toLowerCase().trim();
+  const results = document.getElementById('fm-redirect-file-results');
+  if (!q) { results.innerHTML = ''; return; }
+
+  const matches = fmAllFiles
+    .filter(f => f.id !== fmDeleteTarget?.id && f.filename.toLowerCase().includes(q))
+    .slice(0, 8);
+
+  if (!matches.length) {
+    results.innerHTML = '<p style="padding:.5rem .75rem;font-size:.78rem;color:var(--muted)">No files found</p>';
+    return;
+  }
+
+  results.innerHTML = matches.map(f => `
+    <div class="fm-file-result" onclick="fmSelectRedirectFile('${f.share_id}',${JSON.stringify(f.filename)})">
+      ${fileIcon(f.filename)}
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(f.filename)}</span>
+      <span class="fm-file-result-size">${formatBytes(f.file_size)}</span>
+    </div>`).join('');
+}
+
+function fmSelectRedirectFile(shareId, filename) {
+  document.getElementById('fm-redirect-file-id').value            = shareId;
+  document.getElementById('fm-redirect-file-selected').textContent = '✓ Selected: ' + filename;
+  document.getElementById('fm-redirect-file-search').value        = filename;
+  document.getElementById('fm-redirect-file-results').innerHTML   = '';
+}
+
+async function confirmFmDelete() {
+  if (!fmDeleteTarget) return;
+  const btn   = document.getElementById('fm-modal-confirm');
+  const errEl = document.getElementById('fm-modal-err');
+  errEl.textContent = '';
+
+  const checked      = document.querySelector('#fm-redirect-opts input[name="fm-redirect"]:checked');
+  const redirectType = checked ? checked.value : 'none';
+
+  const body = { redirect_type: redirectType };
+  if (redirectType === 'file') {
+    const shareId = document.getElementById('fm-redirect-file-id').value.trim();
+    if (!shareId) { errEl.textContent = 'Please select a target file first.'; return; }
+    body.redirect_to_share_id = shareId;
+  } else if (redirectType === 'url') {
+    const url = document.getElementById('fm-redirect-url-input').value.trim();
+    if (!url) { errEl.textContent = 'Please enter a redirect URL.'; return; }
+    body.redirect_to_url = url;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Deleting…';
+
+  try {
+    const targetId = fmDeleteTarget.id;
+    await apiFetch('POST', `/api/admin/files/${targetId}/delete`, body);
+    fmAllFiles = fmAllFiles.filter(f => f.id !== targetId);
+    closeFmDeleteModal();
+    renderFmGrid();
+  } catch (e) {
+    errEl.textContent = e.message;
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> Delete File';
+  }
+}
+
 // ── Page navigation ───────────────────────────────────────────────────────────
 
-const ADMIN_PAGES = ['dashboard', 'ads', 'storage', 'downloads', 'team', 'requests', 'duplicates'];
+const ADMIN_PAGES = ['dashboard', 'ads', 'storage', 'downloads', 'team', 'requests', 'duplicates', 'filemanager'];
 // 'support' is visible to both roles — intentionally not in ADMIN_PAGES
 
 function applyRoleUI() {
@@ -2506,7 +2803,8 @@ function showPage(page) {
   if (page === 'team')      loadTeamPage();
   if (page === 'requests')   loadRequestsPage();
   if (page === 'support')    loadSupportPage();
-  if (page === 'duplicates') loadDuplicatesPage();
+  if (page === 'duplicates')   loadDuplicatesPage();
+  if (page === 'filemanager')  loadFileManagerPage();
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
