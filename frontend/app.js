@@ -2326,16 +2326,21 @@ async function loadDuplicatesPage() {
         <td style="white-space:nowrap">${file.downloads.toLocaleString()}</td>
         <td style="white-space:nowrap">${file.views.toLocaleString()}</td>
         <td><a href="/f/${file.share_id}" target="_blank" style="font-size:.8rem;font-family:monospace">/f/${file.share_id}</a></td>
-        <td>
+        <td style="white-space:nowrap;display:flex;gap:.4rem;flex-wrap:wrap">
           ${isKeep
-            ? '<span style="font-size:.78rem;color:var(--muted)">Canonical</span>'
+            ? ''
             : `<button class="btn-danger btn-sm dup-merge-btn"
                 data-file-id="${file.id}"
                 data-share-id="${file.share_id}"
                 data-redirect-to="${canonicalShareId}"
                 data-filename="${file.filename}">
-                <i class="fa-solid fa-code-merge"></i> Delete &amp; Redirect Links
+                <i class="fa-solid fa-code-merge"></i> Delete &amp; Redirect
               </button>`}
+          <button class="btn-sm dup-ignore-btn"
+            data-file-id="${file.id}"
+            data-filename="${file.filename}">
+            <i class="fa-solid fa-eye-slash"></i> Not a Duplicate
+          </button>
         </td>`;
       tbody.appendChild(tr);
     });
@@ -2365,11 +2370,112 @@ async function loadDuplicatesPage() {
         loadDuplicatesPage();
       } catch (e) {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-code-merge"></i> Delete &amp; Redirect Links';
+        btn.innerHTML = '<i class="fa-solid fa-code-merge"></i> Delete &amp; Redirect';
         alert('Error: ' + e.message);
       }
     });
   });
+
+  // Wire up "Not a Duplicate" (ignore) buttons
+  list.querySelectorAll('.dup-ignore-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const { fileId, filename } = btn.dataset;
+      if (!confirm(`Mark "${filename}" as Not a Duplicate?\n\nThis file will be hidden from the duplicates scanner. You can undo this from the Ignored Files section below.`)) return;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+      try {
+        await apiFetch('POST', `/api/admin/files/${fileId}/ignore-duplicate`);
+        loadDuplicatesPage();
+      } catch (e) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-eye-slash"></i> Not a Duplicate';
+        alert('Error: ' + e.message);
+      }
+    });
+  });
+
+  // Ignored files section
+  await renderIgnoredFiles(list);
+}
+
+async function renderIgnoredFiles(container) {
+  let ignored;
+  try { ignored = await apiFetch('GET', '/api/admin/duplicates/excluded'); }
+  catch { return; }
+  if (!ignored.length) return;
+
+  const section = document.createElement('div');
+  section.style.marginTop = '2rem';
+
+  const toggle = document.createElement('button');
+  toggle.className = 'btn-sm';
+  toggle.style.marginBottom = '1rem';
+  toggle.innerHTML = `<i class="fa-solid fa-eye-slash"></i> Show ${ignored.length} ignored file${ignored.length !== 1 ? 's' : ''}`;
+
+  const body = document.createElement('div');
+  body.hidden = true;
+
+  const card = document.createElement('div');
+  card.className = 'card';
+  const hdr = document.createElement('div');
+  hdr.className = 'card-header';
+  hdr.innerHTML = '<i class="fa-solid fa-eye-slash" style="color:var(--muted);margin-right:.4rem"></i> Ignored Files (excluded from duplicate detection)';
+  card.appendChild(hdr);
+
+  const wrap = document.createElement('div');
+  wrap.style.overflowX = 'auto';
+  const table = document.createElement('table');
+  table.className = 'files-table';
+  table.innerHTML = `
+    <thead><tr><th>File</th><th>Uploader</th><th>Uploaded</th><th>Share Link</th><th>Action</th></tr></thead>
+    <tbody></tbody>`;
+  const tbody = table.querySelector('tbody');
+
+  ignored.forEach(file => {
+    const tr = document.createElement('tr');
+    const date = file.completed_at ? new Date(file.completed_at).toLocaleDateString() : '—';
+    tr.innerHTML = `
+      <td class="tf-name" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${file.filename}">${file.filename}</td>
+      <td>${file.uploaded_by}</td>
+      <td style="white-space:nowrap">${date}</td>
+      <td><a href="/f/${file.share_id}" target="_blank" style="font-size:.8rem;font-family:monospace">/f/${file.share_id}</a></td>
+      <td>
+        <button class="btn-sm dup-unignore-btn" data-file-id="${file.id}" data-filename="${file.filename}">
+          <i class="fa-solid fa-rotate-left"></i> Restore to Scanner
+        </button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+
+  wrap.appendChild(table);
+  card.appendChild(wrap);
+  body.appendChild(card);
+
+  toggle.addEventListener('click', () => {
+    body.hidden = !body.hidden;
+    toggle.innerHTML = body.hidden
+      ? `<i class="fa-solid fa-eye-slash"></i> Show ${ignored.length} ignored file${ignored.length !== 1 ? 's' : ''}`
+      : `<i class="fa-solid fa-eye"></i> Hide ignored files`;
+  });
+
+  body.querySelectorAll('.dup-unignore-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+      try {
+        await apiFetch('POST', `/api/admin/files/${btn.dataset.fileId}/unignore-duplicate`);
+        loadDuplicatesPage();
+      } catch (e) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-rotate-left"></i> Restore to Scanner';
+        alert('Error: ' + e.message);
+      }
+    });
+  });
+
+  section.appendChild(toggle);
+  section.appendChild(body);
+  container.appendChild(section);
 }
 
 // ── Page navigation ───────────────────────────────────────────────────────────

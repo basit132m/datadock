@@ -746,12 +746,18 @@ class MergeUploadIn(BaseModel):
 
 @app.get("/api/admin/duplicates")
 async def get_duplicates(db: Session = Depends(get_db), _=Depends(require_admin)):
-    """Return groups of completed uploads that share the same file_hash."""
+    """Return groups of completed uploads that share the same file_hash (excluding ignored files)."""
     from collections import defaultdict
 
+    # Only count non-excluded files when finding hashes with 2+ copies
     dup_hashes = (
         db.query(Upload.file_hash)
-        .filter(Upload.status == "completed", Upload.file_hash.isnot(None), Upload.file_hash != "")
+        .filter(
+            Upload.status == "completed",
+            Upload.file_hash.isnot(None),
+            Upload.file_hash != "",
+            Upload.dup_excluded != 1,
+        )
         .group_by(Upload.file_hash)
         .having(func.count(Upload.id) > 1)
         .all()
@@ -762,7 +768,11 @@ async def get_duplicates(db: Session = Depends(get_db), _=Depends(require_admin)
     hash_list = [h[0] for h in dup_hashes]
     uploads = (
         db.query(Upload)
-        .filter(Upload.file_hash.in_(hash_list), Upload.status == "completed")
+        .filter(
+            Upload.file_hash.in_(hash_list),
+            Upload.status == "completed",
+            Upload.dup_excluded != 1,
+        )
         .order_by(Upload.file_hash, Upload.completed_at)
         .all()
     )
@@ -782,6 +792,8 @@ async def get_duplicates(db: Session = Depends(get_db), _=Depends(require_admin)
     total_duplicates = 0
 
     for h, files in groups.items():
+        if len(files) < 2:
+            continue
         file_size = files[0].file_size or 0
         wasted = file_size * (len(files) - 1)
         total_wasted += wasted
@@ -813,6 +825,57 @@ async def get_duplicates(db: Session = Depends(get_db), _=Depends(require_admin)
         "total_wasted_bytes": total_wasted,
         "total_duplicate_files": total_duplicates,
     }
+
+
+@app.get("/api/admin/duplicates/excluded")
+async def get_excluded_files(db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Return all files the admin has marked as 'not a duplicate'."""
+    uploads = (
+        db.query(Upload)
+        .filter(Upload.status == "completed", Upload.dup_excluded == 1)
+        .order_by(Upload.completed_at.desc())
+        .all()
+    )
+    key_ids = list({u.uploaded_by_key_id for u in uploads if u.uploaded_by_key_id})
+    key_map: dict = {}
+    if key_ids:
+        keys = db.query(ApiKey).filter(ApiKey.id.in_(key_ids)).all()
+        key_map = {k.id: k.name for k in keys}
+
+    return [
+        {
+            "id": u.id,
+            "share_id": u.share_id,
+            "filename": u.filename,
+            "file_size": u.file_size,
+            "file_hash": u.file_hash,
+            "uploaded_by": key_map.get(u.uploaded_by_key_id, "Unknown") if u.uploaded_by_key_id else "Admin",
+            "completed_at": u.completed_at.isoformat() if u.completed_at else None,
+        }
+        for u in uploads
+    ]
+
+
+@app.post("/api/admin/files/{file_id}/ignore-duplicate")
+async def ignore_duplicate(file_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Mark a file as 'not a duplicate' — exclude it from the duplicates scanner."""
+    upload = db.query(Upload).filter(Upload.id == file_id, Upload.status == "completed").first()
+    if not upload:
+        raise HTTPException(404, "File not found")
+    upload.dup_excluded = 1
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/api/admin/files/{file_id}/unignore-duplicate")
+async def unignore_duplicate(file_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Restore a previously ignored file back into duplicate scanning."""
+    upload = db.query(Upload).filter(Upload.id == file_id).first()
+    if not upload:
+        raise HTTPException(404, "File not found")
+    upload.dup_excluded = 0
+    db.commit()
+    return {"ok": True}
 
 
 @app.post("/api/admin/files/{file_id}/merge")

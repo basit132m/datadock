@@ -55,6 +55,7 @@ def _migrate():
             "ALTER TABLE support_replies ADD COLUMN attachment_url VARCHAR(500)",
             "ALTER TABLE uploads ADD COLUMN redirects_to VARCHAR(12)",
             "CREATE INDEX IF NOT EXISTS ix_uploads_redirects_to ON uploads (redirects_to)",
+            "ALTER TABLE uploads ADD COLUMN dup_excluded INTEGER DEFAULT 0",
         ]:
             try:
                 conn.execute(text(sql))
