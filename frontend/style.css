@@ -737,28 +737,26 @@ select { background: var(--surface); color: var(--text); }
 .lp-body .ad-btn { background: var(--lp-ad-bg); border-color: var(--lp-ad-bdr); color: var(--lp-ad-txt); }
 .lp-body .ad-btn:hover { border-color: #6366f1; color: #6366f1; background: rgba(99,102,241,.07); }
 
-/* ── 3-column layout (side ads) ── */
-.lp-page-layout {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 160px 1fr 160px;
-  align-items: start;
-  width: 100%;
-}
+/* ── Side ad columns (fixed, outside normal flow — never affects content width) ── */
 .lp-side-ad {
-  position: sticky;
-  top: 70px; /* below sticky header */
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  padding: 1.5rem .25rem;
-  overflow: hidden;
+  display: none; /* hidden on all screens by default */
 }
-/* Hide side ads on screens where there's no room */
-@media (max-width: 1220px) {
-  .lp-page-layout { grid-template-columns: 1fr; }
-  .lp-side-ad     { display: none; }
+@media (min-width: 1220px) {
+  .lp-side-ad {
+    display: flex;
+    position: fixed;
+    top: 80px;          /* below sticky header */
+    bottom: 0;
+    width: 160px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 1rem 0;
+    overflow: hidden;
+    z-index: 5;
+  }
+  #ads-left  { left: 0; }
+  #ads-right { right: 0; }
 }
 
 /* Responsive */
