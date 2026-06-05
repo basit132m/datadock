@@ -197,7 +197,6 @@
           <span class="br-ext-badge">${ext}</span>
           <span class="br-card-size">${fmtBytes(f.file_size)}</span>
           <span class="br-card-date"><i class="fa-regular fa-calendar"></i> ${fmtDate(f.completed_at)}</span>
-          <span class="br-card-dl"><i class="fa-solid fa-download"></i> ${(f.downloads || 0).toLocaleString()}</span>
         </div>
       </div>
       <div class="br-card-actions">
