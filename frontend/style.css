@@ -753,7 +753,6 @@ select { background: var(--surface); color: var(--text); }
   align-items: center;
   justify-content: flex-start;
   padding: 1.5rem .25rem;
-  min-height: 600px;
   overflow: hidden;
 }
 /* Hide side ads on screens where there's no room */
