@@ -740,6 +740,30 @@ async def delete_file(file_id: str, db: Session = Depends(get_db), _=Depends(req
     return {"ok": True}
 
 
+class AdminRenameIn(BaseModel):
+    filename: str
+
+
+@app.post("/api/admin/files/{file_id}/rename")
+async def admin_rename_file(
+    file_id: str,
+    body: AdminRenameIn,
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    filename = body.filename.strip()
+    if not filename:
+        raise HTTPException(400, "Filename cannot be empty")
+    if len(filename) > 500:
+        raise HTTPException(400, "Filename too long (max 500 chars)")
+    upload = db.query(Upload).filter(Upload.id == file_id, Upload.status == "completed").first()
+    if not upload:
+        raise HTTPException(404, "File not found")
+    upload.filename = filename
+    db.commit()
+    return {"ok": True, "filename": filename}
+
+
 class AdminDeleteIn(BaseModel):
     redirect_type: str = "none"          # "none" | "file" | "url"
     redirect_to_share_id: Optional[str] = None

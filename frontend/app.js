@@ -2588,6 +2588,7 @@ let fmAllFiles = [];
 let fmPage = 1;
 let fmView = 'grid';
 let fmDeleteTarget = null;
+let fmRenameTarget = null;
 const FM_PER_PAGE = 30;
 
 const FM_CATS = {
@@ -2720,11 +2721,13 @@ function renderFmGrid() {
     const uploaderStr = f.uploaded_by
       ? `<span><i class="fa-solid fa-user" style="font-size:.68rem"></i> ${escHtml(f.uploaded_by)}</span>`
       : '';
-    const openBtn = f.share_url
+    const openBtn    = f.share_url
       ? `<a href="${f.share_url}" target="_blank" class="btn-primary-sm" title="Open file page"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>`
       : '';
-    const delBtn  = `<button class="btn-danger" onclick="openFmDeleteModal('${f.id}')"><i class="fa-solid fa-trash-can"></i> Delete</button>`;
-    const delBtnSm = `<button class="btn-danger" style="padding:.35rem .65rem" onclick="openFmDeleteModal('${f.id}')"><i class="fa-solid fa-trash-can"></i></button>`;
+    const renameBtn   = `<button class="btn-sm" onclick="openFmRenameModal('${f.id}')" title="Rename"><i class="fa-solid fa-pen-to-square"></i></button>`;
+    const renameBtnSm = `<button class="btn-sm" onclick="openFmRenameModal('${f.id}')" title="Rename"><i class="fa-solid fa-pen-to-square"></i></button>`;
+    const delBtn      = `<button class="btn-danger" onclick="openFmDeleteModal('${f.id}')"><i class="fa-solid fa-trash-can"></i> Delete</button>`;
+    const delBtnSm    = `<button class="btn-danger" style="padding:.35rem .65rem" onclick="openFmDeleteModal('${f.id}')"><i class="fa-solid fa-trash-can"></i></button>`;
 
     if (fmView === 'list') {
       return `
@@ -2740,7 +2743,7 @@ function renderFmGrid() {
               <span><i class="fa-solid fa-download" style="font-size:.68rem"></i> ${f.downloads}</span>
             </div>
           </div>
-          <div class="fm-card-actions">${openBtn}${delBtnSm}</div>
+          <div class="fm-card-actions">${openBtn}${renameBtnSm}${delBtnSm}</div>
         </div>`;
     }
 
@@ -2763,6 +2766,7 @@ function renderFmGrid() {
         </div>
         <div class="fm-card-actions">
           ${f.share_url ? `<a href="${f.share_url}" target="_blank" class="btn-primary-sm" style="flex:1;text-align:center"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open</a>` : ''}
+          ${renameBtn}
           ${delBtn}
         </div>
       </div>`;
@@ -2813,6 +2817,52 @@ function closeFmDeleteModal() {
   document.getElementById('fm-delete-modal').style.display = 'none';
   fmDeleteTarget = null;
 }
+
+function openFmRenameModal(id) {
+  fmRenameTarget = fmAllFiles.find(f => f.id === id) || null;
+  if (!fmRenameTarget) return;
+  const input = document.getElementById('fm-rename-input');
+  input.value = fmRenameTarget.filename;
+  document.getElementById('fm-rename-err').textContent = '';
+  const btn = document.getElementById('fm-rename-confirm');
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save';
+  document.getElementById('fm-rename-modal').style.display = 'flex';
+  setTimeout(() => { input.focus(); input.select(); }, 50);
+}
+
+function closeFmRenameModal() {
+  document.getElementById('fm-rename-modal').style.display = 'none';
+  fmRenameTarget = null;
+}
+
+async function confirmFmRename() {
+  if (!fmRenameTarget) return;
+  const input = document.getElementById('fm-rename-input');
+  const errEl = document.getElementById('fm-rename-err');
+  const btn   = document.getElementById('fm-rename-confirm');
+  const newName = input.value.trim();
+  errEl.textContent = '';
+
+  if (!newName) { errEl.textContent = 'Filename cannot be empty.'; return; }
+  if (newName === fmRenameTarget.filename) { closeFmRenameModal(); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
+
+  try {
+    const res = await apiFetch('POST', `/api/admin/files/${fmRenameTarget.id}/rename`, { filename: newName });
+    const targetId = fmRenameTarget.id;
+    fmAllFiles = fmAllFiles.map(f => f.id === targetId ? { ...f, filename: res.filename } : f);
+    closeFmRenameModal();
+    renderFmGrid();
+  } catch (e) {
+    errEl.textContent = e.message;
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save';
+  }
+}
+
 
 function fmSearchRedirectFiles() {
   const q       = document.getElementById('fm-redirect-file-search').value.toLowerCase().trim();

@@ -820,6 +820,29 @@
   </div>
 </div>
 
+<!-- ── File Manager rename modal ── -->
+<div id="fm-rename-modal" class="fm-modal-overlay" style="display:none">
+  <div class="fm-modal">
+    <div class="fm-modal-header">
+      <span><i class="fa-solid fa-pen-to-square" style="color:var(--primary)"></i> Rename File</span>
+      <button class="fm-modal-close" onclick="closeFmRenameModal()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="fm-modal-body">
+      <label style="font-size:.8rem;font-weight:600;color:var(--muted)">New filename:</label>
+      <input id="fm-rename-input" type="text" placeholder="Enter new filename…"
+        style="width:100%;box-sizing:border-box"
+        onkeydown="if(event.key==='Enter')confirmFmRename();if(event.key==='Escape')closeFmRenameModal()" />
+      <div id="fm-rename-err" style="color:#ef4444;font-size:.8rem;font-weight:500;min-height:1rem"></div>
+    </div>
+    <div class="fm-modal-footer">
+      <button class="btn-sm" onclick="closeFmRenameModal()">Cancel</button>
+      <button id="fm-rename-confirm" class="btn-primary" onclick="confirmFmRename()">
+        <i class="fa-solid fa-floppy-disk"></i> Save
+      </button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
 <script src="/app.js" defer></script>
 </body>
