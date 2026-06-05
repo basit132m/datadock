@@ -68,7 +68,7 @@ def _fmt_bytes(n: int) -> str:
 
 
 def _landing_template() -> str:
-    """Return the landing.html template, reading from disk on first call."""
+    """Return the landing.html template, cached in memory after first read."""
     global _landing_tpl
     if not _landing_tpl:
         with open(os.path.join(FRONTEND_DIR, "landing.html"), "r", encoding="utf-8") as f:
@@ -77,36 +77,50 @@ def _landing_template() -> str:
 
 
 def _build_og_html(share_id: str, upload, base_url: str) -> str:
-    """Render landing.html with OG/Twitter meta tags injected into <head>."""
+    """Render landing.html with full SEO meta tags injected into <head>."""
     tpl = _landing_template()
 
-    ext   = os.path.splitext(upload.filename or "")[1].lower()
-    title = _html.escape(upload.filename or "File")
-    size  = _fmt_bytes(upload.file_size or 0)
-    dls   = f"{upload.downloads or 0:,}"
-    desc  = _html.escape(f"{size} · {ext.lstrip('.').upper() or 'FILE'} · {dls} downloads — Download on DataDock")
-
-    is_image  = ext in _OG_IMAGE_EXTS
-    og_image  = (f"{base_url}/api/f/{share_id}/preview" if is_image
-                 else f"{base_url}/logo.webp")
+    ext      = os.path.splitext(upload.filename or "")[1].lower()
+    ext_label = ext.lstrip(".").upper() or "FILE"
+    filename  = upload.filename or "File"
+    size      = _fmt_bytes(upload.file_size or 0)
     page_url  = f"{base_url}/f/{share_id}"
-    tw_card   = "summary_large_image" if is_image else "summary"
 
-    og_block = (
-        f'<title>DataDock – {title}</title>\n'
-        f'    <meta property="og:type"         content="website" />\n'
-        f'    <meta property="og:url"          content="{page_url}" />\n'
-        f'    <meta property="og:site_name"    content="DataDock" />\n'
-        f'    <meta property="og:title"        content="{title}" />\n'
-        f'    <meta property="og:description"  content="{desc}" />\n'
-        f'    <meta property="og:image"        content="{og_image}" />\n'
-        f'    <meta name="twitter:card"        content="{tw_card}" />\n'
-        f'    <meta name="twitter:title"       content="{title}" />\n'
-        f'    <meta name="twitter:description" content="{desc}" />\n'
-        f'    <meta name="twitter:image"       content="{og_image}" />\n'
-        f'    <meta name="description"         content="{desc}" />'
+    # Escape for HTML attribute context
+    esc_name  = _html.escape(filename)
+    esc_title = _html.escape(f"Download {filename} | DataDock")
+    esc_desc  = _html.escape(
+        f"Download {filename} — {size} {ext_label} file. "
+        f"Free, fast, and secure. No account required. Available on DataDock."
     )
-    return tpl.replace("<title>DataDock – Download</title>", og_block, 1)
+
+    is_image = ext in _OG_IMAGE_EXTS
+    og_image = (f"{base_url}/api/f/{share_id}/preview" if is_image
+                else f"{base_url}/logo.webp")
+    og_img_alt = _html.escape(f"Preview of {filename}" if is_image else "DataDock")
+    tw_card    = "summary_large_image" if is_image else "summary"
+
+    seo_block = (
+        f'<title>{esc_title}</title>\n'
+        f'    <link rel="canonical" href="{page_url}" />\n'
+        f'    <meta name="description"              content="{esc_desc}" />\n'
+        f'    <meta name="robots"                   content="index, follow" />\n'
+        # Open Graph
+        f'    <meta property="og:type"              content="website" />\n'
+        f'    <meta property="og:url"               content="{page_url}" />\n'
+        f'    <meta property="og:site_name"         content="DataDock" />\n'
+        f'    <meta property="og:title"             content="{esc_name}" />\n'
+        f'    <meta property="og:description"       content="{esc_desc}" />\n'
+        f'    <meta property="og:image"             content="{og_image}" />\n'
+        f'    <meta property="og:image:alt"         content="{og_img_alt}" />\n'
+        # Twitter Card
+        f'    <meta name="twitter:card"             content="{tw_card}" />\n'
+        f'    <meta name="twitter:title"            content="{esc_name}" />\n'
+        f'    <meta name="twitter:description"      content="{esc_desc}" />\n'
+        f'    <meta name="twitter:image"            content="{og_image}" />\n'
+        f'    <meta name="twitter:image:alt"        content="{og_img_alt}" />'
+    )
+    return tpl.replace("<title>DataDock – Download</title>", seo_block, 1)
 
 GEOIP_DB_PATH      = os.getenv("GEOIP_DB_PATH", "/app/backend/data/GeoLite2-Country.mmdb")
 DEDUP_WINDOW_SECS  = 3600  # same IP + same file within 1 hour = duplicate
