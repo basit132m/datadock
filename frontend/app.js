@@ -1263,6 +1263,7 @@ async function loadRedirectUrlSetting() {
     document.getElementById('popup-url-input').value       = s.popup_url       || '';
     document.getElementById('monetag-head-input').value    = s.monetag_head    || '';
     document.getElementById('monetag-banner-input').value  = s.monetag_banner  || '';
+    document.getElementById('monetag-side-input').value    = s.monetag_side    || '';
   } catch {}
 }
 
@@ -1275,6 +1276,7 @@ async function saveSetting(field, value, msgId, inputId) {
     popup_url:      document.getElementById('popup-url-input').value.trim()       || null,
     monetag_head:   document.getElementById('monetag-head-input').value.trim()   || null,
     monetag_banner: document.getElementById('monetag-banner-input').value.trim() || null,
+    monetag_side:   document.getElementById('monetag-side-input').value.trim()   || null,
     [field]:        value || null,
   };
   try {
@@ -1326,6 +1328,14 @@ function initRedirectUrlForm() {
   });
   document.getElementById('monetag-banner-clear').addEventListener('click', () => {
     saveSetting('monetag_banner', '', 'monetag-banner-msg', 'monetag-banner-input');
+  });
+
+  // Monetag side script
+  document.getElementById('monetag-side-save').addEventListener('click', () => {
+    saveSetting('monetag_side', document.getElementById('monetag-side-input').value.trim(), 'monetag-side-msg', 'monetag-side-input');
+  });
+  document.getElementById('monetag-side-clear').addEventListener('click', () => {
+    saveSetting('monetag_side', '', 'monetag-side-msg', 'monetag-side-input');
   });
 }
 

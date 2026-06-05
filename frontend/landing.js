@@ -156,34 +156,41 @@
     const popupUrl      = settings.popup_url      || null;
     const monetagHead   = settings.monetag_head   || null;
     const monetagBanner = settings.monetag_banner || null;
+    const monetagSide   = settings.monetag_side   || null;
 
-    // Inject Monetag head script (push-notification / native ad tag)
-    if (monetagHead) {
+    // Helper: parse HTML string and inject scripts + other nodes into a container
+    function injectAdCode(html, container, appendToHead) {
       const tmp = document.createElement('div');
-      tmp.innerHTML = monetagHead;
+      tmp.innerHTML = html;
       tmp.querySelectorAll('script').forEach(orig => {
         const s = document.createElement('script');
         if (orig.src) { s.src = orig.src; s.async = true; }
-        else s.textContent = orig.textContent;
-        document.head.appendChild(s);
+        if (orig.dataset.zone)    s.dataset.zone    = orig.dataset.zone;
+        if (orig.dataset.cfasync) s.dataset.cfasync = orig.dataset.cfasync;
+        if (!orig.src) s.textContent = orig.textContent;
+        (appendToHead ? document.head : container).appendChild(s);
       });
+      if (!appendToHead) {
+        Array.from(tmp.childNodes).forEach(n => {
+          if (n.nodeName !== 'SCRIPT') container.appendChild(n.cloneNode(true));
+        });
+      }
+    }
+
+    // Inject Monetag head script (push-notification / native ad tag)
+    if (monetagHead) {
+      injectAdCode(monetagHead, null, true);
     }
 
     // Inject Monetag banner into #ads-mid slot
     if (monetagBanner) {
-      const slot = document.getElementById('ads-mid');
-      const tmp = document.createElement('div');
-      tmp.innerHTML = monetagBanner;
-      tmp.querySelectorAll('script').forEach(orig => {
-        const s = document.createElement('script');
-        if (orig.src) { s.src = orig.src; s.async = true; }
-        else s.textContent = orig.textContent;
-        slot.appendChild(s);
-      });
-      // Append non-script nodes (e.g. <div> ad containers)
-      Array.from(tmp.childNodes).forEach(n => {
-        if (n.nodeName !== 'SCRIPT') slot.appendChild(n.cloneNode(true));
-      });
+      injectAdCode(monetagBanner, document.getElementById('ads-mid'), false);
+    }
+
+    // Inject Monetag side ad into left and right sticky sidebars
+    if (monetagSide) {
+      injectAdCode(monetagSide, document.getElementById('ads-left'),  false);
+      injectAdCode(monetagSide, document.getElementById('ads-right'), false);
     }
 
     const d = fileRes.value;
