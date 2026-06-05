@@ -2430,6 +2430,15 @@ _NO_CACHE  = {"Cache-Control": "no-cache"}
 _IMG_CACHE = {"Cache-Control": "public, max-age=604800"}  # 7 days for images
 
 
+@app.get("/sw.js", include_in_schema=False)
+async def serve_sw():
+    return FileResponse(
+        os.path.join(FRONTEND_DIR, "sw.js"),
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
 @app.get("/app.js", include_in_schema=False)
 async def serve_js():
     return FileResponse(os.path.join(FRONTEND_DIR, "app.js"), headers=_NO_CACHE)

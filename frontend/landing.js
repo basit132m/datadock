@@ -348,6 +348,7 @@
 
     document.getElementById('lc-loading').hidden = true;
     document.getElementById('lc-card').hidden = false;
+    document.getElementById('ads-mid').hidden = false;
     document.getElementById('lp-features').hidden = false;
   }
 
