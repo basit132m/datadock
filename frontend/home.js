@@ -101,11 +101,9 @@
     // Stats
     if (files.length) {
       const totalSize = files.reduce((s, f) => s + (f.file_size || 0), 0);
-      const totalDl   = files.reduce((s, f) => s + (f.downloads  || 0), 0);
       const statsEl   = document.getElementById('hp-stats');
 
       document.getElementById('hp-stat-files').textContent = fmtNum(files.length);
-      document.getElementById('hp-stat-dl').textContent    = fmtNum(totalDl);
       document.getElementById('hp-stat-size').textContent  = fmtBytes(totalSize);
       statsEl.hidden = false;
 
@@ -113,7 +111,6 @@
       const observer = new IntersectionObserver(entries => {
         if (entries[0].isIntersecting) {
           animateCount(document.getElementById('hp-stat-files'), files.length, fmtNum);
-          animateCount(document.getElementById('hp-stat-dl'),    totalDl,      fmtNum);
           observer.disconnect();
         }
       }, { threshold: 0.5 });
