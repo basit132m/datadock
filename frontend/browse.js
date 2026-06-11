@@ -367,10 +367,8 @@
     }
 
     const totalSize = allFiles.reduce((s, f) => s + (f.file_size || 0), 0);
-    const totalDl   = allFiles.reduce((s, f) => s + (f.downloads  || 0), 0);
     document.getElementById('br-count').textContent = allFiles.length.toLocaleString();
     document.getElementById('br-size').textContent  = fmtBytes(totalSize);
-    document.getElementById('br-dl').textContent    = totalDl.toLocaleString();
     document.getElementById('br-stats').hidden      = false;
 
     buildTabs(allFiles);
