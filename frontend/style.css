@@ -49,6 +49,9 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); line
 .logo-img-lp      { height: 32px; }
 .auth-box p { color: var(--muted); font-size: .9rem; margin-bottom: 1.5rem; }
 .auth-box .err { color: var(--danger); font-size: .82rem; margin-top: .6rem; min-height: 1.2rem; }
+.auth-request-link { margin-top: 1.1rem !important; margin-bottom: 0 !important; text-align: center; }
+.auth-request-link a { color: var(--primary); text-decoration: none; font-weight: 500; }
+.auth-request-link a:hover { text-decoration: underline; }
 
 input[type="password"], input[type="text"] {
   width: 100%; background: var(--bg); border: 1px solid var(--border);
