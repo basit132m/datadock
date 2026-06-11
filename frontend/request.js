@@ -42,9 +42,10 @@
     e.preventDefault();
     clearError();
 
-    const name   = document.getElementById('rq-name').value.trim();
-    const email  = document.getElementById('rq-email').value.trim();
-    const reason = document.getElementById('rq-reason').value.trim();
+    const name    = document.getElementById('rq-name').value.trim();
+    const email   = document.getElementById('rq-email').value.trim();
+    const reason  = document.getElementById('rq-reason').value.trim();
+    const website = document.getElementById('rq-website').value; // honeypot
 
     if (!name)  return showError('Please enter your full name.');
     if (!email) return showError('Please enter your email address.');
@@ -55,7 +56,7 @@
       const res = await fetch('/api/access-requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, reason: reason || null }),
+        body: JSON.stringify({ name, email, reason: reason || null, website: website || null }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Submission failed.');

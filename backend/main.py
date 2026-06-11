@@ -379,6 +379,108 @@ app.add_middleware(
 )
 
 
+# ── Abuse protection: client IP, rate limiting, auth lockout ─────────────────
+
+def _client_ip(request: Request) -> str:
+    """Trustworthy client IP behind nginx.
+
+    X-Real-IP is set by nginx to $remote_addr and overrides anything the client
+    sent, so it can't be spoofed. The first X-Forwarded-For entry CAN be forged
+    by the client (nginx appends to it), so it is only a last resort.
+    """
+    ip = request.headers.get("X-Real-IP", "").strip()
+    if not ip:
+        xff = request.headers.get("X-Forwarded-For", "")
+        if xff:
+            ip = xff.split(",")[-1].strip()  # last hop = added by our proxy
+    if not ip and request.client:
+        ip = request.client.host
+    return ip or "unknown"
+
+
+import time as _time
+from collections import deque as _deque
+
+_rl_buckets: dict = {}  # (rule, ip) -> deque[monotonic timestamps]
+
+# Prefix-matched against "METHOD /path". First match wins; everything else
+# under /api/ falls into the global bucket.
+_RL_RULES = [
+    ("POST /api/access-requests", 5,    3600),  # access-request form
+    ("POST /api/reports",         5,    3600),  # file reports
+    ("POST /api/support",         30,   3600),  # support messages
+    ("POST /api/f/",              60,   60),    # download token mint
+    ("GET /api/public/",          240,  60),    # browse search / stats
+    ("POST /api/upload/",         1800, 60),    # authed chunked uploads — many parts per file
+]
+_RL_GLOBAL = (600, 60)
+
+
+def _rl_hit(key, limit: int, window: int) -> bool:
+    """Record a request against a bucket; True means over the limit."""
+    now = _time.monotonic()
+    dq = _rl_buckets.get(key)
+    if dq is None:
+        if len(_rl_buckets) > 50_000:  # memory cap under address-rotation floods
+            _rl_buckets.clear()
+        dq = _rl_buckets[key] = _deque()
+    while dq and now - dq[0] > window:
+        dq.popleft()
+    if len(dq) >= limit:
+        return True
+    dq.append(now)
+    return False
+
+
+@app.middleware("http")
+async def _abuse_protection(request: Request, call_next):
+    path = request.url.path
+    if path.startswith("/api/"):
+        ip  = _client_ip(request)
+        sig = f"{request.method} {path}"
+        for prefix, limit, window in _RL_RULES:
+            if sig.startswith(prefix):
+                if _rl_hit((prefix, ip), limit, window):
+                    return Response('{"detail":"Too many requests — slow down"}',
+                                    status_code=429, media_type="application/json",
+                                    headers={"Retry-After": str(window)})
+                break
+        else:
+            limit, window = _RL_GLOBAL
+            if _rl_hit(("global", ip), limit, window):
+                return Response('{"detail":"Too many requests — slow down"}',
+                                status_code=429, media_type="application/json",
+                                headers={"Retry-After": "60"})
+
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    return response
+
+
+# Brute-force lockout for API key guessing
+_auth_fails: dict = {}  # ip -> deque[monotonic timestamps]
+_AUTH_FAIL_LIMIT  = 10
+_AUTH_FAIL_WINDOW = 900  # 15 min
+
+
+def _auth_locked(ip: str) -> bool:
+    dq = _auth_fails.get(ip)
+    if not dq:
+        return False
+    now = _time.monotonic()
+    while dq and now - dq[0] > _AUTH_FAIL_WINDOW:
+        dq.popleft()
+    return len(dq) >= _AUTH_FAIL_LIMIT
+
+
+def _auth_record_fail(ip: str):
+    if len(_auth_fails) > 50_000:
+        _auth_fails.clear()
+    _auth_fails.setdefault(ip, _deque()).append(_time.monotonic())
+
+
 def _seed_master_key():
     """On first startup, seed the env API_KEY into the DB as the master admin key."""
     if not API_KEY:
@@ -417,10 +519,13 @@ def _share_id() -> str:
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 
-def require_auth(x_api_key: Optional[str] = Header(None), db: Session = Depends(get_db)):
+def require_auth(request: Request, x_api_key: Optional[str] = Header(None), db: Session = Depends(get_db)):
     """Return {'role': ..., 'name': ...} for any valid key, or raise 401."""
     if not x_api_key:
         raise HTTPException(401, "API key required")
+    ip = _client_ip(request)
+    if _auth_locked(ip):
+        raise HTTPException(429, "Too many failed attempts — try again in 15 minutes")
     # DB-stored keys take priority (master + team keys)
     key_obj = db.query(ApiKey).filter(ApiKey.key == x_api_key, ApiKey.active == 1).first()
     if key_obj:
@@ -432,6 +537,7 @@ def require_auth(x_api_key: Optional[str] = Header(None), db: Session = Depends(
     # Dev mode: no API_KEY set → allow anything as admin
     if not API_KEY:
         return {"role": "admin", "name": "Admin"}
+    _auth_record_fail(ip)
     raise HTTPException(401, "Unauthorized")
 
 
@@ -1209,11 +1315,7 @@ async def download_file(
         raise HTTPException(403, "Missing or expired download token. Please use the share page to download.")
     db.delete(tok)
 
-    ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-    if not ip:
-        ip = request.headers.get("X-Real-IP", "").strip()
-    if not ip and request.client:
-        ip = request.client.host
+    ip = _client_ip(request)
 
     # Dedup: same IP + same file within DEDUP_WINDOW_SECS counts as one download
     now = datetime.utcnow()
@@ -2452,6 +2554,7 @@ class AccessRequestIn(BaseModel):
     name: str
     email: str
     reason: Optional[str] = None
+    website: Optional[str] = None  # honeypot — humans never see this field
 
 
 def _req_dict(r: AccessRequest) -> dict:
@@ -2470,6 +2573,8 @@ def _req_dict(r: AccessRequest) -> dict:
 @app.post("/api/access-requests")
 async def submit_access_request(body: AccessRequestIn, db: Session = Depends(get_db)):
     """Public: submit an access key request."""
+    if body.website:  # honeypot filled → bot. Fake success so it doesn't adapt.
+        return {"ok": True, "id": str(uuid.uuid4())}
     name = body.name.strip()
     email = body.email.strip().lower()
     if not name or not email or "@" not in email:
@@ -2825,9 +2930,7 @@ class FileReportIn(BaseModel):
     message: Optional[str] = None
 
 
-_report_rl: dict = {}  # ip -> [timestamps] — per-worker rate limit for report spam
-
-
+# Rate limiting (5/IP/hour) is enforced centrally by the _abuse_protection middleware.
 @app.post("/api/reports")
 async def submit_report(body: FileReportIn, request: Request, db: Session = Depends(get_db)):
     if body.reason not in VALID_REASONS:
@@ -2835,19 +2938,7 @@ async def submit_report(body: FileReportIn, request: Request, db: Session = Depe
     upload = db.query(Upload).filter(Upload.share_id == body.share_id, Upload.status == "completed").first()
     if not upload:
         raise HTTPException(404, "File not found")
-    ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else None)
-    if ip:
-        ip = ip.split(",")[0].strip()
-
-    # Rate limit: max 5 reports per IP per hour
-    now_ts = datetime.utcnow().timestamp()
-    window = [t for t in _report_rl.get(ip, []) if now_ts - t < 3600]
-    if len(window) >= 5:
-        raise HTTPException(429, "Too many reports — please try again later")
-    window.append(now_ts)
-    _report_rl[ip] = window
-    if len(_report_rl) > 10_000:
-        _report_rl.clear()
+    ip = _client_ip(request)
     db.add(FileReport(
         id=str(uuid.uuid4()),
         share_id=body.share_id,

@@ -93,16 +93,44 @@ The script creates a venv, installs deps, and launches uvicorn.
 # Install certbot if needed
 sudo apt install certbot python3-certbot-nginx
 
-# Copy nginx config
+# Copy nginx configs (vhost + rate-limit zones)
 sudo cp nginx.conf /etc/nginx/sites-available/datadock
+sudo cp nginx-ratelimit.conf /etc/nginx/conf.d/datadock-ratelimit.conf
 sudo ln -s /etc/nginx/sites-available/datadock /etc/nginx/sites-enabled/datadock
 
 # Obtain certificate
 sudo certbot --nginx -d datadock-host.site
 
-# Reload
-sudo nginx -s reload
+# Validate and reload
+sudo nginx -t && sudo nginx -s reload
 ```
+
+---
+
+## 4b. Bot & DDoS Protection
+
+Protection is layered:
+
+| Layer | What it does |
+|-------|--------------|
+| **nginx rate limits** | 20 req/s per IP general, 4 req/s on form endpoints, max 30 connections per IP, 15s slow-request timeouts |
+| **App rate limits** | Per-endpoint budgets (5 access requests/hr, 5 reports/hr, 60 download tokens/min, 240 browse searches/min, 600 API calls/min per IP) |
+| **Auth lockout** | 10 failed API-key attempts per IP → locked out 15 minutes |
+| **Honeypot** | Hidden form field on `/request` silently swallows bot submissions |
+
+**For volumetric DDoS attacks, put Cloudflare in front (free plan is enough):**
+
+1. Move DNS to Cloudflare and enable the orange-cloud proxy for the domain.
+2. In Cloudflare: SSL mode "Full (strict)", enable "Bot Fight Mode" (Security → Bots).
+3. On the VPS, restore real client IPs in nginx — add to `conf.d/datadock-ratelimit.conf`:
+   ```nginx
+   real_ip_header CF-Connecting-IP;
+   # One line per range from https://www.cloudflare.com/ips/
+   set_real_ip_from 173.245.48.0/20;
+   # ... (all published Cloudflare ranges)
+   ```
+4. Optionally firewall ports 80/443 to Cloudflare IP ranges only, so attackers
+   can't bypass Cloudflare by hitting the VPS directly.
 
 ---
 

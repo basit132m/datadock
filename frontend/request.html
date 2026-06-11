@@ -40,6 +40,12 @@
     <p class="rq-subtitle">Fill in your details and we'll review your request and send you an API key.</p>
 
     <form class="rq-form" id="rq-form" novalidate>
+      <!-- Honeypot: invisible to humans, bots auto-fill it -->
+      <div style="position:absolute;left:-9999px;top:-9999px" aria-hidden="true">
+        <label for="rq-website">Website</label>
+        <input id="rq-website" type="text" name="website" tabindex="-1" autocomplete="off" />
+      </div>
+
       <div class="rq-field">
         <label class="rq-label" for="rq-name">Full Name <span class="rq-required">*</span></label>
         <input class="rq-input" id="rq-name" type="text" placeholder="John Smith" autocomplete="name" required />
