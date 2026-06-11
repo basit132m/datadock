@@ -20,7 +20,7 @@ from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPExcepti
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from database import get_db, init_db
@@ -3008,26 +3008,78 @@ async def serve_logo():
 
 # ── Public browse page ────────────────────────────────────────────────────────
 
+_BROWSE_CAT_EXTS: dict[str, list[str]] = {
+    "video":    ["mp4", "mkv", "avi", "mov", "webm"],
+    "audio":    ["mp3", "wav", "flac", "aac", "ogg"],
+    "images":   ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"],
+    "archives": ["zip", "rar", "gz", "tar", "7z", "bz2"],
+    "docs":     ["pdf", "doc", "docx", "xls", "xlsx", "csv", "ppt", "pptx", "txt"],
+    "software": ["exe", "msi", "dmg", "iso", "apk"],
+    "games":    ["nsp", "xci", "rom", "pkg"],
+}
+_BROWSE_ALL_EXTS = [ext for exts in _BROWSE_CAT_EXTS.values() for ext in exts]
+
+_BROWSE_SORT = {
+    "newest":   Upload.completed_at.desc(),
+    "oldest":   Upload.completed_at.asc(),
+    "name-az":  Upload.filename.asc(),
+    "name-za":  Upload.filename.desc(),
+    "largest":  Upload.file_size.desc(),
+    "smallest": Upload.file_size.asc(),
+}
+
+
+@app.get("/api/public/stats")
+async def public_stats(db: Session = Depends(get_db)):
+    """Quick aggregate stats — file count and total size."""
+    row = db.query(
+        func.count(Upload.id).label("file_count"),
+        func.coalesce(func.sum(Upload.file_size), 0).label("total_size"),
+    ).filter(Upload.status == "completed", Upload.share_id.isnot(None)).one()
+    return {"file_count": int(row.file_count), "total_size": int(row.total_size)}
+
+
 @app.get("/api/public/files")
-async def public_files(db: Session = Depends(get_db)):
-    """No-auth endpoint — returns public file listing for the browse page."""
-    rows = (
-        db.query(Upload)
-        .filter(Upload.status == "completed", Upload.share_id.isnot(None))
-        .order_by(Upload.completed_at.desc())
-        .all()
-    )
-    return [
-        {
-            "filename":     r.filename,
-            "file_size":    r.file_size,
-            "content_type": r.content_type or "application/octet-stream",
-            "share_id":     r.share_id,
-            "completed_at": r.completed_at.isoformat() if r.completed_at else None,
-            "downloads":    r.downloads or 0,
-        }
-        for r in rows
-    ]
+async def public_files(
+    search:    str = Query("", max_length=200),
+    category:  str = Query("all"),
+    sort:      str = Query("newest"),
+    page:      int = Query(1, ge=1),
+    page_size: int = Query(60, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    """Paginated, filterable public file listing. Returns {total, files}."""
+    q = db.query(
+        Upload.filename, Upload.file_size, Upload.share_id, Upload.completed_at,
+    ).filter(Upload.status == "completed", Upload.share_id.isnot(None))
+
+    if search:
+        q = q.filter(Upload.filename.ilike(f"%{search}%"))
+
+    if category != "all":
+        exts = _BROWSE_CAT_EXTS.get(category)
+        if exts:
+            q = q.filter(or_(*[Upload.filename.ilike(f"%.{e}") for e in exts]))
+        else:  # "other" — exclude all known extensions
+            q = q.filter(and_(*[~Upload.filename.ilike(f"%.{e}") for e in _BROWSE_ALL_EXTS]))
+
+    q = q.order_by(_BROWSE_SORT.get(sort, Upload.completed_at.desc()))
+
+    total = q.count()
+    rows  = q.offset((page - 1) * page_size).limit(page_size).all()
+
+    return {
+        "total": total,
+        "files": [
+            {
+                "filename":     r.filename,
+                "file_size":    r.file_size,
+                "share_id":     r.share_id,
+                "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+            }
+            for r in rows
+        ],
+    }
 
 
 @app.get("/browse", include_in_schema=False)

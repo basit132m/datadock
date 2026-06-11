@@ -87,38 +87,35 @@
     return (name || '').split('.').pop().toUpperCase() || 'FILE';
   }
 
-  // ── Load public files ─────────────────────────────────────────────────────
+  // ── Load stats + preview ─────────────────────────────────────────────────
   async function init() {
-    let files = [];
+    // Stats — fire separate lightweight request
+    fetch('/api/public/stats').then(r => r.ok ? r.json() : Promise.reject()).then(s => {
+      const statsEl = document.getElementById('hp-stats');
+      document.getElementById('hp-stat-files').textContent = fmtNum(s.file_count);
+      document.getElementById('hp-stat-size').textContent  = fmtBytes(s.total_size);
+      statsEl.hidden = false;
+
+      const observer = new IntersectionObserver(entries => {
+        if (entries[0].isIntersecting) {
+          animateCount(document.getElementById('hp-stat-files'), s.file_count, fmtNum);
+          observer.disconnect();
+        }
+      }, { threshold: 0.5 });
+      observer.observe(statsEl);
+    }).catch(() => {});
+
+    // Preview grid — latest 8 files
+    let data;
     try {
-      files = await fetch('/api/public/files').then(r => r.ok ? r.json() : Promise.reject());
+      data = await fetch('/api/public/files?page_size=8').then(r => r.ok ? r.json() : Promise.reject());
     } catch {
       document.getElementById('hp-preview-loading').hidden = true;
       document.getElementById('hp-preview-empty').hidden   = false;
       return;
     }
 
-    // Stats
-    if (files.length) {
-      const totalSize = files.reduce((s, f) => s + (f.file_size || 0), 0);
-      const statsEl   = document.getElementById('hp-stats');
-
-      document.getElementById('hp-stat-files').textContent = fmtNum(files.length);
-      document.getElementById('hp-stat-size').textContent  = fmtBytes(totalSize);
-      statsEl.hidden = false;
-
-      // Animate stats when visible
-      const observer = new IntersectionObserver(entries => {
-        if (entries[0].isIntersecting) {
-          animateCount(document.getElementById('hp-stat-files'), files.length, fmtNum);
-          observer.disconnect();
-        }
-      }, { threshold: 0.5 });
-      observer.observe(statsEl);
-    }
-
-    // Preview grid — latest 8 files
-    const preview = files.slice(0, 8);
+    const preview = data.files || [];
     if (!preview.length) {
       document.getElementById('hp-preview-loading').hidden = true;
       document.getElementById('hp-preview-empty').hidden   = false;

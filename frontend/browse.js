@@ -63,16 +63,6 @@
   };
   const DEFAULT_TYPE = { fa: 'fa-file', color: '#64748b', bg: '#f1f5f9' };
 
-  // ── Category map ──────────────────────────────────────────────────────────
-  const CAT_EXTS = {
-    video:    new Set(['mp4','mkv','avi','mov','webm']),
-    audio:    new Set(['mp3','wav','flac','aac','ogg']),
-    images:   new Set(['jpg','jpeg','png','gif','webp','svg','bmp']),
-    archives: new Set(['zip','rar','gz','tar','7z','bz2']),
-    docs:     new Set(['pdf','doc','docx','xls','xlsx','csv','ppt','pptx','txt']),
-    software: new Set(['exe','msi','dmg','iso','apk']),
-    games:    new Set(['nsp','xci','rom','pkg']),
-  };
   const CAT_LABELS = {
     all:      { label: 'All',      icon: 'fa-layer-group' },
     video:    { label: 'Video',    icon: 'fa-film' },
@@ -86,13 +76,6 @@
   };
 
   function getExt(name) { return (name || '').split('.').pop().toLowerCase(); }
-  function getCat(name) {
-    const ext = getExt(name);
-    for (const [cat, exts] of Object.entries(CAT_EXTS)) {
-      if (exts.has(ext)) return cat;
-    }
-    return 'other';
-  }
   function getType(name) { return FILE_TYPES[getExt(name)] || DEFAULT_TYPE; }
   function fmtBytes(n) {
     if (!n) return '0 B';
@@ -109,31 +92,6 @@
   // ── State ─────────────────────────────────────────────────────────────────
   const PAGE_SIZE = 60;
   const state = { search: '', category: 'all', sort: 'newest', page: 1, view: 'grid' };
-  let allFiles = [];
-  let filtered = [];
-
-  // ── Sort & filter pipeline ────────────────────────────────────────────────
-  const SORTERS = {
-    newest:   (a, b) => new Date(b.completed_at) - new Date(a.completed_at),
-    oldest:   (a, b) => new Date(a.completed_at) - new Date(b.completed_at),
-    'name-az':(a, b) => a.filename.localeCompare(b.filename),
-    'name-za':(a, b) => b.filename.localeCompare(a.filename),
-    largest:  (a, b) => (b.file_size || 0) - (a.file_size || 0),
-    smallest: (a, b) => (a.file_size || 0) - (b.file_size || 0),
-  };
-
-  function applyFilters() {
-    const q   = state.search.toLowerCase();
-    const cat = state.category;
-    filtered = allFiles.filter(f => {
-      if (q && !f.filename.toLowerCase().includes(q) && !getExt(f.filename).includes(q)) return false;
-      if (cat !== 'all' && getCat(f.filename) !== cat) return false;
-      return true;
-    });
-    filtered.sort(SORTERS[state.sort] || SORTERS.newest);
-    state.page = 1;
-    renderPage();
-  }
 
   // ── Escape helper ─────────────────────────────────────────────────────────
   function esc(str) {
@@ -217,35 +175,66 @@
     return card;
   }
 
-  // ── Render page ───────────────────────────────────────────────────────────
+  // ── DOM refs ──────────────────────────────────────────────────────────────
   const grid   = document.getElementById('br-grid');
   const pgEl   = document.getElementById('br-pagination');
   const resBar = document.getElementById('br-results-bar');
 
-  function renderPage() {
-    document.getElementById('br-loading').hidden    = true;
+  // ── Fetch + render ────────────────────────────────────────────────────────
+  let _fetchCtrl = null;
+
+  async function fetchAndRender() {
+    // Cancel any in-flight request
+    if (_fetchCtrl) _fetchCtrl.abort();
+    _fetchCtrl = new AbortController();
+    const signal = _fetchCtrl.signal;
+
+    document.getElementById('br-loading').hidden    = false;
     document.getElementById('br-empty').hidden      = true;
     document.getElementById('br-no-results').hidden = true;
+    grid.hidden = true;
+    pgEl.hidden = true;
+    resBar.textContent = '';
 
-    if (!filtered.length) {
-      grid.hidden = true;
-      pgEl.hidden = true;
-      resBar.textContent = '';
-      document.getElementById(allFiles.length ? 'br-no-results' : 'br-empty').hidden = false;
+    const params = new URLSearchParams({
+      search:    state.search,
+      category:  state.category,
+      sort:      state.sort,
+      page:      state.page,
+      page_size: PAGE_SIZE,
+    });
+
+    let data;
+    try {
+      const r = await fetch(`/api/public/files?${params}`, { signal });
+      if (!r.ok) throw new Error();
+      data = await r.json();
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+      document.getElementById('br-loading').hidden = true;
+      document.getElementById('br-empty').hidden   = false;
       return;
     }
 
-    const total = filtered.length;
+    document.getElementById('br-loading').hidden = true;
+
+    const { total, files } = data;
+
+    if (!files.length) {
+      const isEmpty = !state.search && state.category === 'all';
+      document.getElementById(isEmpty ? 'br-empty' : 'br-no-results').hidden = false;
+      return;
+    }
+
     const pages = Math.ceil(total / PAGE_SIZE);
-    const p     = Math.min(state.page, pages);
+    const p     = state.page;
     const start = (p - 1) * PAGE_SIZE;
-    const end   = Math.min(start + PAGE_SIZE, total);
-    const slice = filtered.slice(start, end);
+    const end   = start + files.length;
 
     grid.className = state.view === 'grid' ? 'br-grid br-grid-mode' : 'br-grid br-list-mode';
     grid.innerHTML = '';
     const builder = state.view === 'grid' ? buildGridCard : buildListCard;
-    slice.forEach(f => grid.appendChild(builder(f)));
+    files.forEach(f => grid.appendChild(builder(f)));
     grid.hidden = false;
 
     resBar.textContent = `Showing ${(start + 1).toLocaleString()}–${end.toLocaleString()} of ${total.toLocaleString()} file${total !== 1 ? 's' : ''}`;
@@ -275,7 +264,7 @@
     prev.className = 'br-page-btn';
     prev.innerHTML = '<i class="fa-solid fa-chevron-left"></i>';
     prev.disabled  = cur === 1;
-    prev.addEventListener('click', () => { state.page = cur - 1; renderPage(); scrollTo(0, 0); });
+    prev.addEventListener('click', () => { state.page = cur - 1; fetchAndRender(); scrollTo(0, 0); });
     pgEl.appendChild(prev);
 
     paginationRange(cur, total).forEach(p => {
@@ -287,7 +276,7 @@
         const btn = document.createElement('button');
         btn.className = 'br-page-btn' + (p === cur ? ' br-page-active' : '');
         btn.textContent = p;
-        btn.addEventListener('click', () => { state.page = p; renderPage(); scrollTo(0, 0); });
+        btn.addEventListener('click', () => { state.page = p; fetchAndRender(); scrollTo(0, 0); });
         pgEl.appendChild(btn);
       }
     });
@@ -296,31 +285,25 @@
     next.className = 'br-page-btn';
     next.innerHTML = '<i class="fa-solid fa-chevron-right"></i>';
     next.disabled  = cur === total;
-    next.addEventListener('click', () => { state.page = cur + 1; renderPage(); scrollTo(0, 0); });
+    next.addEventListener('click', () => { state.page = cur + 1; fetchAndRender(); scrollTo(0, 0); });
     pgEl.appendChild(next);
   }
 
   // ── Category tabs ─────────────────────────────────────────────────────────
-  function buildTabs(files) {
-    const available = new Set(files.map(f => getCat(f.filename)));
-    const tabsEl    = document.getElementById('br-tabs');
+  function buildTabs() {
+    const tabsEl = document.getElementById('br-tabs');
     tabsEl.innerHTML = '';
-
-    const cats = ['all', ...Object.keys(CAT_EXTS).filter(c => available.has(c))];
-    if (available.has('other')) cats.push('other');
-
-    cats.forEach(cat => {
-      const meta  = CAT_LABELS[cat] || { label: 'Other', icon: 'fa-file' };
-      const count = cat === 'all' ? files.length : files.filter(f => getCat(f.filename) === cat).length;
-      const btn   = document.createElement('button');
-      btn.className  = 'br-tab' + (cat === state.category ? ' br-tab-active' : '');
+    Object.entries(CAT_LABELS).forEach(([cat, meta]) => {
+      const btn = document.createElement('button');
+      btn.className   = 'br-tab' + (cat === state.category ? ' br-tab-active' : '');
       btn.dataset.cat = cat;
       btn.setAttribute('role', 'tab');
-      btn.innerHTML = `<i class="fa-solid ${meta.icon}"></i> ${meta.label} <span class="br-tab-count">${count.toLocaleString()}</span>`;
+      btn.innerHTML = `<i class="fa-solid ${meta.icon}"></i> ${meta.label}`;
       btn.addEventListener('click', () => {
         state.category = cat;
+        state.page     = 1;
         tabsEl.querySelectorAll('.br-tab').forEach(b => b.classList.toggle('br-tab-active', b.dataset.cat === cat));
-        applyFilters();
+        fetchAndRender();
       });
       tabsEl.appendChild(btn);
     });
@@ -332,20 +315,21 @@
     state.view = 'grid';
     this.classList.add('br-view-active');
     document.getElementById('br-view-list').classList.remove('br-view-active');
-    renderPage();
+    fetchAndRender();
   });
   document.getElementById('br-view-list').addEventListener('click', function () {
     if (state.view === 'list') return;
     state.view = 'list';
     this.classList.add('br-view-active');
     document.getElementById('br-view-grid').classList.remove('br-view-active');
-    renderPage();
+    fetchAndRender();
   });
 
   // ── Sort ──────────────────────────────────────────────────────────────────
   document.getElementById('br-sort').addEventListener('change', function () {
     state.sort = this.value;
-    applyFilters();
+    state.page = 1;
+    fetchAndRender();
   });
 
   // ── Search (debounced) ────────────────────────────────────────────────────
@@ -353,27 +337,29 @@
   document.getElementById('br-search').addEventListener('input', function () {
     clearTimeout(searchTimer);
     const q = this.value.trim();
-    searchTimer = setTimeout(() => { state.search = q; applyFilters(); }, 200);
+    searchTimer = setTimeout(() => {
+      state.search = q;
+      state.page   = 1;
+      fetchAndRender();
+    }, 300);
   });
+
+  // ── Stats ─────────────────────────────────────────────────────────────────
+  async function loadStats() {
+    try {
+      const s = await fetch('/api/public/stats').then(r => r.ok ? r.json() : Promise.reject());
+      document.getElementById('br-count').textContent = s.file_count.toLocaleString();
+      document.getElementById('br-size').textContent  = fmtBytes(s.total_size);
+      document.getElementById('br-stats').hidden = false;
+    } catch { /* stats are optional */ }
+  }
 
   // ── Init ──────────────────────────────────────────────────────────────────
   async function init() {
-    try {
-      allFiles = await fetch('/api/public/files').then(r => r.ok ? r.json() : Promise.reject());
-    } catch {
-      document.getElementById('br-loading').hidden = true;
-      document.getElementById('br-empty').hidden   = false;
-      return;
-    }
-
-    const totalSize = allFiles.reduce((s, f) => s + (f.file_size || 0), 0);
-    document.getElementById('br-count').textContent = allFiles.length.toLocaleString();
-    document.getElementById('br-size').textContent  = fmtBytes(totalSize);
-    document.getElementById('br-stats').hidden      = false;
-
-    buildTabs(allFiles);
+    buildTabs();
     document.getElementById('br-toolbar').hidden = false;
-    applyFilters();
+    loadStats(); // fire-and-forget, don't block file grid
+    fetchAndRender();
   }
 
   init();
