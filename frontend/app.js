@@ -468,7 +468,7 @@ function _renderRecentFiles(files) {
   el.innerHTML = files.map(f => `
     <div class="recent-file-row">
       <span class="rf-icon">${fileIcon(f.filename)}</span>
-      <span class="rf-name">${f.filename}</span>
+      <span class="rf-name">${escHtml(f.filename)}</span>
       <span class="rf-size">${formatBytes(f.file_size)}</span>
       <span class="rf-date">${formatDate(f.completed_at)}</span>
     </div>`).join('');
@@ -479,13 +479,13 @@ function _renderRecentFiles(files) {
 function _buildFileRow(f, canDelete, showUploader = false) {
   const meta = providerMeta(f.storage_name || '');
   const uploaderCell = showUploader
-    ? `<td><span class="uploader-chip">${f.uploaded_by || '<span style="color:var(--muted)">—</span>'}</span></td>`
+    ? `<td><span class="uploader-chip">${f.uploaded_by ? escHtml(f.uploaded_by) : '<span style="color:var(--muted)">—</span>'}</span></td>`
     : '';
   const tr = document.createElement('tr');
   tr.innerHTML = `
-    <td><span class="tf-icon">${fileIcon(f.filename)}</span><span class="tf-name">${f.filename}</span></td>
+    <td><span class="tf-icon">${fileIcon(f.filename)}</span><span class="tf-name">${escHtml(f.filename)}</span></td>
     <td>${formatBytes(f.file_size)}</td>
-    <td><span class="sp-chip" title="${f.storage_name || 'Default (env)'}"><i class="fa-solid ${meta.icon}" style="color:${meta.color}"></i> ${f.storage_name || 'Default'}</span></td>
+    <td><span class="sp-chip" title="${escHtml(f.storage_name || 'Default (env)')}"><i class="fa-solid ${meta.icon}" style="color:${meta.color}"></i> ${escHtml(f.storage_name || 'Default')}</span></td>
     ${uploaderCell}
     <td>${formatDate(f.completed_at)}</td>
     <td>${(f.views || 0).toLocaleString()}</td>
@@ -675,7 +675,7 @@ function buildImportItem(filename, total) {
     <div class="upload-item-header">
       <div class="file-icon-badge"><i class="fa-solid fa-link" style="color:#6366f1"></i></div>
       <div class="file-meta">
-        <div class="file-name" title="${filename}">${filename}</div>
+        <div class="file-name" title="${escHtml(filename)}">${escHtml(filename)}</div>
         <div class="file-size-label">${total ? formatBytes(total) : 'Size unknown'}</div>
       </div>
       <div class="item-actions">
@@ -1375,8 +1375,8 @@ async function loadAdsPage() {
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td><span class="ad-type-badge ad-type-${ad.type}">${ad.type}</span></td>
-        <td class="tf-name" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${ad.label}">${ad.label}</td>
-        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a href="${ad.link_url}" target="_blank" rel="noopener" style="color:var(--primary)">${ad.link_url}</a></td>
+        <td class="tf-name" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(ad.label)}">${escHtml(ad.label)}</td>
+        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a href="${escHtml(ad.link_url)}" target="_blank" rel="noopener" style="color:var(--primary)">${escHtml(ad.link_url)}</a></td>
         <td>${ad.display_order}</td>
         <td><span class="ad-status ${ad.active ? 'ad-on' : 'ad-off'}">${ad.active ? 'Active' : 'Paused'}</span></td>
         <td class="tf-actions">
@@ -1463,7 +1463,7 @@ async function loadTeamPage() {
       <tbody>
         ${keys.map(k => `
           <tr>
-            <td class="tf-name">${k.name}</td>
+            <td class="tf-name">${escHtml(k.name)}</td>
             <td>${k.role === 'admin'
               ? '<span class="team-role team-role-admin">Admin</span>'
               : '<span class="team-role team-role-member">Member</span>'}</td>
@@ -1833,7 +1833,7 @@ async function loadDownloadsPage() {
           ${data.top_files.map((f, i) => `
             <tr>
               <td style="color:var(--muted);font-size:.8rem;font-weight:600">${i + 1}</td>
-              <td>${fileIcon(f.filename)} <span class="tf-name">${f.filename}</span></td>
+              <td>${fileIcon(f.filename)} <span class="tf-name">${escHtml(f.filename)}</span></td>
               <td><span class="dl-count-badge">${f.count.toLocaleString()}</span></td>
             </tr>`).join('')}
         </tbody>
@@ -1884,10 +1884,10 @@ async function loadRequestsPage() {
       <tbody>
         ${data.requests.map(r => `
           <tr>
-            <td class="tf-name">${r.name}</td>
-            <td style="font-size:.82rem">${r.email}</td>
+            <td class="tf-name">${escHtml(r.name)}</td>
+            <td style="font-size:.82rem">${escHtml(r.email)}</td>
             <td style="font-size:.8rem;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                title="${r.reason || ''}">${r.reason || '—'}</td>
+                title="${escHtml(r.reason || '')}">${r.reason ? escHtml(r.reason) : '—'}</td>
             <td>${statusBadge(r.status)}</td>
             <td style="color:var(--muted);font-size:.8rem">${formatDate(r.created_at)}</td>
             <td><div class="tf-actions">
@@ -2429,12 +2429,12 @@ async function loadDuplicatesPage() {
 
       const date = file.completed_at ? new Date(file.completed_at).toLocaleDateString() : '—';
       tr.innerHTML = `
-        <td class="tf-name" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${file.filename}">
+        <td class="tf-name" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(file.filename)}">
           ${isKeep ? '<i class="fa-solid fa-shield-halved" style="color:#22c55e;margin-right:.35rem" title="Recommended to keep"></i>' : ''}
-          ${file.filename}
+          ${escHtml(file.filename)}
           ${isKeep ? '<span style="font-size:.68rem;font-weight:700;background:#dcfce7;color:#166534;padding:.15rem .4rem;border-radius:4px;margin-left:.4rem">KEEP</span>' : ''}
         </td>
-        <td style="white-space:nowrap">${file.uploaded_by}</td>
+        <td style="white-space:nowrap">${escHtml(file.uploaded_by)}</td>
         <td style="white-space:nowrap">${date}</td>
         <td style="white-space:nowrap">${file.downloads.toLocaleString()}</td>
         <td style="white-space:nowrap">${file.views.toLocaleString()}</td>
@@ -2446,12 +2446,12 @@ async function loadDuplicatesPage() {
                 data-file-id="${file.id}"
                 data-share-id="${file.share_id}"
                 data-redirect-to="${canonicalShareId}"
-                data-filename="${file.filename}">
+                data-filename="${escHtml(file.filename)}">
                 <i class="fa-solid fa-code-merge"></i> Delete &amp; Redirect
               </button>`}
           <button class="btn-sm dup-ignore-btn"
             data-file-id="${file.id}"
-            data-filename="${file.filename}">
+            data-filename="${escHtml(file.filename)}">
             <i class="fa-solid fa-eye-slash"></i> Not a Duplicate
           </button>
         </td>`;
@@ -2548,12 +2548,12 @@ async function renderIgnoredFiles(container) {
     const tr = document.createElement('tr');
     const date = file.completed_at ? new Date(file.completed_at).toLocaleDateString() : '—';
     tr.innerHTML = `
-      <td class="tf-name" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${file.filename}">${file.filename}</td>
-      <td>${file.uploaded_by}</td>
+      <td class="tf-name" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(file.filename)}">${escHtml(file.filename)}</td>
+      <td>${escHtml(file.uploaded_by)}</td>
       <td style="white-space:nowrap">${date}</td>
       <td><a href="/f/${file.share_id}" target="_blank" style="font-size:.8rem;font-family:monospace">/f/${file.share_id}</a></td>
       <td>
-        <button class="btn-sm dup-unignore-btn" data-file-id="${file.id}" data-filename="${file.filename}">
+        <button class="btn-sm dup-unignore-btn" data-file-id="${file.id}" data-filename="${escHtml(file.filename)}">
           <i class="fa-solid fa-rotate-left"></i> Restore to Scanner
         </button>
       </td>`;
@@ -2888,11 +2888,15 @@ function fmSearchRedirectFiles() {
   }
 
   results.innerHTML = matches.map(f => `
-    <div class="fm-file-result" onclick="fmSelectRedirectFile('${f.share_id}',${JSON.stringify(f.filename)})">
+    <div class="fm-file-result" data-share-id="${f.share_id}" data-filename="${escHtml(f.filename)}">
       ${fileIcon(f.filename)}
       <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(f.filename)}</span>
       <span class="fm-file-result-size">${formatBytes(f.file_size)}</span>
     </div>`).join('');
+
+  results.querySelectorAll('.fm-file-result').forEach(el => {
+    el.addEventListener('click', () => fmSelectRedirectFile(el.dataset.shareId, el.dataset.filename));
+  });
 }
 
 function fmSelectRedirectFile(shareId, filename) {

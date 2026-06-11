@@ -24,7 +24,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db, init_db
-from models import AccessRequest, Ad, ApiKey, DownloadEvent, FileReport, Part, SiteSetting, StorageProvider, SupportMessage, SupportReply, Upload
+from models import AccessRequest, Ad, ApiKey, DownloadEvent, DownloadToken, FileReport, Part, SiteSetting, StorageProvider, SupportMessage, SupportReply, Upload
 from storage import B2Storage, BunnyStorage, S3Storage
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -53,7 +53,6 @@ _storage_cache:     dict = {}    # provider_id -> S3Storage instance
 _geo_cache:         dict = {}    # ip -> (country, country_code)
 _geoip_reader             = None  # geoip2 Reader singleton
 _recent_downloads:  dict = {}    # (ip, upload_id) -> last download datetime
-_dl_tokens:         dict = {}    # token -> {share_id, expires}
 _landing_tpl:       str  = ""    # landing.html cached template
 
 # Extensions whose /preview URL is a usable og:image
@@ -65,6 +64,18 @@ def _fmt_bytes(n: int) -> str:
     if n >= 1_000_000:     return f"{n/1_000_000:.1f} MB"
     if n >= 1_000:         return f"{n/1_000:.0f} KB"
     return f"{n} B"
+
+
+def _track_bandwidth(provider_id: str, size: int, db) -> None:
+    """Atomic SQL increment — avoids lost updates with multiple uvicorn workers."""
+    from sqlalchemy import text as _sql_text
+    db.execute(
+        _sql_text(
+            "UPDATE storage_providers SET monthly_bandwidth_used = "
+            "COALESCE(monthly_bandwidth_used, 0) + :size WHERE id = :id"
+        ),
+        {"size": size, "id": provider_id},
+    )
 
 
 def _landing_template() -> str:
@@ -188,6 +199,8 @@ def _geolocate(ip: str) -> tuple:
         )
     except Exception:
         result = ("Unknown", "??")
+    if len(_geo_cache) > 20_000:   # cap memory growth
+        _geo_cache.clear()
     _geo_cache[ip] = result
     return result
 
@@ -277,6 +290,7 @@ def _make_worker_redirect(upload, db: Session) -> str:
         if p.bandwidth_reset_month != current_month:
             p.monthly_bandwidth_used = 0
             p.bandwidth_reset_month = current_month
+            db.flush()  # write the reset before the atomic increment below
 
         cap_bytes = int(p.bandwidth_cap_gb * 1_073_741_824) if p.bandwidth_cap_gb else None
         used = p.monthly_bandwidth_used or 0
@@ -291,7 +305,7 @@ def _make_worker_redirect(upload, db: Session) -> str:
                 token = _gen_worker_token(file_key, upload.filename, upload.content_type, "url", fallback_url)
                 return f"{WORKER_URL}/dl/{token}"
 
-        p.monthly_bandwidth_used = used + (upload.file_size or 0)
+        _track_bandwidth(p.id, upload.file_size or 0, db)
 
         is_r2 = "r2.cloudflarestorage" in p.endpoint_url.lower()
         if is_r2:
@@ -354,10 +368,12 @@ def _get_default_provider(db: Session) -> Optional[StorageProvider]:
 app = FastAPI(title="DataDock", version="2.0.0", docs_url=None, redoc_url=None)
 storage = B2Storage()
 
+# Auth uses the X-API-Key header (no cookies), so credentialed CORS is unnecessary
+# and wildcard-origins + credentials together is an unsafe combination.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -749,6 +765,7 @@ async def delete_file(file_id: str, db: Session = Depends(get_db), _=Depends(req
         _get_storage(upload.storage_provider_id, db).delete_object(upload.b2_file_key)
     except Exception:
         pass
+    db.query(Part).filter(Part.upload_id == upload.id).delete()
     db.delete(upload)
     db.commit()
     return {"ok": True}
@@ -816,6 +833,9 @@ async def admin_delete_file(
         _get_storage(upload.storage_provider_id, db).delete_object(upload.b2_file_key)
     except Exception:
         pass
+
+    # Storage object is gone in every branch — clean up its chunk records too
+    db.query(Part).filter(Part.upload_id == upload.id).delete()
 
     if body.redirect_type == "none":
         db.delete(upload)
@@ -995,6 +1015,7 @@ async def merge_duplicate(
     except Exception:
         pass
 
+    db.query(Part).filter(Part.upload_id == duplicate.id).delete()
     duplicate.status = "redirected"
     duplicate.redirects_to = canonical.share_id
     db.commit()
@@ -1113,6 +1134,7 @@ def _chained_download_url(upload: Upload, db: Session) -> str:
         if p.bandwidth_reset_month != current_month:
             p.monthly_bandwidth_used = 0
             p.bandwidth_reset_month = current_month
+            db.flush()  # write the reset before the atomic increment below
 
         cap_bytes = int(p.bandwidth_cap_gb * 1_073_741_824) if p.bandwidth_cap_gb else None
         used = p.monthly_bandwidth_used or 0
@@ -1129,7 +1151,7 @@ def _chained_download_url(upload: Upload, db: Session) -> str:
             # No more fallbacks — serve from this provider anyway (never block user)
 
         # Serve from this provider and track bandwidth
-        p.monthly_bandwidth_used = used + (upload.file_size or 0)
+        _track_bandwidth(p.id, upload.file_size or 0, db)
         return _get_storage(p.id, db).get_download_url(upload.b2_file_key)
 
     # Safety net
@@ -1150,12 +1172,11 @@ async def create_download_token(share_id: str, db: Session = Depends(get_db)):
     if not upload or upload.status != "completed":
         raise HTTPException(404, "File not found")
     token = secrets.token_urlsafe(24)
-    expires = datetime.utcnow() + timedelta(seconds=120)
-    _dl_tokens[token] = {"share_id": share_id, "expires": expires}
-    # Prune expired tokens to prevent unbounded growth
-    now = datetime.utcnow()
-    for k in [k for k, v in list(_dl_tokens.items()) if v["expires"] < now]:
-        del _dl_tokens[k]
+    # Tokens live in the DB so they work across all uvicorn workers
+    db.add(DownloadToken(token=token, share_id=share_id,
+                         expires=datetime.utcnow() + timedelta(seconds=120)))
+    db.query(DownloadToken).filter(DownloadToken.expires < datetime.utcnow()).delete()
+    db.commit()
     return {"token": token}
 
 
@@ -1178,10 +1199,15 @@ async def download_file(
     if not upload or upload.status != "completed":
         raise HTTPException(404, "File not found")
 
-    # Require a valid single-use token — prevents hotlinking the download URL
-    tok = _dl_tokens.pop(token, None) if token else None
-    if tok is None or tok["share_id"] != share_id or tok["expires"] < datetime.utcnow():
+    # Require a valid single-use token — prevents hotlinking the download URL.
+    # Claimed atomically from the DB so it works across all uvicorn workers.
+    tok = (
+        db.query(DownloadToken).filter(DownloadToken.token == token).first()
+        if token else None
+    )
+    if tok is None or tok.share_id != share_id or tok.expires < datetime.utcnow():
         raise HTTPException(403, "Missing or expired download token. Please use the share page to download.")
+    db.delete(tok)
 
     ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
     if not ip:
@@ -1196,7 +1222,12 @@ async def download_file(
     is_dup = last is not None and (now - last).total_seconds() < DEDUP_WINDOW_SECS
     if not is_dup:
         _recent_downloads[dedup_key] = now
-        upload.downloads = (upload.downloads or 0) + 1
+        # Atomic SQL increment — safe with multiple uvicorn workers
+        from sqlalchemy import text as _sql_text
+        db.execute(
+            _sql_text("UPDATE uploads SET downloads = COALESCE(downloads, 0) + 1 WHERE id = :id"),
+            {"id": upload.id},
+        )
         # Prune cache when it grows large to avoid unbounded memory use
         if len(_recent_downloads) > 50_000:
             cutoff = now - timedelta(seconds=DEDUP_WINDOW_SECS)
@@ -2794,6 +2825,9 @@ class FileReportIn(BaseModel):
     message: Optional[str] = None
 
 
+_report_rl: dict = {}  # ip -> [timestamps] — per-worker rate limit for report spam
+
+
 @app.post("/api/reports")
 async def submit_report(body: FileReportIn, request: Request, db: Session = Depends(get_db)):
     if body.reason not in VALID_REASONS:
@@ -2804,6 +2838,16 @@ async def submit_report(body: FileReportIn, request: Request, db: Session = Depe
     ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else None)
     if ip:
         ip = ip.split(",")[0].strip()
+
+    # Rate limit: max 5 reports per IP per hour
+    now_ts = datetime.utcnow().timestamp()
+    window = [t for t in _report_rl.get(ip, []) if now_ts - t < 3600]
+    if len(window) >= 5:
+        raise HTTPException(429, "Too many reports — please try again later")
+    window.append(now_ts)
+    _report_rl[ip] = window
+    if len(_report_rl) > 10_000:
+        _report_rl.clear()
     db.add(FileReport(
         id=str(uuid.uuid4()),
         share_id=body.share_id,

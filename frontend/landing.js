@@ -130,7 +130,8 @@
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
     a.className = 'ad-btn';
-    a.innerHTML = `<i class="fa-solid fa-arrow-up-right-from-square"></i> ${ad.label}`;
+    a.innerHTML = '<i class="fa-solid fa-arrow-up-right-from-square"></i> ';
+    a.appendChild(document.createTextNode(ad.label || ''));
     return a;
   }
 

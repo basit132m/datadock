@@ -155,3 +155,11 @@ class FileReport(Base):
     ip         = Column(String(45), nullable=True)
     status     = Column(String(20), default="open", nullable=False, index=True)
     created_at = Column(DateTime, nullable=False)
+
+
+class DownloadToken(Base):
+    __tablename__ = "download_tokens"
+
+    token      = Column(String(64), primary_key=True)
+    share_id   = Column(String(12), nullable=False)
+    expires    = Column(DateTime, nullable=False, index=True)

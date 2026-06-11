@@ -135,6 +135,12 @@
     renderPage();
   }
 
+  // ── Escape helper ─────────────────────────────────────────────────────────
+  function esc(str) {
+    return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
   // ── Copy helper ───────────────────────────────────────────────────────────
   function addCopy(btn, url) {
     btn.addEventListener('click', function () {
@@ -163,7 +169,7 @@
         <i class="fa-solid ${type.fa}"></i>
       </div>
       <div class="br-gc-body">
-        <div class="br-gc-name" title="${f.filename}">${f.filename}</div>
+        <div class="br-gc-name" title="${esc(f.filename)}">${esc(f.filename)}</div>
         <div class="br-gc-meta">
           <span class="br-ext-badge">${ext}</span>
           <span class="br-gc-size">${fmtBytes(f.file_size)}</span>
@@ -192,7 +198,7 @@
         <i class="fa-solid ${type.fa}"></i>
       </div>
       <div class="br-card-info">
-        <div class="br-card-name" title="${f.filename}">${f.filename}</div>
+        <div class="br-card-name" title="${esc(f.filename)}">${esc(f.filename)}</div>
         <div class="br-card-meta">
           <span class="br-ext-badge">${ext}</span>
           <span class="br-card-size">${fmtBytes(f.file_size)}</span>

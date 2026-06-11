@@ -140,6 +140,11 @@
     });
   }
 
+  function esc(str) {
+    return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
   function buildPreviewCard(f) {
     const type     = getType(f.filename);
     const ext      = getExt(f.filename);
@@ -154,7 +159,7 @@
         <i class="fa-solid ${type.fa}"></i>
       </div>
       <div class="hp-pcard-body">
-        <div class="hp-pcard-name" title="${f.filename}">${f.filename}</div>
+        <div class="hp-pcard-name" title="${esc(f.filename)}">${esc(f.filename)}</div>
         <div class="hp-pcard-meta">
           <span class="hp-pcard-ext">${ext}</span>
           <span class="hp-pcard-size">${fmtBytes(f.file_size)}</span>
