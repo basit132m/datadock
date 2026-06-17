@@ -49,81 +49,81 @@
 
   <!-- File card -->
   <div id="lc-card" class="lp-card" hidden>
+    <div class="lp-card-inner">
 
-    <!-- Hero: large icon + type chip -->
-    <div class="lp-hero">
-      <div class="lp-icon-wrap" id="lp-icon-wrap">
-        <i class="fa-solid fa-file lp-file-icon" id="lp-file-icon"></i>
+      <!-- Left: file info -->
+      <div class="lp-info-panel">
+        <div class="lp-icon-wrap" id="lp-icon-wrap">
+          <i class="fa-solid fa-file lp-file-icon" id="lp-file-icon"></i>
+        </div>
+        <div class="lp-file-details">
+          <div class="lp-ext-chip" id="lp-type">FILE</div>
+          <h1 class="lp-filename" id="lp-filename">filename.zip</h1>
+          <div class="lp-meta-table">
+            <div class="lp-meta-row">
+              <span class="lp-meta-key"><i class="fa-solid fa-weight-hanging"></i> File Size</span>
+              <span class="lp-meta-val" id="lp-size">—</span>
+            </div>
+            <div class="lp-meta-row">
+              <span class="lp-meta-key"><i class="fa-regular fa-calendar-plus"></i> Uploaded</span>
+              <span class="lp-meta-val" id="lp-date">—</span>
+            </div>
+            <div class="lp-meta-row">
+              <span class="lp-meta-key"><i class="fa-solid fa-download"></i> Downloads</span>
+              <span class="lp-meta-val" id="lp-downloads">0</span>
+            </div>
+            <div class="lp-meta-row">
+              <span class="lp-meta-key"><i class="fa-regular fa-eye"></i> Views</span>
+              <span class="lp-meta-val" id="lp-views">0</span>
+            </div>
+          </div>
+        </div>
       </div>
-      <span class="lp-ext-chip" id="lp-type">FILE</span>
+
+      <!-- Right: actions -->
+      <div class="lp-action-panel">
+        <div class="lp-action-inner">
+          <p class="lp-action-label">Ready to download</p>
+
+          <button id="lp-download-btn" class="lp-download-btn">
+            <span class="lp-dl-icon"><i class="fa-solid fa-download"></i></span>
+            <span class="lp-dl-text">
+              <span class="lp-dl-primary">Download File</span>
+              <span class="lp-dl-size" id="lp-dl-size">—</span>
+            </span>
+          </button>
+
+          <button class="lp-copy-btn" id="lp-copy-btn">
+            <i class="fa-solid fa-link"></i>
+            <span>Copy Share Link</span>
+          </button>
+
+          <button class="lp-report-btn" id="lp-report-btn">
+            <i class="fa-solid fa-flag"></i>
+            <span>Report an Issue</span>
+          </button>
+
+          <!-- Button ads -->
+          <div id="ads-buttons" class="ad-slot-buttons"></div>
+
+          <div class="lp-trust">
+            <div class="lp-trust-item">
+              <i class="fa-solid fa-lock"></i>
+              <span>Secure</span>
+            </div>
+            <div class="lp-trust-item">
+              <i class="fa-solid fa-bolt"></i>
+              <span>Fast CDN</span>
+            </div>
+            <div class="lp-trust-item">
+              <i class="fa-solid fa-user-secret"></i>
+              <span>Private</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
-
-    <!-- Body -->
-    <div class="lp-card-body">
-
-      <h1 class="lp-filename" id="lp-filename">filename.zip</h1>
-
-      <!-- Stat pills -->
-      <div class="lp-pills-row">
-        <div class="lp-pill">
-          <i class="fa-solid fa-weight-hanging"></i>
-          <span id="lp-size">—</span>
-        </div>
-        <div class="lp-pill">
-          <i class="fa-regular fa-calendar"></i>
-          <span id="lp-date">—</span>
-        </div>
-        <div class="lp-pill">
-          <i class="fa-solid fa-arrow-down"></i>
-          <span id="lp-downloads">0</span> downloads
-        </div>
-      </div>
-
-      <!-- Hidden — kept for JS compat -->
-      <span id="lp-views" style="display:none">0</span>
-
-      <!-- Download button -->
-      <button id="lp-download-btn" class="lp-download-btn">
-        <span class="lp-dl-icon"><i class="fa-solid fa-download"></i></span>
-        <span class="lp-dl-text">
-          <span class="lp-dl-primary">Download File</span>
-          <span class="lp-dl-size" id="lp-dl-size">—</span>
-        </span>
-        <i class="fa-solid fa-chevron-right lp-dl-arrow"></i>
-      </button>
-
-      <!-- Secondary actions -->
-      <div class="lp-sec-actions">
-        <button class="lp-copy-btn" id="lp-copy-btn">
-          <i class="fa-solid fa-link"></i>
-          <span>Copy Share Link</span>
-        </button>
-        <button class="lp-report-btn" id="lp-report-btn">
-          <i class="fa-solid fa-flag"></i>
-          <span>Report</span>
-        </button>
-      </div>
-
-      <!-- Button ads -->
-      <div id="ads-buttons" class="ad-slot-buttons"></div>
-
-      <!-- Trust row -->
-      <div class="lp-trust">
-        <div class="lp-trust-item">
-          <i class="fa-solid fa-lock"></i>
-          <span>Secure</span>
-        </div>
-        <div class="lp-trust-item">
-          <i class="fa-solid fa-bolt"></i>
-          <span>Fast CDN</span>
-        </div>
-        <div class="lp-trust-item">
-          <i class="fa-solid fa-user-secret"></i>
-          <span>Private</span>
-        </div>
-      </div>
-
-    </div><!-- /.lp-card-body -->
   </div>
 
   <!-- File preview (injected by JS for supported types) -->
