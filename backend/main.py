@@ -1284,7 +1284,12 @@ async def get_stats(db: Session = Depends(get_db), _=Depends(require_admin)):
 
 
 @app.get("/api/f/{share_id}")
-async def get_share_info(share_id: str, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def get_share_info(
+    share_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    _ref: str = Query("", alias="_ref"),
+):
     upload = db.query(Upload).filter(Upload.share_id == share_id).first()
     if upload and upload.status == "redirected":
         if upload.redirect_url:
@@ -1301,12 +1306,10 @@ async def get_share_info(share_id: str, request: Request, background_tasks: Back
     db.commit()
     db.refresh(upload)
 
-    domain = _parse_referrer_domain(
-        request.headers.get("referer") or request.headers.get("referrer") or "",
-        request.headers.get("host", ""),
-    )
-    if domain:
-        background_tasks.add_task(_log_referrer, share_id, domain)
+    # _ref is the domain extracted from document.referrer by landing.js —
+    # more reliable than the HTTP Referer header on the fetch() call itself.
+    if _ref and len(_ref) <= 300:
+        background_tasks.add_task(_log_referrer, share_id, _ref)
 
     return {
         "share_id": share_id,

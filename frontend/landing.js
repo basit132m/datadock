@@ -137,8 +137,21 @@
 
   // ── Main init ──────────────────────────────────────────────────────────────
   async function init() {
+    // Capture the real referrer from document.referrer (set by the browser when
+    // navigating from an external page) and pass it to the API. The fetch() call
+    // itself would only show our own domain as Referer, so we send it explicitly.
+    let refParam = '';
+    try {
+      if (document.referrer) {
+        const refDomain = new URL(document.referrer).hostname.replace(/^www\./, '');
+        if (refDomain && refDomain !== location.hostname) {
+          refParam = `?_ref=${encodeURIComponent(refDomain)}`;
+        }
+      }
+    } catch (_) {}
+
     const [fileRes, adsRes, settingsRes] = await Promise.allSettled([
-      fetch(`/api/f/${shareId}`).then(r => r.ok ? r.json() : Promise.reject()),
+      fetch(`/api/f/${shareId}${refParam}`).then(r => r.ok ? r.json() : Promise.reject()),
       fetch('/api/ads').then(r => r.ok ? r.json() : []),
       fetch('/api/settings').then(r => r.ok ? r.json() : {}),
     ]);
