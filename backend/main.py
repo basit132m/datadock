@@ -3122,12 +3122,17 @@ _BROWSE_SORT = {
 
 @app.get("/api/public/stats")
 async def public_stats(db: Session = Depends(get_db)):
-    """Quick aggregate stats — file count and total size."""
+    """Quick aggregate stats — file count, total size, and total data served."""
     row = db.query(
         func.count(Upload.id).label("file_count"),
         func.coalesce(func.sum(Upload.file_size), 0).label("total_size"),
+        func.coalesce(func.sum(Upload.file_size * func.coalesce(Upload.downloads, 0)), 0).label("total_served"),
     ).filter(Upload.status == "completed", Upload.share_id.isnot(None)).one()
-    return {"file_count": int(row.file_count), "total_size": int(row.total_size)}
+    return {
+        "file_count":    int(row.file_count),
+        "total_size":    int(row.total_size),
+        "total_served":  int(row.total_served),
+    }
 
 
 @app.get("/api/public/files")

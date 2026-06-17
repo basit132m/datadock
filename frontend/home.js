@@ -92,8 +92,9 @@
     // Stats — fire separate lightweight request
     fetch('/api/public/stats').then(r => r.ok ? r.json() : Promise.reject()).then(s => {
       const statsEl = document.getElementById('hp-stats');
-      document.getElementById('hp-stat-files').textContent = fmtNum(s.file_count);
-      document.getElementById('hp-stat-size').textContent  = fmtBytes(s.total_size);
+      document.getElementById('hp-stat-files').textContent  = fmtNum(s.file_count);
+      document.getElementById('hp-stat-size').textContent   = fmtBytes(s.total_size);
+      document.getElementById('hp-stat-served').textContent = fmtBytes(s.total_served);
       statsEl.hidden = false;
 
       const observer = new IntersectionObserver(entries => {
