@@ -1842,6 +1842,80 @@ async function loadDownloadsPage() {
 
 }
 
+// ── Referrers ─────────────────────────────────────────────────────────────────
+
+let refActiveDays = 7;
+
+async function loadReferrersPage() {
+  document.querySelectorAll('#ref-period-tabs .dl-period-btn').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.days) === refActiveDays);
+  });
+
+  document.getElementById('ref-stat-total').textContent   = '—';
+  document.getElementById('ref-stat-domains').textContent = '—';
+  document.getElementById('ref-domain-list').innerHTML    = '<p class="dl-empty" style="padding:1.5rem">Loading…</p>';
+
+  let data;
+  try {
+    data = await apiFetch('GET', `/api/analytics/referrers?days=${refActiveDays}`);
+  } catch (e) {
+    document.getElementById('ref-domain-list').innerHTML =
+      `<p style="padding:1.5rem;color:var(--danger);font-size:.875rem">${escHtml(e.message)}</p>`;
+    return;
+  }
+
+  document.getElementById('ref-stat-total').textContent   = (data.total_visits || 0).toLocaleString();
+  document.getElementById('ref-stat-domains').textContent = (data.unique_domains || 0).toLocaleString();
+
+  const domains = data.top_domains || [];
+  const listEl  = document.getElementById('ref-domain-list');
+
+  if (!domains.length) {
+    listEl.innerHTML = '<p class="dl-empty" style="padding:1.5rem">No referrer data yet. Visits from external sites will appear here.</p>';
+    return;
+  }
+
+  const maxCount = domains[0].count || 1;
+  listEl.innerHTML = `
+    <table style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr style="font-size:.75rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">
+          <th style="padding:.65rem 1.25rem;text-align:left">Domain</th>
+          <th style="padding:.65rem 1.25rem;text-align:left">Activity</th>
+          <th style="padding:.65rem 1.25rem;text-align:right">Visits</th>
+        </tr>
+      </thead>
+      <tbody>${domains.map((d, i) => {
+        const pct  = Math.round((d.count / maxCount) * 100);
+        const files = (d.files || []).slice(0, 3);
+        const fileTips = files.map(f =>
+          `<span class="ref-file-chip" onclick="showPage('files')" title="${escHtml(f.filename)}">${escHtml(f.filename.length > 28 ? f.filename.slice(0,28)+'…' : f.filename)} <em>${f.count}</em></span>`
+        ).join('');
+        return `
+        <tr style="border-top:1px solid var(--border)${i === 0 ? ';background:var(--primary-lite)' : ''}">
+          <td style="padding:.8rem 1.25rem">
+            <div style="display:flex;align-items:center;gap:.6rem">
+              <img src="https://www.google.com/s2/favicons?domain=${encodeURIComponent(d.domain)}&sz=16"
+                   width="16" height="16" style="border-radius:3px;flex-shrink:0"
+                   onerror="this.style.display='none'">
+              <span style="font-weight:600;font-size:.875rem;color:var(--text)">${escHtml(d.domain)}</span>
+              ${i === 0 ? '<span class="ref-rank-badge">#1</span>' : ''}
+            </div>
+            ${fileTips ? `<div style="margin-top:.4rem;padding-left:1.5rem;display:flex;flex-wrap:wrap;gap:.3rem">${fileTips}</div>` : ''}
+          </td>
+          <td style="padding:.8rem 1.25rem;min-width:140px">
+            <div style="background:var(--border);border-radius:4px;height:6px;overflow:hidden">
+              <div style="background:var(--primary);height:100%;width:${pct}%;border-radius:4px;transition:width .3s"></div>
+            </div>
+          </td>
+          <td style="padding:.8rem 1.25rem;text-align:right;font-weight:700;font-size:.9rem;color:var(--text)">
+            ${d.count.toLocaleString()}
+          </td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+}
+
 // ── Access Requests ───────────────────────────────────────────────────────────
 
 let reqActiveFilter = '';
@@ -3064,8 +3138,9 @@ function showPage(page) {
   if (page === 'files')     loadFileList();
   if (page === 'ads')       loadAdsPage();
   if (page === 'storage')   loadStoragePage();
-  if (page === 'downloads') loadDownloadsPage();
-  if (page === 'team')      loadTeamPage();
+  if (page === 'downloads')  loadDownloadsPage();
+  if (page === 'referrers')  loadReferrersPage();
+  if (page === 'team')       loadTeamPage();
   if (page === 'requests')   loadRequestsPage();
   if (page === 'support')    loadSupportPage();
   if (page === 'duplicates')   loadDuplicatesPage();
@@ -3136,10 +3211,17 @@ function initApp() {
   initSupportPage();
   applyRoleUI();
 
-  document.querySelectorAll('.dl-period-btn').forEach(btn => {
+  document.querySelectorAll('#dl-period-tabs .dl-period-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       dlActiveDays = parseInt(btn.dataset.days);
       loadDownloadsPage();
+    });
+  });
+
+  document.querySelectorAll('#ref-period-tabs .dl-period-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      refActiveDays = parseInt(btn.dataset.days);
+      loadReferrersPage();
     });
   });
 

@@ -1123,6 +1123,21 @@ select { background: var(--surface); color: var(--text); }
   padding: 2rem 1.5rem; color: var(--muted); font-size: .875rem; text-align: center;
 }
 
+/* Referrer page */
+.ref-rank-badge {
+  font-size: .65rem; font-weight: 800; background: var(--primary); color: #fff;
+  padding: .1rem .45rem; border-radius: 99px; letter-spacing: .04em;
+}
+.ref-file-chip {
+  display: inline-flex; align-items: center; gap: .3rem;
+  font-size: .72rem; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: .15rem .5rem; cursor: pointer;
+  color: var(--text2); white-space: nowrap; max-width: 220px; overflow: hidden;
+  text-overflow: ellipsis; transition: border-color .15s, color .15s;
+}
+.ref-file-chip:hover { border-color: var(--primary); color: var(--primary); }
+.ref-file-chip em { font-style: normal; color: var(--muted); font-weight: 600; }
+
 /* ── Responsive ── */
 @media (max-width: 900px) {
   :root { --sidebar-w: 200px; }

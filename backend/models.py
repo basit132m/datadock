@@ -163,3 +163,13 @@ class DownloadToken(Base):
     token      = Column(String(64), primary_key=True)
     share_id   = Column(String(12), nullable=False)
     expires    = Column(DateTime, nullable=False, index=True)
+
+
+class Referrer(Base):
+    __tablename__ = "referrers"
+
+    id          = Column(String(36), primary_key=True)
+    share_id    = Column(String(12), nullable=False, index=True)
+    domain      = Column(String(300), nullable=False, index=True)
+    visit_count = Column(Integer, default=1, nullable=False)
+    last_seen   = Column(DateTime, nullable=False)

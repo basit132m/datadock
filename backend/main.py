@@ -27,7 +27,7 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from database import get_db, init_db
-from models import AccessRequest, Ad, ApiKey, DownloadEvent, DownloadToken, FileReport, Part, SiteSetting, StorageProvider, SupportMessage, SupportReply, Upload
+from models import AccessRequest, Ad, ApiKey, DownloadEvent, DownloadToken, FileReport, Part, Referrer, SiteSetting, StorageProvider, SupportMessage, SupportReply, Upload
 from storage import B2Storage, BunnyStorage, S3Storage
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -241,6 +241,54 @@ async def _log_download_event(upload_id: str, filename: str, ip: str, ua: str):
             user_agent=(ua or "")[:1000],
             created_at=datetime.utcnow(),
         ))
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+
+def _parse_referrer_domain(referer: str, host: str) -> Optional[str]:
+    """Extract bare domain from a Referer header.
+    Returns None for direct traffic, same-site requests, or unparseable values."""
+    if not referer:
+        return None
+    try:
+        from urllib.parse import urlparse
+        netloc = urlparse(referer).netloc.lower()
+        if not netloc:
+            return None
+        domain = netloc.split(":")[0]  # strip port
+        if domain.startswith("www."):
+            domain = domain[4:]
+        # drop same-site hits (e.g. user clicking within datadock itself)
+        own = (host or "").split(":")[0].lower()
+        if own and domain == own:
+            return None
+        return domain or None
+    except Exception:
+        return None
+
+
+async def _log_referrer(share_id: str, domain: str) -> None:
+    """Upsert referrer hit — atomic increment on existing row, insert otherwise."""
+    from database import SessionLocal
+    from sqlalchemy import text as _t
+    db = SessionLocal()
+    try:
+        result = db.execute(
+            _t("UPDATE referrers SET visit_count = visit_count + 1, last_seen = :now "
+               "WHERE share_id = :sid AND domain = :domain"),
+            {"now": datetime.utcnow(), "sid": share_id, "domain": domain},
+        )
+        if result.rowcount == 0:
+            db.add(Referrer(
+                id=str(uuid.uuid4()),
+                share_id=share_id,
+                domain=domain,
+                visit_count=1,
+                last_seen=datetime.utcnow(),
+            ))
         db.commit()
     except Exception:
         db.rollback()
@@ -1236,7 +1284,7 @@ async def get_stats(db: Session = Depends(get_db), _=Depends(require_admin)):
 
 
 @app.get("/api/f/{share_id}")
-async def get_share_info(share_id: str, db: Session = Depends(get_db)):
+async def get_share_info(share_id: str, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     upload = db.query(Upload).filter(Upload.share_id == share_id).first()
     if upload and upload.status == "redirected":
         if upload.redirect_url:
@@ -1252,6 +1300,13 @@ async def get_share_info(share_id: str, db: Session = Depends(get_db)):
     db.execute(_sql_text("UPDATE uploads SET views = COALESCE(views,0)+1 WHERE id=:id"), {"id": upload.id})
     db.commit()
     db.refresh(upload)
+
+    domain = _parse_referrer_domain(
+        request.headers.get("referer") or request.headers.get("referrer") or "",
+        request.headers.get("host", ""),
+    )
+    if domain:
+        background_tasks.add_task(_log_referrer, share_id, domain)
 
     return {
         "share_id": share_id,
@@ -1561,6 +1616,57 @@ async def get_download_analytics(
         "os_breakdown": os_breakdown,
         "top_files": top_files,
         "recent": recent,
+    }
+
+
+@app.get("/api/analytics/referrers")
+async def get_referrer_analytics(
+    days: int = Query(30, ge=1, le=365),
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    since = datetime.utcnow() - timedelta(days=days)
+
+    top_domains = (
+        db.query(Referrer.domain, func.sum(Referrer.visit_count).label("total"))
+        .filter(Referrer.last_seen >= since)
+        .group_by(Referrer.domain)
+        .order_by(func.sum(Referrer.visit_count).desc())
+        .limit(50)
+        .all()
+    )
+
+    total_visits = sum(r.total for r in top_domains)
+    unique_domains = len(top_domains)
+
+    # Top files per domain — for the most active domain, show which files it links to
+    top_files_by_domain = {}
+    for row in top_domains[:10]:
+        file_rows = (
+            db.query(Referrer.share_id, func.sum(Referrer.visit_count).label("cnt"))
+            .filter(Referrer.domain == row.domain, Referrer.last_seen >= since)
+            .group_by(Referrer.share_id)
+            .order_by(func.sum(Referrer.visit_count).desc())
+            .limit(5)
+            .all()
+        )
+        files = []
+        for fr in file_rows:
+            u = db.query(Upload.filename, Upload.share_id).filter(Upload.share_id == fr.share_id).first()
+            files.append({
+                "share_id": fr.share_id,
+                "filename": u.filename if u else fr.share_id,
+                "count": fr.cnt,
+            })
+        top_files_by_domain[row.domain] = files
+
+    return {
+        "total_visits": total_visits,
+        "unique_domains": unique_domains,
+        "top_domains": [
+            {"domain": r.domain, "count": r.total, "files": top_files_by_domain.get(r.domain, [])}
+            for r in top_domains
+        ],
     }
 
 
