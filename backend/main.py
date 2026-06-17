@@ -3,9 +3,12 @@ import base64
 import hashlib
 import hmac
 import html as _html
+import ipaddress
 import json
 import os
+import re
 import secrets
+import socket
 import string
 import uuid
 from datetime import datetime, timedelta
@@ -421,8 +424,13 @@ def _rl_hit(key, limit: int, window: int) -> bool:
     now = _time.monotonic()
     dq = _rl_buckets.get(key)
     if dq is None:
-        if len(_rl_buckets) > 50_000:  # memory cap under address-rotation floods
-            _rl_buckets.clear()
+        if len(_rl_buckets) > 50_000:
+            # Evict oldest 20% of entries rather than wiping all state
+            # (a full clear would reset every IP's rate-limit simultaneously,
+            # which an attacker could exploit to get burst windows on demand).
+            cutoff = sorted(_rl_buckets)[: len(_rl_buckets) // 5]
+            for k in cutoff:
+                _rl_buckets.pop(k, None)
         dq = _rl_buckets[key] = _deque()
     while dq and now - dq[0] > window:
         dq.popleft()
@@ -508,6 +516,20 @@ def _seed_master_key():
 
 @app.on_event("startup")
 async def _startup():
+    if not API_KEY:
+        import warnings
+        warnings.warn(
+            "API_KEY environment variable is not set — ALL requests are accepted as admin. "
+            "Set API_KEY in your .env file before exposing this service.",
+            stacklevel=1,
+        )
+    if WORKER_URL and len(WORKER_SECRET) < 32:
+        import warnings
+        warnings.warn(
+            "WORKER_SECRET is unset or too short — download tokens can be forged. "
+            "Set WORKER_SECRET to a 32+ character random string.",
+            stacklevel=1,
+        )
     init_db()
     _seed_master_key()
 
@@ -573,6 +595,15 @@ class BrowserRelayInitIn(BaseModel):
 class CompleteUploadIn(BaseModel):
     actual_size: Optional[int] = None
 
+    class Config:
+        # actual_size must be positive and within the configured file-size limit
+        pass
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        if self.actual_size is not None and (self.actual_size <= 0 or self.actual_size > MAX_BYTES):
+            raise ValueError(f"actual_size must be between 1 and {MAX_BYTES}")
+
 
 # ── Upload API ────────────────────────────────────────────────────────────────
 
@@ -591,7 +622,11 @@ async def init_upload(
 
     existing = (
         db.query(Upload)
-        .filter(Upload.file_hash == body.file_hash, Upload.status == "pending")
+        .filter(
+            Upload.file_hash == body.file_hash,
+            Upload.status == "pending",
+            Upload.uploaded_by_key_id == (auth_key.id if auth_key else None),
+        )
         .first()
     )
     if existing:
@@ -688,13 +723,17 @@ async def relay_init(
     return {"upload_id": upload.id}
 
 
+_MAX_CHUNK_BYTES = 5 * 1024 * 1024 * 1024  # 5 GB — S3 part size hard limit
+
+
 @app.post("/api/upload/{upload_id}/chunk/{part_number}")
 async def upload_chunk(
     upload_id: str,
     part_number: int,
     request: Request,
     db: Session = Depends(get_db),
-    _=Depends(require_auth),
+    auth: dict = Depends(require_auth),
+    auth_key: Optional[ApiKey] = Depends(get_current_key),
 ):
     if not (1 <= part_number <= 10_000):
         raise HTTPException(400, "part_number must be 1–10000")
@@ -704,10 +743,20 @@ async def upload_chunk(
         raise HTTPException(404, "Upload not found")
     if upload.status != "pending":
         raise HTTPException(400, f"Upload is {upload.status}")
+    # Only the key that created the upload (or an admin) may write to it
+    if upload.uploaded_by_key_id and auth_key and upload.uploaded_by_key_id != auth_key.id:
+        if auth.get("role") != "admin":
+            raise HTTPException(403, "Not your upload")
+
+    cl = request.headers.get("content-length")
+    if cl and int(cl) > _MAX_CHUNK_BYTES:
+        raise HTTPException(413, "Chunk exceeds 5 GB limit")
 
     data = await request.body()
     if not data:
         raise HTTPException(400, "Empty chunk")
+    if len(data) > _MAX_CHUNK_BYTES:
+        raise HTTPException(413, "Chunk exceeds 5 GB limit")
 
     etag = _get_storage(upload.storage_provider_id, db).upload_part(
         upload.b2_file_key, upload.b2_upload_id, part_number, data
@@ -738,13 +787,17 @@ async def complete_upload(
     upload_id: str,
     body: Optional[CompleteUploadIn] = None,
     db: Session = Depends(get_db),
-    _=Depends(require_auth),
+    auth: dict = Depends(require_auth),
+    auth_key: Optional[ApiKey] = Depends(get_current_key),
 ):
     upload = db.query(Upload).filter(Upload.id == upload_id).first()
     if not upload:
         raise HTTPException(404, "Upload not found")
     if upload.status != "pending":
         raise HTTPException(400, f"Upload is already {upload.status}")
+    if upload.uploaded_by_key_id and auth_key and upload.uploaded_by_key_id != auth_key.id:
+        if auth.get("role") != "admin":
+            raise HTTPException(403, "Not your upload")
 
     db_parts = db.query(Part).filter(Part.upload_id == upload_id).all()
     if not db_parts:
@@ -784,11 +837,15 @@ async def complete_upload(
 async def abort_upload(
     upload_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_auth),
+    auth: dict = Depends(require_auth),
+    auth_key: Optional[ApiKey] = Depends(get_current_key),
 ):
     upload = db.query(Upload).filter(Upload.id == upload_id).first()
     if not upload:
         raise HTTPException(404, "Upload not found")
+    if upload.uploaded_by_key_id and auth_key and upload.uploaded_by_key_id != auth_key.id:
+        if auth.get("role") != "admin":
+            raise HTTPException(403, "Not your upload")
     # Signal any running import background task to stop
     if upload_id in _import_progress:
         _import_progress[upload_id]["status"] = "aborted"
@@ -1191,8 +1248,10 @@ async def get_share_info(share_id: str, db: Session = Depends(get_db)):
     if not upload or upload.status != "completed":
         raise HTTPException(404, "File not found")
 
-    upload.views = (upload.views or 0) + 1
+    from sqlalchemy import text as _sql_text
+    db.execute(_sql_text("UPDATE uploads SET views = COALESCE(views,0)+1 WHERE id=:id"), {"id": upload.id})
     db.commit()
+    db.refresh(upload)
 
     return {
         "share_id": share_id,
@@ -1295,18 +1354,8 @@ async def download_file(
     db: Session = Depends(get_db),
 ):
     upload = db.query(Upload).filter(Upload.share_id == share_id).first()
-    if upload and upload.status == "redirected":
-        if upload.redirect_url:
-            return RedirectResponse(upload.redirect_url, status_code=302)
-        canonical = _resolve_canonical(share_id, db)
-        if canonical and canonical != share_id:
-            return RedirectResponse(f"/api/f/{canonical}/download?token={token}", status_code=302)
-        raise HTTPException(404, "File not found")
-    if not upload or upload.status != "completed":
-        raise HTTPException(404, "File not found")
 
-    # Require a valid single-use token — prevents hotlinking the download URL.
-    # Claimed atomically from the DB so it works across all uvicorn workers.
+    # Validate and consume the token first so it's never reusable, even on redirect
     tok = (
         db.query(DownloadToken).filter(DownloadToken.token == token).first()
         if token else None
@@ -1314,6 +1363,17 @@ async def download_file(
     if tok is None or tok.share_id != share_id or tok.expires < datetime.utcnow():
         raise HTTPException(403, "Missing or expired download token. Please use the share page to download.")
     db.delete(tok)
+    db.commit()
+
+    if upload and upload.status == "redirected":
+        if upload.redirect_url:
+            return RedirectResponse(upload.redirect_url, status_code=302)
+        canonical = _resolve_canonical(share_id, db)
+        if canonical and canonical != share_id:
+            return RedirectResponse(f"/api/f/{canonical}/download", status_code=302)
+        raise HTTPException(404, "File not found")
+    if not upload or upload.status != "completed":
+        raise HTTPException(404, "File not found")
 
     ip = _client_ip(request)
 
@@ -1597,6 +1657,37 @@ async def get_bandwidth_analytics(
 # ── URL Import API ────────────────────────────────────────────────────────────
 
 
+def _assert_public_url(url: str) -> None:
+    """Block SSRF by rejecting URLs that resolve to private/loopback addresses."""
+    parsed = None
+    try:
+        import urllib.parse as _up
+        parsed = _up.urlparse(url)
+    except Exception:
+        pass
+    if not parsed or parsed.scheme not in ("http", "https"):
+        raise HTTPException(400, "URL must start with http:// or https://")
+    host = parsed.hostname or ""
+    # Block raw IP literals that are private/loopback/reserved
+    try:
+        ip = ipaddress.ip_address(host)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            raise HTTPException(400, "URL resolves to a disallowed address")
+    except ValueError:
+        pass  # not a raw IP — fall through to DNS lookup
+    # Resolve hostname and check all returned addresses
+    try:
+        infos = socket.getaddrinfo(host, None)
+        for info in infos:
+            ip = ipaddress.ip_address(info[4][0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                raise HTTPException(400, "URL resolves to a disallowed address")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(400, f"Cannot resolve host: {e}")
+
+
 class ImportIn(BaseModel):
     url: str
     filename: Optional[str] = None
@@ -1610,8 +1701,7 @@ async def import_from_url(
     _=Depends(require_auth),
     auth_key: Optional[ApiKey] = Depends(get_current_key),
 ):
-    if not body.url.startswith(("http://", "https://")):
-        raise HTTPException(400, "URL must start with http:// or https://")
+    _assert_public_url(body.url)
 
     # Resolve redirects and sniff metadata.
     # Strategy: try HEAD first (fast, no body); if the server blocks HEAD (405/403)
@@ -2166,7 +2256,7 @@ def _provider_dict(p: StorageProvider) -> dict:
         "name": p.name,
         "endpoint_url": p.endpoint_url,
         "key_id": p.key_id,
-        "application_key": p.application_key,
+        "application_key": (p.application_key[:4] + "••••••••••••") if p.application_key else "",
         "bucket_name": p.bucket_name,
         "public_base_url": p.public_base_url or "",
         "is_default": p.is_default,
@@ -2681,15 +2771,35 @@ async def change_master_key(db: Session = Depends(get_db), _=Depends(require_adm
 # ── Support messages ──────────────────────────────────────────────────────────
 
 
+def _validate_attachment_url(v: Optional[str]) -> Optional[str]:
+    if not v:
+        return v
+    # Only allow local media uploads or absolute https URLs; reject javascript:, data:, etc.
+    if v.startswith("/api/support/media/") or v.startswith("https://"):
+        return v
+    raise ValueError("attachment_url must be a local /api/support/media/ path or an https:// URL")
+
+
 class SupportMessageIn(BaseModel):
     subject: str
     body: str
     attachment_url: Optional[str] = None
 
+    class Config:
+        pass
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        self.attachment_url = _validate_attachment_url(self.attachment_url)
+
 
 class SupportReplyIn(BaseModel):
     reply: str
     attachment_url: Optional[str] = None
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        self.attachment_url = _validate_attachment_url(self.attachment_url)
 
 
 def _support_replies(msg_id: str, db: Session) -> list:

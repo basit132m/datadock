@@ -1,8 +1,11 @@
 import hashlib
 import os
+import re
 import shutil
 import uuid
 from typing import List, Dict
+
+_UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
 
 import boto3
 import httpx
@@ -126,6 +129,8 @@ class BunnyStorage:
     # ── Helpers ──────────────────────────────────────────────────────────────
 
     def _part_dir(self, upload_id: str) -> str:
+        if not _UUID_RE.match(upload_id):
+            raise ValueError(f"Invalid upload_id format: {upload_id!r}")
         return os.path.join(self.TEMP_DIR, upload_id)
 
     def _part_path(self, upload_id: str, part_number: int) -> str:

@@ -290,7 +290,7 @@ function buildUploadItem(file) {
     <div class="upload-item-header">
       <div class="file-icon-badge">${fileIcon(file.name)}</div>
       <div class="file-meta">
-        <div class="file-name" title="${file.name}">${file.name}</div>
+        <div class="file-name" title="${escHtml(file.name)}">${escHtml(file.name)}</div>
         <div class="file-size-label">${formatBytes(file.size)}</div>
       </div>
       <div class="item-actions">
@@ -698,7 +698,7 @@ const LS_IMPORTS_KEY = 'datadock_pending_imports';
 function _saveImport(upload_id, filename, total, url) {
   const list = JSON.parse(localStorage.getItem(LS_IMPORTS_KEY) || '[]');
   if (!list.find(i => i.upload_id === upload_id)) {
-    list.push({ upload_id, filename, total, url });
+    list.push({ upload_id, filename, total });
     localStorage.setItem(LS_IMPORTS_KEY, JSON.stringify(list));
   }
 }
@@ -819,7 +819,7 @@ function _attachImportPoll(upload_id, filename, total, url, el) {
       spd.textContent = '';
       const errDiv = document.createElement('div');
       errDiv.className = 'import-fail-msg';
-      errDiv.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> ${error || 'Unknown error'}`;
+      errDiv.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> ${escHtml(error || 'Unknown error')}`;
       el.appendChild(errDiv);
 
       if (error && (error.includes('IP-locked') || error.includes('403'))) {
@@ -928,7 +928,7 @@ async function startBrowserRelay(url, filename, el) {
     if (msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('cors')) {
       errDiv.innerHTML = `<i class="fa-solid fa-ban"></i> CORS blocked: The CDN doesn't allow browser direct access. Please download the file manually and re-upload it here.`;
     } else {
-      errDiv.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> ${e.message}`;
+      errDiv.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> ${escHtml(e.message || '')}`;
     }
     el.appendChild(errDiv);
     return;
@@ -1467,17 +1467,17 @@ async function loadTeamPage() {
             <td>${k.role === 'admin'
               ? '<span class="team-role team-role-admin">Admin</span>'
               : '<span class="team-role team-role-member">Member</span>'}</td>
-            <td><code class="team-key-masked">${k.key}</code></td>
+            <td><code class="team-key-masked">${escHtml(k.key)}</code></td>
             <td>${k.active
               ? '<span class="ad-on"><i class="fa-solid fa-circle-check"></i> Active</span>'
               : '<span class="ad-off"><i class="fa-solid fa-circle-xmark"></i> Revoked</span>'}</td>
             <td style="color:var(--muted);font-size:.8rem">${formatDate(k.created_at)}</td>
             <td><div class="tf-actions">
-              <button class="btn-sm" onclick="regenerateTeamKey('${k.id}')">Regenerate</button>
-              <button class="btn-sm ${k.active ? 'danger' : ''}" onclick="toggleTeamKey('${k.id}',${!k.active})">
+              <button class="btn-sm" onclick="regenerateTeamKey('${escHtml(k.id)}')">Regenerate</button>
+              <button class="btn-sm ${k.active ? 'danger' : ''}" onclick="toggleTeamKey('${escHtml(k.id)}',${!k.active})">
                 ${k.active ? 'Revoke' : 'Enable'}
               </button>
-              <button class="btn-sm danger" onclick="deleteTeamKey('${k.id}')">Delete</button>
+              <button class="btn-sm danger" onclick="deleteTeamKey('${escHtml(k.id)}')">Delete</button>
             </div></td>
           </tr>`).join('')}
       </tbody>
@@ -1792,7 +1792,7 @@ async function loadDownloadsPage() {
     countriesEl.innerHTML = data.top_countries.map(c => `
       <div class="dl-row">
         <span class="dl-flag">${countryFlag(c.country_code)}</span>
-        <span class="dl-row-label">${c.country || 'Unknown'}</span>
+        <span class="dl-row-label">${escHtml(c.country || 'Unknown')}</span>
         <div class="dl-bar-wrap"><div class="dl-bar" style="width:${Math.round(c.count / max * 100)}%"></div></div>
         <span class="dl-row-count">${c.count.toLocaleString()}</span>
       </div>`).join('');
@@ -1811,7 +1811,7 @@ async function loadDownloadsPage() {
     osEl.innerHTML = data.os_breakdown.map(o => `
       <div class="dl-row">
         <span class="dl-os-icon"><i class="fa-brands ${OS_ICONS[o.os] || 'fa-circle-question'}"></i></span>
-        <span class="dl-row-label">${o.os}</span>
+        <span class="dl-row-label">${escHtml(o.os)}</span>
         <div class="dl-bar-wrap"><div class="dl-bar dl-bar-os" style="width:${Math.round(o.count / maxOs * 100)}%"></div></div>
         <span class="dl-row-count">${o.count.toLocaleString()}</span>
       </div>`).join('');
@@ -1892,12 +1892,12 @@ async function loadRequestsPage() {
             <td style="color:var(--muted);font-size:.8rem">${formatDate(r.created_at)}</td>
             <td><div class="tf-actions">
               ${r.status === 'pending' ? `
-                <button class="btn-primary-sm" onclick="approveRequest('${r.id}')">
+                <button class="btn-primary-sm" onclick="approveRequest('${escHtml(r.id)}')">
                   <i class="fa-solid fa-key"></i> Approve &amp; Generate Key
                 </button>
-                <button class="btn-sm danger" onclick="rejectRequest('${r.id}')">Reject</button>
+                <button class="btn-sm danger" onclick="rejectRequest('${escHtml(r.id)}')">Reject</button>
               ` : ''}
-              <button class="btn-sm danger" onclick="deleteRequest('${r.id}')">Delete</button>
+              <button class="btn-sm danger" onclick="deleteRequest('${escHtml(r.id)}')">Delete</button>
             </div></td>
           </tr>`).join('')}
       </tbody>
@@ -2037,23 +2037,23 @@ async function loadMemberThreads() {
           <span class="sup-thread-subject">${escHtml(m.subject)}</span>
           ${supStatusBadge(m.status)}
           <span class="sup-thread-time">${formatDateTime(m.created_at)}</span>
-          <button class="btn-sm danger sup-delete-btn" onclick="memberDeleteSupportMsg('${m.id}')"><i class="fa-solid fa-trash"></i></button>
+          <button class="btn-sm danger sup-delete-btn" onclick="memberDeleteSupportMsg('${escHtml(m.id)}')"><i class="fa-solid fa-trash"></i></button>
         </div>
         <div class="sup-conversation">${renderConversation(m, false)}</div>
         ${m.status === 'replied' ? `
           <div class="sup-member-reply-form">
-            <textarea id="sup-mreply-input-${m.id}" rows="3" placeholder="Reply to admin…" style="width:100%;box-sizing:border-box;resize:vertical;padding:.5rem .75rem;border:1.5px solid var(--border);border-radius:.45rem;font-family:inherit;font-size:.85rem;background:var(--surface);color:var(--text)"></textarea>
-            <div id="sup-mreply-imgpreview-${m.id}" class="sup-img-preview" style="display:none">
-              <img id="sup-mreply-thumb-${m.id}" class="sup-img-thumb" src="" alt="preview">
-              <button type="button" class="sup-img-clear" onclick="clearSupImg('member','${m.id}')"><i class="fa-solid fa-xmark"></i></button>
+            <textarea id="sup-mreply-input-${escHtml(m.id)}" rows="3" placeholder="Reply to admin…" style="width:100%;box-sizing:border-box;resize:vertical;padding:.5rem .75rem;border:1.5px solid var(--border);border-radius:.45rem;font-family:inherit;font-size:.85rem;background:var(--surface);color:var(--text)"></textarea>
+            <div id="sup-mreply-imgpreview-${escHtml(m.id)}" class="sup-img-preview" style="display:none">
+              <img id="sup-mreply-thumb-${escHtml(m.id)}" class="sup-img-thumb" src="" alt="preview">
+              <button type="button" class="sup-img-clear" onclick="clearSupImg('member','${escHtml(m.id)}')"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div style="display:flex;gap:.6rem;margin-top:.5rem;align-items:center">
-              <button class="btn-primary-sm" onclick="sendMemberReply('${m.id}')"><i class="fa-solid fa-paper-plane"></i> Send Reply</button>
+              <button class="btn-primary-sm" onclick="sendMemberReply('${escHtml(m.id)}')"><i class="fa-solid fa-paper-plane"></i> Send Reply</button>
               <label class="sup-attach-btn" title="Attach image">
                 <i class="fa-solid fa-image"></i>
-                <input type="file" accept="image/*" style="display:none" onchange="selectSupImg('member','${m.id}',this)">
+                <input type="file" accept="image/*" style="display:none" onchange="selectSupImg('member','${escHtml(m.id)}',this)">
               </label>
-              <span id="sup-mreply-msg-${m.id}" class="ad-form-msg"></span>
+              <span id="sup-mreply-msg-${escHtml(m.id)}" class="ad-form-msg"></span>
             </div>
           </div>
         ` : m.status === 'open' && (m.replies || []).length > 0 ? `
@@ -2105,24 +2105,24 @@ async function loadAdminSupportList() {
           <span class="sup-thread-subject">${escHtml(m.subject)}</span>
           ${supStatusBadge(m.status)}
           <span class="sup-thread-time">${formatDateTime(m.created_at)}</span>
-          ${m.status !== 'closed' ? `<button class="btn-sm" onclick="closeSupportMsg('${m.id}')"><i class="fa-solid fa-xmark"></i> Close</button>` : ''}
-          <button class="btn-sm danger" onclick="adminDeleteSupportMsg('${m.id}')"><i class="fa-solid fa-trash"></i> Delete</button>
+          ${m.status !== 'closed' ? `<button class="btn-sm" onclick="closeSupportMsg('${escHtml(m.id)}')"><i class="fa-solid fa-xmark"></i> Close</button>` : ''}
+          <button class="btn-sm danger" onclick="adminDeleteSupportMsg('${escHtml(m.id)}')"><i class="fa-solid fa-trash"></i> Delete</button>
         </div>
         <div class="sup-conversation">${renderConversation(m, true)}</div>
         ${m.status !== 'closed' ? `
-          <div class="sup-reply-form" id="sup-reply-form-${m.id}">
-            <textarea id="sup-reply-input-${m.id}" rows="3" placeholder="Write a reply…" style="width:100%;box-sizing:border-box;resize:vertical;padding:.5rem .75rem;border:1.5px solid var(--border);border-radius:.45rem;font-family:inherit;font-size:.8rem;background:var(--surface);color:var(--text)"></textarea>
-            <div id="sup-reply-imgpreview-${m.id}" class="sup-img-preview" style="display:none">
-              <img id="sup-reply-thumb-${m.id}" class="sup-img-thumb" src="" alt="preview">
-              <button type="button" class="sup-img-clear" onclick="clearSupImg('admin','${m.id}')"><i class="fa-solid fa-xmark"></i></button>
+          <div class="sup-reply-form" id="sup-reply-form-${escHtml(m.id)}">
+            <textarea id="sup-reply-input-${escHtml(m.id)}" rows="3" placeholder="Write a reply…" style="width:100%;box-sizing:border-box;resize:vertical;padding:.5rem .75rem;border:1.5px solid var(--border);border-radius:.45rem;font-family:inherit;font-size:.8rem;background:var(--surface);color:var(--text)"></textarea>
+            <div id="sup-reply-imgpreview-${escHtml(m.id)}" class="sup-img-preview" style="display:none">
+              <img id="sup-reply-thumb-${escHtml(m.id)}" class="sup-img-thumb" src="" alt="preview">
+              <button type="button" class="sup-img-clear" onclick="clearSupImg('admin','${escHtml(m.id)}')"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div style="display:flex;gap:.6rem;margin-top:.5rem;align-items:center">
-              <button class="btn-primary-sm" onclick="sendSupportReply('${m.id}')"><i class="fa-solid fa-paper-plane"></i> Reply</button>
+              <button class="btn-primary-sm" onclick="sendSupportReply('${escHtml(m.id)}')"><i class="fa-solid fa-paper-plane"></i> Reply</button>
               <label class="sup-attach-btn" title="Attach image">
                 <i class="fa-solid fa-image"></i>
-                <input type="file" accept="image/*" style="display:none" onchange="selectSupImg('admin','${m.id}',this)">
+                <input type="file" accept="image/*" style="display:none" onchange="selectSupImg('admin','${escHtml(m.id)}',this)">
               </label>
-              <span id="sup-reply-msg-${m.id}" class="ad-form-msg"></span>
+              <span id="sup-reply-msg-${escHtml(m.id)}" class="ad-form-msg"></span>
             </div>
           </div>
         ` : ''}
