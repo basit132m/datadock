@@ -1886,11 +1886,7 @@ async function loadReferrersPage() {
         </tr>
       </thead>
       <tbody>${domains.map((d, i) => {
-        const pct  = Math.round((d.count / maxCount) * 100);
-        const files = (d.files || []).slice(0, 3);
-        const fileTips = files.map(f =>
-          `<span class="ref-file-chip" onclick="showPage('files')" title="${escHtml(f.filename)}">${escHtml(f.filename.length > 28 ? f.filename.slice(0,28)+'…' : f.filename)} <em>${f.count}</em></span>`
-        ).join('');
+        const pct = Math.round((d.count / maxCount) * 100);
         return `
         <tr style="border-top:1px solid var(--border)${i === 0 ? ';background:var(--primary-lite)' : ''}">
           <td style="padding:.8rem 1.25rem">
@@ -1901,7 +1897,6 @@ async function loadReferrersPage() {
               <span style="font-weight:600;font-size:.875rem;color:var(--text)">${escHtml(d.domain)}</span>
               ${i === 0 ? '<span class="ref-rank-badge">#1</span>' : ''}
             </div>
-            ${fileTips ? `<div style="margin-top:.4rem;padding-left:1.5rem;display:flex;flex-wrap:wrap;gap:.3rem">${fileTips}</div>` : ''}
           </td>
           <td style="padding:.8rem 1.25rem;min-width:140px">
             <div style="background:var(--border);border-radius:4px;height:6px;overflow:hidden">

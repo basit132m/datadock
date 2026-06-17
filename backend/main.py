@@ -1643,33 +1643,10 @@ async def get_referrer_analytics(
     unique_domains = len(top_domains)
 
     # Top files per domain — for the most active domain, show which files it links to
-    top_files_by_domain = {}
-    for row in top_domains[:10]:
-        file_rows = (
-            db.query(Referrer.share_id, func.sum(Referrer.visit_count).label("cnt"))
-            .filter(Referrer.domain == row.domain, Referrer.last_seen >= since)
-            .group_by(Referrer.share_id)
-            .order_by(func.sum(Referrer.visit_count).desc())
-            .limit(5)
-            .all()
-        )
-        files = []
-        for fr in file_rows:
-            u = db.query(Upload.filename, Upload.share_id).filter(Upload.share_id == fr.share_id).first()
-            files.append({
-                "share_id": fr.share_id,
-                "filename": u.filename if u else fr.share_id,
-                "count": fr.cnt,
-            })
-        top_files_by_domain[row.domain] = files
-
     return {
         "total_visits": total_visits,
         "unique_domains": unique_domains,
-        "top_domains": [
-            {"domain": r.domain, "count": r.total, "files": top_files_by_domain.get(r.domain, [])}
-            for r in top_domains
-        ],
+        "top_domains": [{"domain": r.domain, "count": r.total} for r in top_domains],
     }
 
 
