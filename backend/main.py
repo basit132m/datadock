@@ -1743,8 +1743,9 @@ async def get_bandwidth_analytics(
 # ── URL Import API ────────────────────────────────────────────────────────────
 
 
-def _assert_public_url(url: str) -> None:
-    """Block SSRF by rejecting URLs that resolve to private/loopback addresses."""
+async def _assert_public_url(url: str) -> None:
+    """Block SSRF by rejecting URLs that resolve to private/loopback addresses.
+    DNS lookup runs in a thread pool so it never blocks the event loop."""
     parsed = None
     try:
         import urllib.parse as _up
@@ -1761,15 +1762,21 @@ def _assert_public_url(url: str) -> None:
             raise HTTPException(400, "URL resolves to a disallowed address")
     except ValueError:
         pass  # not a raw IP — fall through to DNS lookup
-    # Resolve hostname and check all returned addresses
+    # Resolve hostname in a thread pool (socket.getaddrinfo is blocking)
     try:
-        infos = socket.getaddrinfo(host, None)
+        loop = asyncio.get_running_loop()
+        infos = await asyncio.wait_for(
+            loop.run_in_executor(None, socket.getaddrinfo, host, None),
+            timeout=10.0,
+        )
         for info in infos:
             ip = ipaddress.ip_address(info[4][0])
             if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
                 raise HTTPException(400, "URL resolves to a disallowed address")
     except HTTPException:
         raise
+    except asyncio.TimeoutError:
+        raise HTTPException(400, "Cannot resolve host: DNS timeout")
     except Exception as e:
         raise HTTPException(400, f"Cannot resolve host: {e}")
 
@@ -1787,7 +1794,7 @@ async def import_from_url(
     _=Depends(require_auth),
     auth_key: Optional[ApiKey] = Depends(get_current_key),
 ):
-    _assert_public_url(body.url)
+    await _assert_public_url(body.url)
 
     # Resolve redirects and sniff metadata.
     # Strategy: try HEAD first (fast, no body); if the server blocks HEAD (405/403)
