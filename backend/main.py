@@ -35,10 +35,10 @@ from storage import B2Storage, BunnyStorage, S3Storage
 MAX_BYTES    = int(os.getenv("MAX_FILE_SIZE_GB", "10")) * 1_073_741_824
 API_KEY      = os.getenv("API_KEY", "")
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
-IMPORT_CHUNK     = 32 * 1024 * 1024   # 32 MB per B2 part
-IMPORT_WORKERS   = 4                   # parallel S3 upload workers
-IMPORT_QUEUE_MAX = 8                   # max buffered parts in queue
-IMPORT_READ_SIZE = 2 * 1024 * 1024    # 2 MB HTTP read chunks
+IMPORT_CHUNK     = int(os.getenv("IMPORT_CHUNK_MB",  "32")) * 1024 * 1024
+IMPORT_WORKERS   = int(os.getenv("IMPORT_WORKERS",  "4"))
+IMPORT_QUEUE_MAX = int(os.getenv("IMPORT_QUEUE_MAX", "8"))
+IMPORT_READ_SIZE = int(os.getenv("IMPORT_READ_MB",   "2")) * 1024 * 1024
 
 WORKER_URL    = os.getenv("WORKER_URL", "").rstrip("/")   # e.g. https://datadock-dl.abc.workers.dev
 SUPPORT_MEDIA_DIR = os.path.abspath(
