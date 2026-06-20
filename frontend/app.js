@@ -759,10 +759,6 @@ function _attachImportPoll(upload_id, filename, total, url, el) {
       if (nameEl) nameEl.textContent = prog.filename;
     }
 
-    const pctVal = tot ? Math.min(100, Math.round((bytes_done / tot) * 100)) : 0;
-    bar.style.width = pctVal + '%';
-    pct.textContent = tot ? pctVal + '%' : formatBytes(bytes_done);
-
     const now = Date.now(), dt = (now - lastTime) / 1000;
     if (dt >= 1 && bytes_done > lastBytes) {
       spd.textContent = formatBytes((bytes_done - lastBytes) / dt) + '/s';
@@ -776,14 +772,26 @@ function _attachImportPoll(upload_id, filename, total, url, el) {
     } else if (status === 'importing') {
       badge.className = 'status-badge uploading';
       badge.textContent = 'Downloading…';
+      if (tot) {
+        const pctVal = Math.min(99, Math.round((bytes_done / tot) * 100));
+        bar.classList.remove('indeterminate');
+        bar.style.width = pctVal + '%';
+        pct.textContent = `${formatBytes(bytes_done)} / ${formatBytes(tot)} (${pctVal}%)`;
+      } else {
+        bar.classList.add('indeterminate');
+        pct.textContent = formatBytes(bytes_done);
+      }
     } else if (status === 'completing') {
       badge.className = 'status-badge completing';
       badge.textContent = 'Finalizing…';
-      bar.style.width = '98%';
+      bar.classList.remove('indeterminate');
+      bar.style.width = '99%';
+      pct.textContent = '99%';
     } else if (status === 'completed') {
       clearInterval(poll);
       _removeImport(upload_id);
       abortBtn.remove();
+      bar.classList.remove('indeterminate');
       bar.style.width = '100%';
       bar.classList.add('success');
       badge.className = 'status-badge done';

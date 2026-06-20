@@ -1766,7 +1766,7 @@ async def _assert_public_url(url: str) -> None:
     try:
         loop = asyncio.get_running_loop()
         infos = await asyncio.wait_for(
-            loop.run_in_executor(None, socket.getaddrinfo, host, None),
+            loop.run_in_executor(None, lambda: socket.getaddrinfo(host, 80, socket.AF_INET, socket.SOCK_STREAM)),
             timeout=10.0,
         )
         for info in infos:

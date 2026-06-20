@@ -258,6 +258,17 @@ select { background: var(--surface); color: var(--text); }
 .progress-bar { height: 100%; background: linear-gradient(90deg, #6366f1, #8b5cf6); border-radius: 999px; transition: width .25s linear; }
 .progress-bar.success { background: linear-gradient(90deg, #10b981, #059669); }
 .progress-bar.error   { background: var(--danger); }
+.progress-bar.indeterminate {
+    width: 100% !important;
+    background: repeating-linear-gradient(90deg, #6366f1 0%, #8b5cf6 25%, rgba(99,102,241,.35) 50%, #8b5cf6 75%, #6366f1 100%);
+    background-size: 300% 100%;
+    animation: indeterminate-flow 1.5s linear infinite;
+    transition: none;
+}
+@keyframes indeterminate-flow {
+    0%   { background-position: 100% 0; }
+    100% { background-position: -200% 0; }
+}
 
 .progress-labels { display: flex; justify-content: space-between; font-size: .73rem; color: var(--muted); margin-top: .3rem; }
 
