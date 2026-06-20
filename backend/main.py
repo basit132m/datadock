@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import concurrent.futures
 import hashlib
 import hmac
 import html as _html
@@ -39,6 +40,13 @@ IMPORT_CHUNK     = int(os.getenv("IMPORT_CHUNK_MB",  "32")) * 1024 * 1024
 IMPORT_WORKERS   = int(os.getenv("IMPORT_WORKERS",  "4"))
 IMPORT_QUEUE_MAX = int(os.getenv("IMPORT_QUEUE_MAX", "8"))
 IMPORT_READ_SIZE = int(os.getenv("IMPORT_READ_MB",   "2")) * 1024 * 1024
+
+# Dedicated pool for blocking R2 upload_part calls — sized well above IMPORT_WORKERS
+# so workers never queue waiting for a thread (default pool = cpu_count+4 = only 6 on KVM 2).
+_upload_executor = concurrent.futures.ThreadPoolExecutor(
+    max_workers=max(32, IMPORT_WORKERS * 2),
+    thread_name_prefix="r2-upload",
+)
 
 WORKER_URL    = os.getenv("WORKER_URL", "").rstrip("/")   # e.g. https://datadock-dl.abc.workers.dev
 SUPPORT_MEDIA_DIR = os.path.abspath(
@@ -2191,7 +2199,7 @@ async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str,
                         continue  # drain queue without processing
                     pn, data = item
                     etag = await loop.run_in_executor(
-                        None,
+                        _upload_executor,
                         lambda d=data, p=pn: file_storage.upload_part(file_key, b2_upload_id, p, d),
                     )
                     parts_dict[pn] = etag

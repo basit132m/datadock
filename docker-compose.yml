@@ -10,11 +10,11 @@ services:
     environment:
       DATABASE_URL: sqlite:////app/backend/data/datadock.db
       GEOIP_DB_PATH: /app/backend/data/GeoLite2-Country.mmdb
-      # Import-from-URL tuning — increase after VPS upgrade for faster imports
-      IMPORT_WORKERS: "8"       # parallel R2 upload threads (4 = default, 8 = recommended on 2+ core VPS)
-      IMPORT_CHUNK_MB: "32"     # MB per multipart chunk (32 is optimal for R2)
-      IMPORT_QUEUE_MAX: "16"    # max chunks buffered in memory at once
-      IMPORT_READ_MB: "4"       # HTTP read buffer size in MB
+      # Import-from-URL tuning — tuned for KVM 2 (2 cores, 8 GB RAM)
+      IMPORT_WORKERS: "16"      # parallel R2 upload threads
+      IMPORT_CHUNK_MB: "64"     # MB per multipart chunk (64 MB = fewer R2 API calls, faster for large files)
+      IMPORT_QUEUE_MAX: "24"    # max chunks buffered in memory (24 × 64 MB = 1.5 GB max, safe on 8 GB RAM)
+      IMPORT_READ_MB: "8"       # HTTP read buffer size in MB
     ports:
       - "127.0.0.1:8000:8000"   # only expose to localhost; nginx proxies externally
     healthcheck:
