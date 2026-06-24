@@ -46,6 +46,9 @@
       <button class="nav-item" data-page="files">
         <i class="fa-solid fa-folder-open ni-icon"></i> My Files
       </button>
+      <button class="nav-item" data-page="rules">
+        <i class="fa-solid fa-scale-balanced ni-icon"></i> Rules
+      </button>
       <button class="nav-item" data-page="ads">
         <i class="fa-solid fa-bullhorn ni-icon"></i> Ads
       </button>
@@ -802,6 +805,197 @@
       <div id="fm-status" style="font-size:.82rem;color:var(--muted);margin-bottom:.75rem;padding:0 .25rem"></div>
       <div id="fm-grid" class="fm-grid"></div>
       <div id="fm-pagination" class="fm-pagination"></div>
+    </div>
+
+    <!-- ── Rules ── -->
+    <div id="page-rules" class="page">
+      <div class="page-header">
+        <h1>Upload Rules</h1>
+      </div>
+
+      <div class="card" style="margin-bottom:1.25rem;border-left:4px solid #6366f1">
+        <div style="padding:1rem 1.25rem">
+          <p style="margin:0;font-size:.9rem;color:var(--muted);line-height:1.65">
+            DataDock is a <strong style="color:var(--text)">software &amp; games file hosting platform</strong>.
+            All members must follow these rules when uploading or importing files.
+            Violations will result in immediate access revocation without warning.
+          </p>
+        </div>
+      </div>
+
+      <!-- Allowed -->
+      <div class="card" style="margin-bottom:1.25rem">
+        <div class="card-header" style="color:#059669"><i class="fa-solid fa-circle-check" style="margin-right:.4rem"></i> What You Can Upload</div>
+        <div style="padding:.75rem 1.25rem 1.25rem;display:flex;flex-direction:column;gap:.6rem">
+
+          <div class="rule-item rule-allowed">
+            <i class="fa-solid fa-box-archive rule-icon"></i>
+            <div>
+              <div class="rule-title">Software Installers &amp; Setup Files</div>
+              <div class="rule-desc">.exe, .msi, .dmg, .pkg, .deb, .rpm, .apk — official or cracked software setups</div>
+            </div>
+          </div>
+
+          <div class="rule-item rule-allowed">
+            <i class="fa-solid fa-gamepad rule-icon"></i>
+            <div>
+              <div class="rule-title">Games &amp; Game Files</div>
+              <div class="rule-desc">Full game installers, repacks, patches, updates, DLC, mods, and game-related tools</div>
+            </div>
+          </div>
+
+          <div class="rule-item rule-allowed">
+            <i class="fa-solid fa-file-zipper rule-icon"></i>
+            <div>
+              <div class="rule-title">Compressed Archives of Software / Games</div>
+              <div class="rule-desc">.zip, .rar, .7z, .tar.gz archives — as long as their contents are software or game files</div>
+            </div>
+          </div>
+
+          <div class="rule-item rule-allowed">
+            <i class="fa-solid fa-screwdriver-wrench rule-icon"></i>
+            <div>
+              <div class="rule-title">Tools, Utilities &amp; Scripts</div>
+              <div class="rule-desc">System tools, scripts, drivers, emulators, firmware, and developer utilities</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Not Allowed -->
+      <div class="card" style="margin-bottom:1.25rem">
+        <div class="card-header" style="color:#dc2626"><i class="fa-solid fa-ban" style="margin-right:.4rem"></i> What Is Not Allowed</div>
+        <div style="padding:.75rem 1.25rem 1.25rem;display:flex;flex-direction:column;gap:.6rem">
+
+          <div class="rule-item rule-denied">
+            <i class="fa-solid fa-image rule-icon"></i>
+            <div>
+              <div class="rule-title">Images</div>
+              <div class="rule-desc">.jpg, .png, .gif, .webp, .svg, .bmp — standalone image files are not permitted</div>
+            </div>
+          </div>
+
+          <div class="rule-item rule-denied">
+            <i class="fa-solid fa-music rule-icon"></i>
+            <div>
+              <div class="rule-title">Audio Files</div>
+              <div class="rule-desc">.mp3, .wav, .flac, .ogg, .aac — music, podcasts, or any standalone audio</div>
+            </div>
+          </div>
+
+          <div class="rule-item rule-denied">
+            <i class="fa-solid fa-film rule-icon"></i>
+            <div>
+              <div class="rule-title">Video Files</div>
+              <div class="rule-desc">.mp4, .mkv, .avi, .mov — movies, clips, or any standalone video content</div>
+            </div>
+          </div>
+
+          <div class="rule-item rule-denied">
+            <i class="fa-solid fa-triangle-exclamation rule-icon"></i>
+            <div>
+              <div class="rule-title">Adult or Explicit Content</div>
+              <div class="rule-desc">Any sexually explicit, adult, or age-restricted material is strictly forbidden</div>
+            </div>
+          </div>
+
+          <div class="rule-item rule-denied">
+            <i class="fa-solid fa-copy rule-icon"></i>
+            <div>
+              <div class="rule-title">Duplicate Files</div>
+              <div class="rule-desc">Do not re-upload a file that already exists on the platform — use the existing link instead. Check the File Manager before uploading.</div>
+            </div>
+          </div>
+
+          <div class="rule-item rule-denied">
+            <i class="fa-solid fa-bug rule-icon"></i>
+            <div>
+              <div class="rule-title">Malware, Viruses &amp; Ransomware</div>
+              <div class="rule-desc">Never upload files intended to cause harm, steal data, or damage systems</div>
+            </div>
+          </div>
+
+          <div class="rule-item rule-denied">
+            <i class="fa-solid fa-file-shield rule-icon"></i>
+            <div>
+              <div class="rule-title">Misleading or Disguised Files</div>
+              <div class="rule-desc">Do not name files inaccurately. A file must be exactly what its name claims. No repackaging prohibited content inside archives.</div>
+            </div>
+          </div>
+
+          <div class="rule-item rule-denied">
+            <i class="fa-solid fa-id-card rule-icon"></i>
+            <div>
+              <div class="rule-title">Personal or Sensitive Data</div>
+              <div class="rule-desc">Documents containing personal information, credentials, IDs, financial records, or private data</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- General rules -->
+      <div class="card" style="margin-bottom:1.25rem">
+        <div class="card-header"><i class="fa-solid fa-list-check" style="margin-right:.4rem;color:var(--primary)"></i> General Rules</div>
+        <div style="padding:.75rem 1.25rem 1.25rem;display:flex;flex-direction:column;gap:.6rem">
+
+          <div class="rule-item rule-neutral">
+            <i class="fa-solid fa-tag rule-icon"></i>
+            <div>
+              <div class="rule-title">Use Accurate Filenames</div>
+              <div class="rule-desc">Name files clearly and accurately — include the version number, platform (Windows/Mac/Android), and game/software name</div>
+            </div>
+          </div>
+
+          <div class="rule-item rule-neutral">
+            <i class="fa-solid fa-magnifying-glass rule-icon"></i>
+            <div>
+              <div class="rule-title">Search Before Uploading</div>
+              <div class="rule-desc">Always check the File Manager for an existing copy before uploading. Duplicate files waste storage and split download counts.</div>
+            </div>
+          </div>
+
+          <div class="rule-item rule-neutral">
+            <i class="fa-solid fa-link-slash rule-icon"></i>
+            <div>
+              <div class="rule-title">Import from URL — Verified Sources Only</div>
+              <div class="rule-desc">Only import from trusted, direct download links. Do not import from random or untrusted websites.</div>
+            </div>
+          </div>
+
+          <div class="rule-item rule-neutral">
+            <i class="fa-solid fa-user-lock rule-icon"></i>
+            <div>
+              <div class="rule-title">Keep Your API Key Private</div>
+              <div class="rule-desc">Never share your access key with anyone. You are responsible for all activity done under your key.</div>
+            </div>
+          </div>
+
+          <div class="rule-item rule-neutral">
+            <i class="fa-solid fa-headset rule-icon"></i>
+            <div>
+              <div class="rule-title">Report Issues via Support</div>
+              <div class="rule-desc">If you encounter a problem or are unsure whether a file is allowed, open a Support ticket before uploading.</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Consequences -->
+      <div class="card" style="border-left:4px solid #ef4444">
+        <div class="card-header" style="color:#dc2626"><i class="fa-solid fa-gavel" style="margin-right:.4rem"></i> Consequences of Violations</div>
+        <div style="padding:1rem 1.25rem">
+          <p style="margin:0;font-size:.875rem;color:var(--muted);line-height:1.7">
+            Breaking any of the above rules may result in:
+            <strong style="color:var(--text)"> immediate revocation of your API key</strong>,
+            deletion of all files uploaded under your account, and a permanent ban from the platform.
+            There are no warnings for serious violations (adult content, malware, or deliberate misuse).
+          </p>
+        </div>
+      </div>
+
     </div>
 
     <!-- ── File Reports ── -->
