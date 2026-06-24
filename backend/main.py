@@ -2624,6 +2624,7 @@ async def get_public_settings(db: Session = Depends(get_db)):
         "monetag_head":    _get_setting(db, "monetag_head"),
         "monetag_banner":  _get_setting(db, "monetag_banner"),
         "monetag_side":    _get_setting(db, "monetag_side"),
+        "download_hint":   _get_setting(db, "download_hint"),
     }
 
 
@@ -2633,6 +2634,7 @@ class UpdateSettingsIn(BaseModel):
     monetag_head:   Optional[str] = None
     monetag_banner: Optional[str] = None
     monetag_side:   Optional[str] = None
+    download_hint:  Optional[str] = None
 
 
 @app.post("/api/admin/settings")
@@ -2652,6 +2654,7 @@ async def update_settings(
     _upsert_setting(db, "monetag_head",   body.monetag_head   or None)
     _upsert_setting(db, "monetag_banner", body.monetag_banner or None)
     _upsert_setting(db, "monetag_side",   body.monetag_side   or None)
+    _upsert_setting(db, "download_hint",  body.download_hint  or None)
     db.commit()
     return {"ok": True}
 

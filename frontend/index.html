@@ -190,6 +190,24 @@
       </div>
 
       <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-header"><i class="fa-solid fa-circle-info"></i> Download Instructions</div>
+        <div style="padding:1rem 1.25rem">
+          <p style="color:var(--muted);font-size:.875rem;margin:0 0 1rem 0">
+            Show a custom message on every download page, just below the "Report an Issue" button.
+            Leave blank to hide it. Example: <em>Click the Download button 2 times to start your download.</em>
+          </p>
+          <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
+            <input id="download-hint-input" type="text"
+              placeholder="e.g. Click the Download button 2 times to download your file"
+              style="flex:1;min-width:220px" />
+            <button id="download-hint-save" class="btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+            <button id="download-hint-clear" class="btn-sm"><i class="fa-solid fa-xmark"></i> Clear</button>
+          </div>
+          <div id="download-hint-msg" class="ad-form-msg" style="margin-top:.6rem"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:1.5rem">
         <div class="card-header"><i class="fa-solid fa-rotate-right"></i> Download Redirect URL</div>
         <div style="padding:1rem 1.25rem">
           <p style="color:var(--muted);font-size:.875rem;margin:0 0 1rem 0">

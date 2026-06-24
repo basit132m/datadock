@@ -1277,6 +1277,7 @@ function initStorageForm() {
 async function loadRedirectUrlSetting() {
   try {
     const s = await apiFetch('GET', '/api/settings');
+    document.getElementById('download-hint-input').value   = s.download_hint   || '';
     document.getElementById('redirect-url-input').value    = s.redirect_url    || '';
     document.getElementById('popup-url-input').value       = s.popup_url       || '';
     document.getElementById('monetag-head-input').value    = s.monetag_head    || '';
@@ -1290,6 +1291,7 @@ async function saveSetting(field, value, msgId, inputId) {
   msg.textContent = '';
   // Always send all fields together so saving one never clears the others
   const body = {
+    download_hint:  document.getElementById('download-hint-input').value.trim()  || null,
     redirect_url:   document.getElementById('redirect-url-input').value.trim()   || null,
     popup_url:      document.getElementById('popup-url-input').value.trim()       || null,
     monetag_head:   document.getElementById('monetag-head-input').value.trim()   || null,
@@ -1310,6 +1312,17 @@ async function saveSetting(field, value, msgId, inputId) {
 }
 
 function initRedirectUrlForm() {
+  // Download hint
+  document.getElementById('download-hint-save').addEventListener('click', () => {
+    saveSetting('download_hint', document.getElementById('download-hint-input').value.trim(), 'download-hint-msg', 'download-hint-input');
+  });
+  document.getElementById('download-hint-clear').addEventListener('click', () => {
+    saveSetting('download_hint', '', 'download-hint-msg', 'download-hint-input');
+  });
+  document.getElementById('download-hint-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('download-hint-save').click();
+  });
+
   // Redirect URL
   document.getElementById('redirect-url-save').addEventListener('click', () => {
     saveSetting('redirect_url', document.getElementById('redirect-url-input').value.trim(), 'redirect-url-msg', 'redirect-url-input');

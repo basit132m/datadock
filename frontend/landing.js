@@ -171,6 +171,12 @@
     const monetagHead   = settings.monetag_head   || null;
     const monetagBanner = settings.monetag_banner || null;
     const monetagSide   = settings.monetag_side   || null;
+    const downloadHint  = settings.download_hint  || null;
+
+    if (downloadHint) {
+      document.getElementById('lp-download-hint-text').textContent = downloadHint;
+      document.getElementById('lp-download-hint').hidden = false;
+    }
 
     // Helper: parse HTML string and inject scripts + other nodes into a container
     function injectAdCode(html, container, appendToHead) {
