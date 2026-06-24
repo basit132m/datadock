@@ -637,10 +637,10 @@ select { background: var(--surface); color: var(--text); }
 
 /* Download hint */
 .lp-download-hint {
-  display: flex; align-items: flex-start; gap: .55rem;
-  padding: .65rem .9rem; border-radius: 10px;
+  display: flex; align-items: flex-start; gap: .5rem;
+  padding: .55rem .8rem; border-radius: 10px;
   background: rgba(99,102,241,.08); border: 1px solid rgba(99,102,241,.22);
-  font-size: .82rem; color: var(--lp-text); line-height: 1.55; text-align: left;
+  font-size: .74rem; color: var(--lp-text); line-height: 1.5; text-align: left;
 }
 .lp-dark .lp-download-hint { background: rgba(99,102,241,.13); border-color: rgba(99,102,241,.32); }
 .lp-hint-icon { color: #6366f1; flex-shrink: 0; margin-top: .15rem; font-size: .85rem; }
