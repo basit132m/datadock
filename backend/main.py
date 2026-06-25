@@ -11,6 +11,7 @@ import re
 import secrets
 import socket
 import string
+import struct
 import uuid
 from datetime import datetime, timedelta
 from typing import Optional
@@ -1804,6 +1805,95 @@ async def import_from_url(
 ):
     await _assert_public_url(body.url)
 
+    # ── Mega.nz — client-side encrypted, cannot be handled by normal HTTP pipeline ──
+    if _MEGA_RE.match(body.url):
+        try:
+            handle, key_b64 = _mega_parse(body.url)
+            raw_key = _mega_b64(key_b64)
+            if len(raw_key) != 32:
+                raise ValueError(f"Invalid Mega key length ({len(raw_key)} bytes)")
+            aes_key, aes_iv = _mega_key_iv(raw_key)
+
+            # Call Mega API to get CDN download URL + file metadata
+            async with httpx.AsyncClient(timeout=15.0) as _mc:
+                _mr = await _mc.post(
+                    "https://g.api.mega.co.nz/cs",
+                    params={"id": secrets.randbelow(999999999), "app": "python"},
+                    json=[{"a": "g", "g": 1, "p": handle}],
+                )
+                _mr.raise_for_status()
+                api_data = _mr.json()
+
+            if not api_data or not isinstance(api_data, list):
+                raise ValueError("Empty response from Mega API")
+            file_info = api_data[0]
+            if isinstance(file_info, int):
+                raise ValueError(_MEGA_ERRORS.get(file_info, f"Mega API error {file_info}"))
+
+            mega_dl_url   = file_info.get("g") or ""
+            mega_file_size = int(file_info.get("s") or 0)
+            if not mega_dl_url:
+                raise ValueError("Mega API did not return a download URL")
+
+            # Decrypt file attributes to get the original filename
+            filename = (body.filename or "").strip()
+            if not filename:
+                attr_enc = file_info.get("at", "")
+                if attr_enc:
+                    try:
+                        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+                        from cryptography.hazmat.backends import default_backend
+                        attr_raw = _mega_b64(attr_enc)
+                        pad = (16 - len(attr_raw) % 16) % 16
+                        _c = Cipher(algorithms.AES(aes_key), modes.CBC(b'\x00' * 16),
+                                    backend=default_backend()).decryptor()
+                        attr_dec = _c.update(attr_raw + b'\x00' * pad)
+                        attr_str = attr_dec.decode('utf-8', errors='ignore')
+                        _am = re.search(r'MEGA(\{.+?\})', attr_str)
+                        if _am:
+                            filename = json.loads(_am.group(1)).get('n', '')
+                    except Exception:
+                        pass
+            filename = os.path.basename(filename or f"mega_{handle}").replace('\0', '') or f"mega_{handle}"
+
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(400, f"Mega.nz error: {exc}")
+
+        # Create storage slot
+        file_key_r2  = f"uploads/{uuid.uuid4()}/{filename}"
+        default_prov = _get_default_provider(db)
+        provider_id  = default_prov.id if default_prov else None
+        file_storage = _get_storage(provider_id, db)
+        try:
+            b2_upload_id = file_storage.create_multipart_upload(file_key_r2, "application/octet-stream")
+        except Exception as exc:
+            raise HTTPException(500, f"Storage error: {exc}")
+
+        upload = Upload(
+            id=str(uuid.uuid4()), share_id=_share_id(), file_hash="",
+            filename=filename, file_size=mega_file_size,
+            content_type="application/octet-stream",
+            b2_upload_id=b2_upload_id, b2_file_key=file_key_r2,
+            status="importing", views=0, downloads=0,
+            storage_provider_id=provider_id,
+            uploaded_by_key_id=auth_key.id if auth_key else None,
+            created_at=datetime.utcnow(),
+        )
+        db.add(upload); db.commit()
+
+        _import_progress[upload.id] = {
+            "status": "importing", "bytes_done": 0,
+            "total": mega_file_size, "filename": filename, "error": None,
+        }
+        background_tasks.add_task(
+            _import_from_mega,
+            upload.id, mega_dl_url, aes_key, aes_iv,
+            file_key_r2, b2_upload_id, provider_id, mega_file_size,
+        )
+        return {"upload_id": upload.id, "filename": filename, "total": mega_file_size}
+
     # Resolve redirects and sniff metadata.
     # Strategy: try HEAD first (fast, no body); if the server blocks HEAD (405/403)
     # fall back to a Range GET for the first byte — that still resolves all redirects
@@ -2169,6 +2259,177 @@ async def _do_page_import(upload_id: str, page_url: str,
     db.close()
     # Hand off to the regular import pipeline
     await _do_import(upload_id, final_url, file_key, b2_upload_id, provider_id)
+
+
+# ── Mega.nz helpers ──────────────────────────────────────────────────────────
+
+_MEGA_RE = re.compile(
+    r'https?://mega\.nz/(?:file/(?P<h1>[^#\s]+)#(?P<k1>[^\s&]+)|#!(?P<h2>[^!\s]+)!(?P<k2>[^\s&]+))'
+)
+_MEGA_ERRORS = {-1: "Internal error", -2: "Bad arguments", -3: "Rate limited",
+                -9: "File not found or link expired", -11: "Access denied",
+                -14: "Invalid node", -16: "Upload failed"}
+
+
+def _mega_parse(url: str):
+    m = _MEGA_RE.match(url)
+    if not m:
+        raise ValueError("Unrecognised Mega.nz URL format")
+    return (m.group('h1'), m.group('k1')) if m.group('h1') else (m.group('h2'), m.group('k2'))
+
+
+def _mega_b64(s: str) -> bytes:
+    s = s.replace('-', '+').replace('_', '/')
+    return base64.b64decode(s + '=' * ((-len(s)) % 4))
+
+
+def _mega_key_iv(raw: bytes):
+    """Return (aes_key_16b, cbc_iv_16b) from the 32-byte Mega file key."""
+    a = struct.unpack('>8I', raw)
+    key = struct.pack('>4I', a[0] ^ a[4], a[1] ^ a[5], a[2] ^ a[6], a[3] ^ a[7])
+    iv  = struct.pack('>4I', a[4], a[5], 0, 0)
+    return key, iv
+
+
+async def _import_from_mega(upload_id: str, mega_dl_url: str,
+                             aes_key: bytes, aes_iv: bytes,
+                             file_key_r2: str, b2_upload_id: str,
+                             provider_id: Optional[str], mega_file_size: int):
+    """Stream a Mega.nz CDN file, decrypt AES-128-CBC on-the-fly, upload to R2."""
+    from database import SessionLocal
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    from cryptography.hazmat.backends import default_backend
+
+    loop = asyncio.get_event_loop()
+    db   = SessionLocal()
+    prog = _import_progress[upload_id]
+    file_storage = _get_storage(provider_id, db)
+
+    parts_dict: dict = {}
+    errors:     list = []
+    part_number      = 0
+    buf              = bytearray()
+    total_enc        = 0   # encrypted bytes received
+    decrypted_count  = 0   # decrypted bytes queued for upload
+
+    part_queue: asyncio.Queue = asyncio.Queue(maxsize=IMPORT_QUEUE_MAX)
+
+    async def upload_worker():
+        while True:
+            item = await part_queue.get()
+            try:
+                if item is None:
+                    return
+                if errors or prog.get("status") == "aborted":
+                    continue
+                pn, data = item
+                etag = await loop.run_in_executor(
+                    _upload_executor,
+                    lambda d=data, p=pn: file_storage.upload_part(file_key_r2, b2_upload_id, p, d),
+                )
+                parts_dict[pn] = etag
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                part_queue.task_done()
+
+    workers = [asyncio.create_task(upload_worker()) for _ in range(IMPORT_WORKERS)]
+
+    try:
+        cipher    = Cipher(algorithms.AES(aes_key), modes.CBC(aes_iv), backend=default_backend())
+        decryptor = cipher.decryptor()
+
+        async with httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=httpx.Timeout(30.0, read=600.0),
+        ) as client:
+            async with client.stream("GET", mega_dl_url) as resp:
+                resp.raise_for_status()
+                async for chunk in resp.aiter_bytes(IMPORT_READ_SIZE):
+                    if prog.get("status") == "aborted" or errors:
+                        break
+                    buf.extend(chunk)
+                    total_enc += len(chunk)
+                    prog["bytes_done"] = total_enc
+
+                    while len(buf) >= IMPORT_CHUNK:
+                        if prog.get("status") == "aborted" or errors:
+                            break
+                        raw = bytes(buf[:IMPORT_CHUNK])
+                        del buf[:IMPORT_CHUNK]
+                        decrypted = decryptor.update(raw)
+                        # Trim if we've gone past the real file size
+                        if mega_file_size > 0 and decrypted_count + len(decrypted) > mega_file_size:
+                            decrypted = decrypted[:mega_file_size - decrypted_count]
+                        decrypted_count += len(decrypted)
+                        if decrypted:
+                            part_number += 1
+                            await part_queue.put((part_number, decrypted))
+
+        # Flush remaining bytes (final partial AES block)
+        if buf and not errors and prog.get("status") != "aborted":
+            keep    = (mega_file_size - decrypted_count) if mega_file_size > 0 else len(buf)
+            pad_len = (16 - len(buf) % 16) % 16
+            raw     = bytes(buf) + b'\x00' * pad_len
+            decrypted = decryptor.update(raw)[:keep]
+            if decrypted:
+                part_number += 1
+                await part_queue.put((part_number, decrypted))
+
+    finally:
+        while not part_queue.empty():
+            try:
+                part_queue.get_nowait(); part_queue.task_done()
+            except asyncio.QueueEmpty:
+                break
+        for _ in range(IMPORT_WORKERS):
+            part_queue.put_nowait(None)
+
+    await asyncio.gather(*workers, return_exceptions=True)
+
+    if errors:
+        prog["status"] = "failed"
+        prog["error"]  = str(errors[0])[:300]
+        upload = db.query(Upload).filter(Upload.id == upload_id).first()
+        if upload:
+            upload.status = "failed"; db.commit()
+        try: file_storage.abort_multipart_upload(file_key_r2, b2_upload_id)
+        except Exception: pass
+        db.close(); return
+
+    if prog.get("status") == "aborted":
+        try: file_storage.abort_multipart_upload(file_key_r2, b2_upload_id)
+        except Exception: pass
+        db.close(); return
+
+    if not parts_dict:
+        prog["status"] = "failed"
+        prog["error"]  = "Mega download returned an empty file"
+        db.close(); return
+
+    prog["status"] = "completing"
+    parts = [{"part_number": pn, "etag": et} for pn, et in sorted(parts_dict.items())]
+    try:
+        await loop.run_in_executor(
+            None, lambda: file_storage.complete_multipart_upload(file_key_r2, b2_upload_id, parts)
+        )
+    except Exception as exc:
+        prog["status"] = "failed"
+        prog["error"]  = f"Storage complete failed: {exc}"
+        db.close(); return
+
+    total_bytes = mega_file_size or total_enc
+    upload = db.query(Upload).filter(Upload.id == upload_id).first()
+    if upload:
+        upload.status       = "completed"
+        upload.file_size    = total_bytes
+        upload.completed_at = datetime.utcnow()
+        db.commit()
+
+    prog["status"]     = "completed"
+    prog["bytes_done"] = total_bytes
+    prog["total"]      = total_bytes
+    db.close()
 
 
 async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str,
