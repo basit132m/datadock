@@ -476,7 +476,7 @@ function _renderRecentFiles(files) {
 
 // ── File list ─────────────────────────────────────────────────────────────────
 
-function _buildFileRow(f, canDelete, showUploader = false) {
+function _buildFileRow(f, canDelete, showUploader = false, canRename = false) {
   const meta = providerMeta(f.storage_name || '');
   const uploaderCell = showUploader
     ? `<td><span class="uploader-chip">${f.uploaded_by ? escHtml(f.uploaded_by) : '<span style="color:var(--muted)">—</span>'}</span></td>`
@@ -493,6 +493,7 @@ function _buildFileRow(f, canDelete, showUploader = false) {
     <td class="tf-actions">
       ${f.share_id ? `<button class="btn-share">Share</button>` : ''}
       <button class="btn-direct">Direct</button>
+      ${canRename ? '<button class="btn-rename">Rename</button>' : ''}
       ${canDelete ? '<button class="btn-delete">Delete</button>' : ''}
     </td>`;
 
@@ -511,6 +512,12 @@ function _buildFileRow(f, canDelete, showUploader = false) {
     setTimeout(() => { e.target.textContent = 'Direct'; }, 2000);
   });
 
+  if (canRename) {
+    tr.querySelector('.btn-rename').addEventListener('click', () => {
+      openMemberRenameModal(f.id, f.filename, tr);
+    });
+  }
+
   if (canDelete) {
     tr.querySelector('.btn-delete').addEventListener('click', async () => {
       if (!confirm(`Delete "${f.filename}"?`)) return;
@@ -525,7 +532,7 @@ function _buildFileRow(f, canDelete, showUploader = false) {
   return tr;
 }
 
-function _renderFilesTable(container, files, canDelete, showUploader = false) {
+function _renderFilesTable(container, files, canDelete, showUploader = false, canRename = false) {
   const table = document.createElement('table');
   table.className = 'files-table';
   table.innerHTML = `
@@ -538,11 +545,11 @@ function _renderFilesTable(container, files, canDelete, showUploader = false) {
     </thead>
     <tbody></tbody>`;
   const tbody = table.querySelector('tbody');
-  files.forEach(f => tbody.appendChild(_buildFileRow(f, canDelete, showUploader)));
+  files.forEach(f => tbody.appendChild(_buildFileRow(f, canDelete, showUploader, canRename)));
   container.appendChild(table);
 }
 
-function _buildFolderCard(displayName, files, canDelete = true, showUploader = false) {
+function _buildFolderCard(displayName, files, canDelete = true, showUploader = false, canRename = false) {
   const totalSize = files.reduce((s, f) => s + (f.file_size || 0), 0);
 
   const card = document.createElement('div');
@@ -572,7 +579,7 @@ function _buildFolderCard(displayName, files, canDelete = true, showUploader = f
     chevron.className  = `fa-solid ${expanded ? 'fa-chevron-down' : 'fa-chevron-right'} folder-chevron`;
     if (expanded && !rendered) {
       rendered = true;
-      _renderFilesTable(body, files, canDelete, showUploader);
+      _renderFilesTable(body, files, canDelete, showUploader, canRename);
     }
   });
 
@@ -656,9 +663,9 @@ async function loadFileList() {
         list.appendChild(_buildFolderCard(name, groupFiles));
       }
     } else {
-      // Members: also show their own "My Files" folder
+      // Members: also show their own "My Files" folder (with rename permission)
       list.appendChild(_buildFolderCard(
-        'My Files', files, false, false
+        'My Files', files, false, false, true
       ));
     }
   } catch (e) {
@@ -877,12 +884,14 @@ async function startImport(url, filename) {
   }
 
   const { upload_id, filename: detectedName, total } = initData;
-  _saveImport(upload_id, detectedName, total, url);
+  // Always display the name the user typed; fall back to server-detected name
+  const displayName = filename || detectedName;
+  _saveImport(upload_id, displayName, total, url);
 
-  const el = buildImportItem(detectedName, total);
+  const el = buildImportItem(displayName, total);
   queue.prepend(el);
   wrap.hidden = false;
-  _attachImportPoll(upload_id, detectedName, total, url, el);
+  _attachImportPoll(upload_id, displayName, total, url, el);
 }
 
 async function startBrowserRelay(url, filename, el) {
@@ -2962,6 +2971,53 @@ async function confirmFmRename() {
   }
 }
 
+
+// ── Member rename (My Files) ──────────────────────────────────────────────────
+
+let _memberRenameTarget = null;  // { id, tr }
+
+function openMemberRenameModal(fileId, currentName, tr) {
+  _memberRenameTarget = { id: fileId, tr };
+  const input = document.getElementById('member-rename-input');
+  input.value = currentName;
+  document.getElementById('member-rename-err').textContent = '';
+  const btn = document.getElementById('member-rename-confirm');
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save';
+  document.getElementById('member-rename-modal').style.display = 'flex';
+  setTimeout(() => { input.focus(); input.select(); }, 50);
+}
+
+function closeMemberRenameModal() {
+  document.getElementById('member-rename-modal').style.display = 'none';
+  _memberRenameTarget = null;
+}
+
+async function confirmMemberRename() {
+  if (!_memberRenameTarget) return;
+  const input  = document.getElementById('member-rename-input');
+  const errEl  = document.getElementById('member-rename-err');
+  const btn    = document.getElementById('member-rename-confirm');
+  const newName = input.value.trim();
+  errEl.textContent = '';
+
+  if (!newName) { errEl.textContent = 'Filename cannot be empty.'; return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
+
+  try {
+    const res = await apiFetch('POST', `/api/files/${_memberRenameTarget.id}/rename`, { filename: newName });
+    // Update filename cell in the table row
+    const nameSpan = _memberRenameTarget.tr.querySelector('.tf-name');
+    if (nameSpan) nameSpan.textContent = res.filename;
+    closeMemberRenameModal();
+  } catch (e) {
+    errEl.textContent = e.message;
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save';
+  }
+}
 
 function fmSearchRedirectFiles() {
   const q       = document.getElementById('fm-redirect-file-search').value.toLowerCase().trim();

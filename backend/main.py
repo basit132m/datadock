@@ -1015,6 +1015,30 @@ async def admin_rename_file(
     return {"ok": True, "filename": filename}
 
 
+@app.post("/api/files/{file_id}/rename")
+async def rename_own_file(
+    file_id: str,
+    body: AdminRenameIn,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+    auth_key: Optional[ApiKey] = Depends(get_current_key),
+):
+    filename = body.filename.strip()
+    if not filename:
+        raise HTTPException(400, "Filename cannot be empty")
+    if len(filename) > 500:
+        raise HTTPException(400, "Filename too long (max 500 chars)")
+    upload = db.query(Upload).filter(Upload.id == file_id, Upload.status == "completed").first()
+    if not upload:
+        raise HTTPException(404, "File not found")
+    if auth.get("role") != "admin":
+        if not auth_key or upload.uploaded_by_key_id != auth_key.id:
+            raise HTTPException(403, "You can only rename files you uploaded")
+    upload.filename = filename
+    db.commit()
+    return {"ok": True, "filename": filename}
+
+
 class AdminDeleteIn(BaseModel):
     redirect_type: str = "none"          # "none" | "file" | "url"
     redirect_to_share_id: Optional[str] = None
@@ -1937,7 +1961,10 @@ async def import_from_url(
             "error": None,
         }
 
-        background_tasks.add_task(_do_page_import, upload.id, final_url, provider_id)
+        background_tasks.add_task(
+            _do_page_import, upload.id, final_url, provider_id,
+            (body.filename or "").strip(),
+        )
 
         return {
             "upload_id": upload.id,
@@ -2192,7 +2219,8 @@ async def _headless_extract(url: str) -> Optional[str]:
 
 
 async def _do_page_import(upload_id: str, page_url: str,
-                          provider_id: Optional[str] = None):
+                          provider_id: Optional[str] = None,
+                          user_filename: str = ""):
     """Background task: use headless browser to extract a download URL from a
     web page, then hand off to the normal _do_import pipeline."""
     from database import SessionLocal
@@ -2226,8 +2254,10 @@ async def _do_page_import(upload_id: str, page_url: str,
         content_length = int(meta.get("content-length", 0) or 0)
         content_type   = (meta.get("content-type", "application/octet-stream")
                           .split(";")[0].strip() or "application/octet-stream")
-        filename = final_url.split("?")[0].rstrip("/").split("/")[-1]
-        filename = os.path.basename(filename).replace("\0", "") or "imported_file"
+        detected = final_url.split("?")[0].rstrip("/").split("/")[-1]
+        detected = os.path.basename(detected).replace("\0", "") or "imported_file"
+        # User-provided filename always wins over auto-detected name
+        filename = user_filename or detected
 
         file_key     = f"uploads/{uuid.uuid4()}/{filename}"
         file_storage = _get_storage(provider_id, db)
