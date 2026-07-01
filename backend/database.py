@@ -10,6 +10,20 @@ engine = create_engine(
     DATABASE_URL,
     connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
 )
+
+if "sqlite" in DATABASE_URL:
+    from sqlalchemy import event
+
+    @event.listens_for(engine, "connect")
+    def _sqlite_pragmas(dbapi_conn, _):
+        # WAL lets the 2 uvicorn workers read/write concurrently without
+        # "database is locked" errors; busy_timeout retries instead of failing.
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA busy_timeout=15000")
+        cur.execute("PRAGMA synchronous=NORMAL")
+        cur.close()
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
@@ -57,6 +71,7 @@ def _migrate():
             "CREATE INDEX IF NOT EXISTS ix_uploads_redirects_to ON uploads (redirects_to)",
             "ALTER TABLE uploads ADD COLUMN dup_excluded INTEGER DEFAULT 0",
             "ALTER TABLE uploads ADD COLUMN redirect_url VARCHAR(500)",
+            "ALTER TABLE uploads ADD COLUMN import_bytes_done BIGINT DEFAULT 0",
         ]:
             try:
                 conn.execute(text(sql))

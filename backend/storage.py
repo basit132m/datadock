@@ -25,7 +25,14 @@ class S3Storage:
             endpoint_url=endpoint_url,
             aws_access_key_id=key_id,
             aws_secret_access_key=application_key,
-            config=Config(signature_version="s3v4"),
+            config=Config(
+                signature_version="s3v4",
+                # Default pool is 10 — smaller than IMPORT_WORKERS, which forces
+                # TLS re-handshakes per part. Size it above any worker count.
+                max_pool_connections=int(os.getenv("S3_MAX_POOL_CONNECTIONS", "64")),
+                retries={"max_attempts": 4, "mode": "standard"},
+                tcp_keepalive=True,
+            ),
         )
 
     def test_connection(self):

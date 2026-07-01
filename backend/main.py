@@ -2046,10 +2046,18 @@ async def import_status(
 ):
     prog = _import_progress.get(upload_id)
     if not prog:
+        # The import runs in whichever uvicorn worker took the POST — this poll
+        # may have landed on the other one. Serve the DB-synced progress instead
+        # of pretending the import is at 100%.
         upload = db.query(Upload).filter(Upload.id == upload_id).first()
         if not upload:
             raise HTTPException(404, "Import job not found")
-        prog = {"status": upload.status, "bytes_done": upload.file_size, "total": upload.file_size, "error": None}
+        if upload.status in ("importing", "analyzing"):
+            prog = {"status": upload.status,
+                    "bytes_done": upload.import_bytes_done or 0,
+                    "total": upload.file_size or 0, "error": None}
+        else:
+            prog = {"status": upload.status, "bytes_done": upload.file_size, "total": upload.file_size, "error": None}
 
     result = dict(prog)
     if prog.get("status") == "completed":
@@ -2059,7 +2067,44 @@ async def import_status(
             result["direct_url"] = _get_storage(upload.storage_provider_id, db).get_download_url(upload.b2_file_key)
             result["filename"] = upload.filename
             result["file_size"] = upload.file_size
+    if result.get("status") in ("completed", "failed", "aborted"):
+        _schedule_progress_cleanup(upload_id)
     return result
+
+
+def _sync_import_progress(upload_id: str, bytes_done: int) -> bool:
+    """Persist live import progress to the DB and return True if the upload was
+    aborted (possibly from the other uvicorn worker process). Blocking — run in
+    an executor. _import_progress is per-process, so the DB is the only channel
+    shared by both workers: status polls and aborts can land on either one."""
+    from database import SessionLocal
+    from sqlalchemy import text as _sql_text
+    db = SessionLocal()
+    try:
+        row = db.execute(
+            _sql_text("SELECT status FROM uploads WHERE id = :id"), {"id": upload_id}
+        ).first()
+        if row and row[0] == "aborted":
+            return True
+        db.execute(
+            _sql_text("UPDATE uploads SET import_bytes_done = :b WHERE id = :id"),
+            {"b": bytes_done, "id": upload_id},
+        )
+        db.commit()
+        return False
+    except Exception:
+        return False
+    finally:
+        db.close()
+
+
+def _schedule_progress_cleanup(upload_id: str, delay: float = 900.0):
+    """Drop a finished import's in-memory progress entry after `delay` seconds —
+    the status endpoint falls back to the DB, so late polls still work."""
+    try:
+        asyncio.get_event_loop().call_later(delay, _import_progress.pop, upload_id, None)
+    except Exception:
+        pass
 
 
 _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
@@ -2342,7 +2387,8 @@ async def _import_from_mega(upload_id: str, mega_dl_url: str,
     total_enc        = 0   # encrypted bytes received
     decrypted_count  = 0   # decrypted bytes queued for upload
 
-    part_queue: asyncio.Queue = asyncio.Queue(maxsize=IMPORT_QUEUE_MAX)
+    # maxsize must fit the shutdown sentinels (one per worker) after a drain
+    part_queue: asyncio.Queue = asyncio.Queue(maxsize=max(IMPORT_QUEUE_MAX, IMPORT_WORKERS))
 
     async def upload_worker():
         while True:
@@ -2353,10 +2399,19 @@ async def _import_from_mega(upload_id: str, mega_dl_url: str,
                 if errors or prog.get("status") == "aborted":
                     continue
                 pn, data = item
-                etag = await loop.run_in_executor(
-                    _upload_executor,
-                    lambda d=data, p=pn: file_storage.upload_part(file_key_r2, b2_upload_id, p, d),
-                )
+                # Retry transient part failures — uploads are idempotent per
+                # PartNumber, and one hiccup shouldn't kill a multi-GB import.
+                for attempt in range(3):
+                    try:
+                        etag = await loop.run_in_executor(
+                            _upload_executor,
+                            lambda d=data, p=pn: file_storage.upload_part(file_key_r2, b2_upload_id, p, d),
+                        )
+                        break
+                    except Exception:
+                        if attempt == 2 or prog.get("status") == "aborted":
+                            raise
+                        await asyncio.sleep(2 * (attempt + 1))
                 parts_dict[pn] = etag
             except Exception as exc:
                 errors.append(exc)
@@ -2368,6 +2423,8 @@ async def _import_from_mega(upload_id: str, mega_dl_url: str,
     try:
         cipher    = Cipher(algorithms.AES(aes_key), modes.CBC(aes_iv), backend=default_backend())
         decryptor = cipher.decryptor()
+
+        last_sync = loop.time()
 
         async with httpx.AsyncClient(
             follow_redirects=True,
@@ -2382,12 +2439,25 @@ async def _import_from_mega(upload_id: str, mega_dl_url: str,
                     total_enc += len(chunk)
                     prog["bytes_done"] = total_enc
 
+                    now = loop.time()
+                    if now - last_sync >= 2.0:
+                        last_sync = now
+                        if await loop.run_in_executor(
+                            None, _sync_import_progress, upload_id, total_enc
+                        ):
+                            prog["status"] = "aborted"
+
                     while len(buf) >= IMPORT_CHUNK:
                         if prog.get("status") == "aborted" or errors:
                             break
                         raw = bytes(buf[:IMPORT_CHUNK])
                         del buf[:IMPORT_CHUNK]
-                        decrypted = decryptor.update(raw)
+                        # CPU-bound AES-CBC on 64 MB blocks — run off the event
+                        # loop so polls and socket reads aren't stalled. Calls
+                        # stay sequential here, so decryptor state is safe.
+                        decrypted = await loop.run_in_executor(
+                            _upload_executor, decryptor.update, raw
+                        )
                         # Trim if we've gone past the real file size
                         if mega_file_size > 0 and decrypted_count + len(decrypted) > mega_file_size:
                             decrypted = decrypted[:mega_file_size - decrypted_count]
@@ -2401,7 +2471,9 @@ async def _import_from_mega(upload_id: str, mega_dl_url: str,
             keep    = (mega_file_size - decrypted_count) if mega_file_size > 0 else len(buf)
             pad_len = (16 - len(buf) % 16) % 16
             raw     = bytes(buf) + b'\x00' * pad_len
-            decrypted = decryptor.update(raw)[:keep]
+            decrypted = (await loop.run_in_executor(
+                _upload_executor, decryptor.update, raw
+            ))[:keep]
             if decrypted:
                 part_number += 1
                 await part_queue.put((part_number, decrypted))
@@ -2478,7 +2550,8 @@ async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str,
         buf = bytearray()
         total_bytes = 0
 
-        part_queue: asyncio.Queue = asyncio.Queue(maxsize=IMPORT_QUEUE_MAX)
+        # maxsize must fit the shutdown sentinels (one per worker) after a drain
+        part_queue: asyncio.Queue = asyncio.Queue(maxsize=max(IMPORT_QUEUE_MAX, IMPORT_WORKERS))
 
         async def upload_worker():
             while True:
@@ -2489,10 +2562,19 @@ async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str,
                     if errors or prog.get("status") == "aborted":
                         continue  # drain queue without processing
                     pn, data = item
-                    etag = await loop.run_in_executor(
-                        _upload_executor,
-                        lambda d=data, p=pn: file_storage.upload_part(file_key, b2_upload_id, p, d),
-                    )
+                    # Retry transient part failures — uploads are idempotent per
+                    # PartNumber, and one hiccup shouldn't kill a multi-GB import.
+                    for attempt in range(3):
+                        try:
+                            etag = await loop.run_in_executor(
+                                _upload_executor,
+                                lambda d=data, p=pn: file_storage.upload_part(file_key, b2_upload_id, p, d),
+                            )
+                            break
+                        except Exception:
+                            if attempt == 2 or prog.get("status") == "aborted":
+                                raise
+                            await asyncio.sleep(2 * (attempt + 1))
                     parts_dict[pn] = etag
                 except Exception as exc:
                     errors.append(exc)
@@ -2500,6 +2582,8 @@ async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str,
                     part_queue.task_done()
 
         workers = [asyncio.create_task(upload_worker()) for _ in range(IMPORT_WORKERS)]
+
+        last_sync = loop.time()
 
         try:
             async with httpx.AsyncClient(
@@ -2510,12 +2594,32 @@ async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str,
             ) as client:
                 async with client.stream("GET", url) as resp:
                     resp.raise_for_status()
+                    # Pre-flight HEAD may have been blocked (token URLs) — pick up
+                    # the real size from the streaming response so the UI shows %.
+                    if not prog.get("total"):
+                        try:
+                            prog["total"] = int(resp.headers.get("content-length", 0) or 0)
+                        except (TypeError, ValueError):
+                            pass
                     async for chunk in resp.aiter_bytes(IMPORT_READ_SIZE):
                         if prog.get("status") == "aborted" or errors:
                             break
                         buf.extend(chunk)
                         total_bytes += len(chunk)
                         prog["bytes_done"] = total_bytes
+
+                        if MAX_BYTES and total_bytes > MAX_BYTES:
+                            raise ValueError(
+                                f"Remote file exceeds {os.getenv('MAX_FILE_SIZE_GB', '10')} GB limit"
+                            )
+
+                        now = loop.time()
+                        if now - last_sync >= 2.0:
+                            last_sync = now
+                            if await loop.run_in_executor(
+                                None, _sync_import_progress, upload_id, total_bytes
+                            ):
+                                prog["status"] = "aborted"
 
                         while len(buf) >= IMPORT_CHUNK:
                             if prog.get("status") == "aborted" or errors:
@@ -2621,6 +2725,7 @@ async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str,
             pass
     finally:
         db.close()
+        _schedule_progress_cleanup(upload_id)
 
 
 # ── Storage Provider API ──────────────────────────────────────────────────────
