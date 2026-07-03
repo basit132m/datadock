@@ -1474,7 +1474,50 @@ function initAdForm() {
 
 // ── Team Key Management ───────────────────────────────────────────────────────
 
+// ── Uploads by Member (today / yesterday) ─────────────────────────────────────
+
+let _memberUploadData = null;
+let _memberUploadDay  = 'today';
+
+function _renderMemberUploadCounts() {
+  const el = document.getElementById('member-upload-counts');
+  if (!_memberUploadData) return;
+  const rows = _memberUploadData[_memberUploadDay] || [];
+  if (!rows.length) {
+    el.innerHTML = '<p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">No uploads on this day.</p>';
+    return;
+  }
+  const max = Math.max(...rows.map(r => r.count), 1);
+  el.innerHTML = rows.map(r => {
+    const w = r.count === 0 ? 0 : Math.max(4, Math.round((r.count / max) * 100));
+    return `
+    <div class="muc-row">
+      <span class="muc-name"><i class="fa-solid fa-user muc-user-icon"></i> ${escHtml(r.name)}</span>
+      <div class="muc-bar-track"><div class="muc-bar" style="width:${w}%"></div></div>
+      <span class="muc-count${r.count === 0 ? ' muc-zero' : ''}">${r.count} file${r.count !== 1 ? 's' : ''}</span>
+    </div>`;
+  }).join('');
+}
+
+function switchMemberUploadDay(day) {
+  _memberUploadDay = day;
+  document.getElementById('muc-tab-today').classList.toggle('active', day === 'today');
+  document.getElementById('muc-tab-yesterday').classList.toggle('active', day === 'yesterday');
+  _renderMemberUploadCounts();
+}
+
+async function loadMemberUploadCounts() {
+  const el = document.getElementById('member-upload-counts');
+  try {
+    _memberUploadData = await apiFetch('GET', '/api/admin/member-upload-counts');
+    _renderMemberUploadCounts();
+  } catch (e) {
+    el.innerHTML = `<p style="padding:1.5rem;color:var(--danger);font-size:.875rem;text-align:center">${e.message}</p>`;
+  }
+}
+
 async function loadTeamPage() {
+  loadMemberUploadCounts();
   const el = document.getElementById('key-list');
   el.innerHTML = '<p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">Loading…</p>';
   let keys;

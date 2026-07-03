@@ -3086,6 +3086,51 @@ async def list_team_keys(db: Session = Depends(get_db), _=Depends(require_admin)
     return [_key_dict(k) for k in keys]
 
 
+@app.get("/api/admin/member-upload-counts")
+async def member_upload_counts(db: Session = Depends(get_db), _=Depends(require_admin)):
+    """How many files each team member uploaded today and yesterday (UTC days)."""
+    now = datetime.utcnow()
+    today_start     = datetime(now.year, now.month, now.day)
+    yesterday_start = today_start - timedelta(days=1)
+    tomorrow_start  = today_start + timedelta(days=1)
+
+    def _counts(start, end):
+        rows = (
+            db.query(Upload.uploaded_by_key_id, func.count(Upload.id))
+            .filter(
+                Upload.status == "completed",
+                Upload.completed_at >= start,
+                Upload.completed_at < end,
+            )
+            .group_by(Upload.uploaded_by_key_id)
+            .all()
+        )
+        return dict(rows)
+
+    today_counts     = _counts(today_start, tomorrow_start)
+    yesterday_counts = _counts(yesterday_start, today_start)
+
+    keys = db.query(ApiKey).all()
+    name_by_id = {k.id: k.name for k in keys}
+    member_ids = [k.id for k in keys if not k.is_master and k.active]
+
+    def _fmt(counts):
+        out = []
+        # Every active team member appears, even with 0 uploads
+        for kid in member_ids:
+            out.append({"name": name_by_id.get(kid, "Unknown"), "count": counts.get(kid, 0)})
+        # Admin / legacy uploads only shown when they actually uploaded something
+        for kid, cnt in counts.items():
+            if kid in member_ids:
+                continue
+            label = name_by_id.get(kid) if kid else "Unattributed"
+            out.append({"name": label or "Unknown", "count": cnt})
+        out.sort(key=lambda r: (-r["count"], r["name"].lower()))
+        return out
+
+    return {"today": _fmt(today_counts), "yesterday": _fmt(yesterday_counts)}
+
+
 @app.post("/api/admin/keys")
 async def create_team_key(body: CreateKeyIn, db: Session = Depends(get_db), _=Depends(require_admin)):
     if body.role not in ("member", "admin"):

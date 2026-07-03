@@ -480,6 +480,19 @@
         </div>
       </div>
 
+      <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+          <span><i class="fa-solid fa-chart-simple"></i> Uploads by Member</span>
+          <div class="muc-tabs">
+            <button id="muc-tab-today" class="btn-sm muc-tab active" onclick="switchMemberUploadDay('today')">Today</button>
+            <button id="muc-tab-yesterday" class="btn-sm muc-tab" onclick="switchMemberUploadDay('yesterday')">Yesterday</button>
+          </div>
+        </div>
+        <div id="member-upload-counts">
+          <p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">Loading…</p>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-header">All Team Keys</div>
         <div id="key-list">
