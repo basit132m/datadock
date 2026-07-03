@@ -3249,6 +3249,9 @@ function applyRoleUI() {
 function showPage(page) {
   // Redirect members away from admin-only pages
   if (userRole !== 'admin' && ADMIN_PAGES.includes(page)) page = 'upload';
+  if (!document.getElementById(`page-${page}`)) page = 'dashboard';
+  // Remember the page in the URL so a reload comes back here
+  if (location.hash !== '#' + page) history.replaceState(null, '', '#' + page);
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
   document.getElementById(`page-${page}`).classList.add('active');
@@ -3370,7 +3373,16 @@ function initApp() {
   window.addEventListener('offline', () => activeUploaders.forEach(u => u.pause()));
   window.addEventListener('online',  () => activeUploaders.forEach(u => u.resume()));
 
-  showPage(userRole === 'admin' ? 'dashboard' : 'upload');
+  // Support manual hash edits / links like /admin#referrers
+  window.addEventListener('hashchange', () => {
+    const p = location.hash.replace('#', '');
+    if (p && document.getElementById(`page-${p}`)) showPage(p);
+  });
+
+  // Restore the page from the URL hash on reload; fall back to the default
+  const saved = location.hash.replace('#', '');
+  const fallback = userRole === 'admin' ? 'dashboard' : 'upload';
+  showPage(saved && document.getElementById(`page-${saved}`) ? saved : fallback);
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
