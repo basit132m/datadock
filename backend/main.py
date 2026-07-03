@@ -280,15 +280,19 @@ def _parse_referrer_domain(referer: str, host: str) -> Optional[str]:
 
 
 async def _log_referrer(share_id: str, domain: str) -> None:
-    """Upsert referrer hit — atomic increment on existing row, insert otherwise."""
+    """Upsert referrer hit — atomic increment on existing row, insert otherwise.
+    Rows are bucketed per UTC day so Today/Yesterday filters count accurately;
+    pre-existing rows (day IS NULL) hold lifetime totals and stay frozen."""
     from database import SessionLocal
     from sqlalchemy import text as _t
     db = SessionLocal()
+    now = datetime.utcnow()
+    day_str = now.strftime("%Y-%m-%d")
     try:
         result = db.execute(
             _t("UPDATE referrers SET visit_count = visit_count + 1, last_seen = :now "
-               "WHERE share_id = :sid AND domain = :domain"),
-            {"now": datetime.utcnow(), "sid": share_id, "domain": domain},
+               "WHERE share_id = :sid AND domain = :domain AND day = :day"),
+            {"now": now, "sid": share_id, "domain": domain, "day": day_str},
         )
         if result.rowcount == 0:
             db.add(Referrer(
@@ -296,7 +300,8 @@ async def _log_referrer(share_id: str, domain: str) -> None:
                 share_id=share_id,
                 domain=domain,
                 visit_count=1,
-                last_seen=datetime.utcnow(),
+                last_seen=now,
+                day=day_str,
             ))
         db.commit()
     except Exception:
@@ -1658,15 +1663,24 @@ async def get_download_analytics(
 @app.get("/api/analytics/referrers")
 async def get_referrer_analytics(
     days: int = Query(30, ge=1, le=365),
+    day: Optional[str] = Query(None, pattern="^(today|yesterday)$"),
     db: Session = Depends(get_db),
     _=Depends(require_admin),
 ):
-    since = datetime.utcnow() - timedelta(days=days)
+    q = db.query(Referrer.domain, func.sum(Referrer.visit_count).label("total"))
+
+    if day:
+        # Exact single-day counts come from day-bucketed rows only — legacy
+        # lifetime rows (day IS NULL) can't be attributed to a specific day.
+        now = datetime.utcnow()
+        target = now.date() if day == "today" else (now.date() - timedelta(days=1))
+        q = q.filter(Referrer.day == target.strftime("%Y-%m-%d"))
+    else:
+        since = datetime.utcnow() - timedelta(days=days)
+        q = q.filter(Referrer.last_seen >= since)
 
     top_domains = (
-        db.query(Referrer.domain, func.sum(Referrer.visit_count).label("total"))
-        .filter(Referrer.last_seen >= since)
-        .group_by(Referrer.domain)
+        q.group_by(Referrer.domain)
         .order_by(func.sum(Referrer.visit_count).desc())
         .limit(50)
         .all()

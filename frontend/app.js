@@ -1917,20 +1917,23 @@ async function loadDownloadsPage() {
 
 // ── Referrers ─────────────────────────────────────────────────────────────────
 
-let refActiveDays = 7;
+let refActiveDays = 7;   // number of days, or the strings 'today' / 'yesterday'
 
 async function loadReferrersPage() {
   document.querySelectorAll('#ref-period-tabs .dl-period-btn').forEach(b => {
-    b.classList.toggle('active', parseInt(b.dataset.days) === refActiveDays);
+    b.classList.toggle('active', String(b.dataset.days) === String(refActiveDays));
   });
 
   document.getElementById('ref-stat-total').textContent   = '—';
   document.getElementById('ref-stat-domains').textContent = '—';
   document.getElementById('ref-domain-list').innerHTML    = '<p class="dl-empty" style="padding:1.5rem">Loading…</p>';
 
+  const query = (refActiveDays === 'today' || refActiveDays === 'yesterday')
+    ? `day=${refActiveDays}`
+    : `days=${refActiveDays}`;
   let data;
   try {
-    data = await apiFetch('GET', `/api/analytics/referrers?days=${refActiveDays}`);
+    data = await apiFetch('GET', `/api/analytics/referrers?${query}`);
   } catch (e) {
     document.getElementById('ref-domain-list').innerHTML =
       `<p style="padding:1.5rem;color:var(--danger);font-size:.875rem">${escHtml(e.message)}</p>`;
@@ -1944,7 +1947,9 @@ async function loadReferrersPage() {
   const listEl  = document.getElementById('ref-domain-list');
 
   if (!domains.length) {
-    listEl.innerHTML = '<p class="dl-empty" style="padding:1.5rem">No referrer data yet. Visits from external sites will appear here.</p>';
+    listEl.innerHTML = (refActiveDays === 'today' || refActiveDays === 'yesterday')
+      ? `<p class="dl-empty" style="padding:1.5rem">No referred visits ${refActiveDays}.</p>`
+      : '<p class="dl-empty" style="padding:1.5rem">No referrer data yet. Visits from external sites will appear here.</p>';
     return;
   }
 
@@ -3335,7 +3340,8 @@ function initApp() {
 
   document.querySelectorAll('#ref-period-tabs .dl-period-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      refActiveDays = parseInt(btn.dataset.days);
+      const v = btn.dataset.days;
+      refActiveDays = (v === 'today' || v === 'yesterday') ? v : parseInt(v);
       loadReferrersPage();
     });
   });

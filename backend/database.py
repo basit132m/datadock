@@ -72,6 +72,8 @@ def _migrate():
             "ALTER TABLE uploads ADD COLUMN dup_excluded INTEGER DEFAULT 0",
             "ALTER TABLE uploads ADD COLUMN redirect_url VARCHAR(500)",
             "ALTER TABLE uploads ADD COLUMN import_bytes_done BIGINT DEFAULT 0",
+            "ALTER TABLE referrers ADD COLUMN day VARCHAR(10)",
+            "CREATE INDEX IF NOT EXISTS ix_referrers_day ON referrers (day)",
         ]:
             try:
                 conn.execute(text(sql))

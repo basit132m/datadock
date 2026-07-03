@@ -174,3 +174,4 @@ class Referrer(Base):
     domain      = Column(String(300), nullable=False, index=True)
     visit_count = Column(Integer, default=1, nullable=False)
     last_seen   = Column(DateTime, nullable=False)
+    day         = Column(String(10), nullable=True, index=True)  # 'YYYY-MM-DD' bucket; NULL = legacy lifetime row
