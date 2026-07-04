@@ -2882,15 +2882,20 @@ function renderFmGrid() {
       : '';
     const renameBtn   = `<button class="btn-sm" onclick="openFmRenameModal('${f.id}')" title="Rename"><i class="fa-solid fa-pen-to-square"></i></button>`;
     const renameBtnSm = `<button class="btn-sm" onclick="openFmRenameModal('${f.id}')" title="Rename"><i class="fa-solid fa-pen-to-square"></i></button>`;
+    const hideTitle   = f.hidden ? 'Unhide — make public again' : 'Hide — block all public access (DMCA)';
+    const hideIcon    = f.hidden ? 'fa-eye' : 'fa-eye-slash';
+    const hideBtn     = `<button class="btn-sm${f.hidden ? ' fm-hide-active' : ''}" onclick="fmToggleHide('${f.id}')" title="${hideTitle}"><i class="fa-solid ${hideIcon}"></i></button>`;
     const delBtn      = `<button class="btn-danger" onclick="openFmDeleteModal('${f.id}')"><i class="fa-solid fa-trash-can"></i> Delete</button>`;
     const delBtnSm    = `<button class="btn-danger" style="padding:.35rem .65rem" onclick="openFmDeleteModal('${f.id}')"><i class="fa-solid fa-trash-can"></i></button>`;
+    const hiddenBadge = f.hidden ? '<span class="fm-hidden-badge"><i class="fa-solid fa-eye-slash"></i> Hidden</span>' : '';
+    const hiddenCls   = f.hidden ? ' fm-card-hidden' : '';
 
     if (fmView === 'list') {
       return `
-        <div class="fm-card fm-card-list">
+        <div class="fm-card fm-card-list${hiddenCls}">
           <div class="fm-card-icon">${fileIcon(f.filename)}</div>
           <div class="fm-card-body">
-            <div class="fm-card-title">${escHtml(f.filename)}</div>
+            <div class="fm-card-title">${escHtml(f.filename)} ${hiddenBadge}</div>
             <div class="fm-card-meta">
               <span>${formatBytes(f.file_size)}</span>
               ${uploaderStr}
@@ -2899,16 +2904,16 @@ function renderFmGrid() {
               <span><i class="fa-solid fa-download" style="font-size:.68rem"></i> ${f.downloads}</span>
             </div>
           </div>
-          <div class="fm-card-actions">${openBtn}${renameBtnSm}${delBtnSm}</div>
+          <div class="fm-card-actions">${openBtn}${renameBtnSm}${hideBtn}${delBtnSm}</div>
         </div>`;
     }
 
     return `
-      <div class="fm-card">
+      <div class="fm-card${hiddenCls}">
         <div class="fm-card-head">
           <div class="fm-card-icon">${fileIcon(f.filename)}</div>
           <div style="min-width:0;flex:1">
-            <div class="fm-card-title">${escHtml(f.filename)}</div>
+            <div class="fm-card-title">${escHtml(f.filename)} ${hiddenBadge}</div>
             <div class="fm-card-meta">
               <span>${formatBytes(f.file_size)}</span>
               ${uploaderStr}
@@ -2923,6 +2928,7 @@ function renderFmGrid() {
         <div class="fm-card-actions">
           ${f.share_url ? `<a href="${f.share_url}" target="_blank" class="btn-primary-sm" style="flex:1;text-align:center"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open</a>` : ''}
           ${renameBtn}
+          ${hideBtn}
           ${delBtn}
         </div>
       </div>`;
@@ -2946,6 +2952,22 @@ function fmGoPage(p) {
   fmPage = p;
   renderFmGrid();
   document.getElementById('main').scrollTop = 0;
+}
+
+async function fmToggleHide(id) {
+  const f = fmAllFiles.find(x => x.id === id);
+  if (!f) return;
+  const hide = !f.hidden;
+  if (hide && !confirm(
+    `Hide "${f.filename}"?\n\nThe share link, download and preview will all return "File not found" ` +
+    `to visitors. The file stays in storage and you can unhide it anytime.`)) return;
+  try {
+    const res = await apiFetch('POST', `/api/admin/files/${id}/hide`, { hidden: hide });
+    fmAllFiles = fmAllFiles.map(x => x.id === id ? { ...x, hidden: res.hidden } : x);
+    renderFmGrid();
+  } catch (e) {
+    alert('Failed: ' + e.message);
+  }
 }
 
 function openFmDeleteModal(id) {

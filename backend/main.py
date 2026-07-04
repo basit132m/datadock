@@ -972,6 +972,7 @@ async def list_files(
             "storage_name": providers.get(f.storage_provider_id, "Default (env)"),
             "completed_at": f.completed_at.isoformat() if f.completed_at else None,
             "uploaded_by": uploader_names.get(f.uploaded_by_key_id) if f.uploaded_by_key_id else None,
+            "hidden": bool(f.hidden or 0),
         }
         for f in rows
     ]
@@ -998,6 +999,28 @@ async def delete_file(file_id: str, db: Session = Depends(get_db), _=Depends(req
 
 class AdminRenameIn(BaseModel):
     filename: str
+
+
+class AdminHideIn(BaseModel):
+    hidden: bool
+
+
+@app.post("/api/admin/files/{file_id}/hide")
+async def admin_hide_file(
+    file_id: str,
+    body: AdminHideIn,
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    """Hide/unhide a file. Hidden files stay in storage and in the admin panel,
+    but every public route (landing page, download, preview) returns 404 —
+    resolves DMCA notices without deleting the file."""
+    upload = db.query(Upload).filter(Upload.id == file_id).first()
+    if not upload:
+        raise HTTPException(404, "File not found")
+    upload.hidden = 1 if body.hidden else 0
+    db.commit()
+    return {"ok": True, "hidden": bool(upload.hidden)}
 
 
 @app.post("/api/admin/files/{file_id}/rename")
@@ -1336,7 +1359,7 @@ async def get_share_info(
         if canonical and canonical != share_id:
             return RedirectResponse(f"/api/f/{canonical}", status_code=301)
         raise HTTPException(404, "File not found")
-    if not upload or upload.status != "completed":
+    if not upload or upload.status != "completed" or upload.hidden:
         raise HTTPException(404, "File not found")
 
     from sqlalchemy import text as _sql_text
@@ -1430,7 +1453,7 @@ async def create_download_token(share_id: str, db: Session = Depends(get_db)):
         if canonical and canonical != share_id:
             return RedirectResponse(f"/api/f/{canonical}/token", status_code=307)
         raise HTTPException(404, "File not found")
-    if not upload or upload.status != "completed":
+    if not upload or upload.status != "completed" or upload.hidden:
         raise HTTPException(404, "File not found")
     token = secrets.token_urlsafe(24)
     # Tokens live in the DB so they work across all uvicorn workers
@@ -1468,7 +1491,7 @@ async def download_file(
         if canonical and canonical != share_id:
             return RedirectResponse(f"/api/f/{canonical}/download", status_code=302)
         raise HTTPException(404, "File not found")
-    if not upload or upload.status != "completed":
+    if not upload or upload.status != "completed" or upload.hidden:
         raise HTTPException(404, "File not found")
 
     ip = _client_ip(request)
@@ -1522,7 +1545,7 @@ async def preview_file(share_id: str, db: Session = Depends(get_db)):
         .filter(Upload.share_id == share_id, Upload.status == "completed")
         .first()
     )
-    if not upload:
+    if not upload or upload.hidden:
         raise HTTPException(404, "File not found")
     url = _get_storage(upload.storage_provider_id, db).get_download_url(upload.b2_file_key)
     return RedirectResponse(url=url, status_code=302)
@@ -1536,7 +1559,7 @@ async def preview_text(share_id: str, db: Session = Depends(get_db)):
         .filter(Upload.share_id == share_id, Upload.status == "completed")
         .first()
     )
-    if not upload:
+    if not upload or upload.hidden:
         raise HTTPException(404, "File not found")
     url = _get_storage(upload.storage_provider_id, db).get_download_url(upload.b2_file_key)
     try:
@@ -3690,7 +3713,9 @@ async def share_page(share_id: str, request: Request, db: Session = Depends(get_
         .filter(Upload.share_id == share_id, Upload.status == "completed")
         .first()
     )
-    if not upload:
+    if not upload or upload.hidden:
+        # Hidden files serve the bare landing shell; its API call 404s and the
+        # visitor sees the standard "file not found" state (DMCA-safe).
         return FileResponse(os.path.join(FRONTEND_DIR, "landing.html"))
 
     base_url = str(request.base_url).rstrip("/")
@@ -3796,7 +3821,11 @@ async def public_stats(db: Session = Depends(get_db)):
         func.count(Upload.id).label("file_count"),
         func.coalesce(func.sum(Upload.file_size), 0).label("total_size"),
         func.coalesce(func.sum(Upload.file_size * func.coalesce(Upload.downloads, 0)), 0).label("total_served"),
-    ).filter(Upload.status == "completed", Upload.share_id.isnot(None)).one()
+    ).filter(
+        Upload.status == "completed",
+        Upload.share_id.isnot(None),
+        or_(Upload.hidden.is_(None), Upload.hidden == 0),
+    ).one()
     return {
         "file_count":    int(row.file_count),
         "total_size":    int(row.total_size),
@@ -3816,7 +3845,11 @@ async def public_files(
     """Paginated, filterable public file listing. Returns {total, files}."""
     q = db.query(
         Upload.filename, Upload.file_size, Upload.share_id, Upload.completed_at,
-    ).filter(Upload.status == "completed", Upload.share_id.isnot(None))
+    ).filter(
+        Upload.status == "completed",
+        Upload.share_id.isnot(None),
+        or_(Upload.hidden.is_(None), Upload.hidden == 0),
+    )
 
     if search:
         q = q.filter(Upload.filename.ilike(f"%{search}%"))
