@@ -13,6 +13,7 @@ let apiKey = localStorage.getItem(LS_KEY) || '';
 let userRole = 'admin';
 let activeUploaders = [];
 let uploadsChart = null;
+let maxUploadBytes = MAX_BYTES;  // replaced by the admin-configured limit at startup
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -377,8 +378,9 @@ function attachUploaderEvents(uploader, el) {
 }
 
 async function startUpload(file) {
-  if (file.size > MAX_BYTES) {
-    alert(`"${file.name}" exceeds the 10 GB limit.`);
+  if (file.size > maxUploadBytes) {
+    const gb = parseFloat((maxUploadBytes / 1073741824).toFixed(2));
+    alert(`"${file.name}" exceeds the ${gb} GB limit.`);
     return;
   }
   const queue = document.getElementById('upload-queue');
@@ -1116,8 +1118,53 @@ function providerMeta(endpointUrl) {
   return { label: 'Custom S3', icon: 'fa-server', color: '#64748b' };
 }
 
+async function loadMaxSizeSetting() {
+  try {
+    const s = await apiFetch('GET', '/api/settings');
+    if (s.max_file_size_gb) {
+      maxUploadBytes = s.max_file_size_gb * 1073741824;
+      const input = document.getElementById('max-size-input');
+      if (input) input.value = s.max_file_size_gb;
+    }
+  } catch {}
+}
+
+function initMaxSizeForm() {
+  const input = document.getElementById('max-size-input');
+  const msg   = document.getElementById('max-size-msg');
+  if (!input) return;
+
+  document.getElementById('max-size-save').addEventListener('click', async () => {
+    const v = parseFloat(input.value);
+    msg.textContent = '';
+    if (!v || v <= 0) { msg.textContent = 'Enter a size in GB.'; msg.style.color = 'var(--danger)'; return; }
+    try {
+      await apiFetch('POST', '/api/admin/settings', { max_file_size_gb: v });
+      maxUploadBytes = v * 1073741824;
+      msg.textContent = `Saved — limit is now ${v} GB.`;
+      msg.style.color = 'var(--success, #059669)';
+    } catch (e) {
+      msg.textContent = e.message; msg.style.color = 'var(--danger)';
+    }
+  });
+
+  document.getElementById('max-size-clear').addEventListener('click', async () => {
+    msg.textContent = '';
+    try {
+      await apiFetch('POST', '/api/admin/settings', { max_file_size_gb: null });
+      input.value = '';
+      await loadMaxSizeSetting();
+      msg.textContent = 'Reverted to the server default.';
+      msg.style.color = 'var(--success, #059669)';
+    } catch (e) {
+      msg.textContent = e.message; msg.style.color = 'var(--danger)';
+    }
+  });
+}
+
 async function loadStoragePage() {
   loadBandwidthStats();
+  loadMaxSizeSetting();
   const list = document.getElementById('storage-list');
   try {
     const providers = await apiFetch('GET', '/api/admin/storage');
@@ -3354,6 +3401,8 @@ function initApp() {
   initKeyForm();
   initRequestsPage();
   initSupportPage();
+  initMaxSizeForm();
+  loadMaxSizeSetting();   // sets maxUploadBytes for the upload guard (all roles)
   applyRoleUI();
 
   document.querySelectorAll('#dl-period-tabs .dl-period-btn').forEach(btn => {

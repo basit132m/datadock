@@ -340,6 +340,25 @@
       <div class="page-header"><h1>Storage Providers</h1></div>
 
       <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-header"><i class="fa-solid fa-weight-hanging"></i> Max Upload Size</div>
+        <div style="padding:1rem 1.25rem">
+          <p style="color:var(--muted);font-size:.875rem;margin:0 0 1rem 0">
+            Applies to every upload method — direct uploads, import from URL and Mega.nz imports.
+            Clear the field to fall back to the server default.
+          </p>
+          <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:.5rem;font-size:.875rem;font-weight:600">
+              <input id="max-size-input" type="number" min="0.1" max="10000" step="0.1"
+                placeholder="e.g. 10" style="width:120px" /> GB
+            </label>
+            <button id="max-size-save" class="btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+            <button id="max-size-clear" class="btn-sm"><i class="fa-solid fa-rotate-left"></i> Use Default</button>
+            <span id="max-size-msg" class="ad-form-msg"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:1.5rem">
         <div class="card-header" id="storage-form-title">Add Storage Provider</div>
         <form id="storage-form" class="ad-form">
           <input type="hidden" id="storage-edit-id" value="" />

@@ -657,14 +657,11 @@ class BrowserRelayInitIn(BaseModel):
 class CompleteUploadIn(BaseModel):
     actual_size: Optional[int] = None
 
-    class Config:
-        # actual_size must be positive and within the configured file-size limit
-        pass
-
     def __init__(self, **data):
         super().__init__(**data)
-        if self.actual_size is not None and (self.actual_size <= 0 or self.actual_size > MAX_BYTES):
-            raise ValueError(f"actual_size must be between 1 and {MAX_BYTES}")
+        # Upper bound is checked in the endpoint against the admin-configured limit
+        if self.actual_size is not None and self.actual_size <= 0:
+            raise ValueError("actual_size must be positive")
 
 
 # ── Upload API ────────────────────────────────────────────────────────────────
@@ -677,8 +674,8 @@ async def init_upload(
     _=Depends(require_auth),
     auth_key: Optional[ApiKey] = Depends(get_current_key),
 ):
-    if body.file_size > MAX_BYTES:
-        raise HTTPException(400, f"File exceeds {os.getenv('MAX_FILE_SIZE_GB', 10)} GB limit")
+    if body.file_size > _max_bytes_setting(db):
+        raise HTTPException(400, f"File exceeds {_max_gb_value(db):g} GB limit")
     if body.file_size <= 0:
         raise HTTPException(400, "Invalid file size")
 
@@ -860,6 +857,8 @@ async def complete_upload(
     if upload.uploaded_by_key_id and auth_key and upload.uploaded_by_key_id != auth_key.id:
         if auth.get("role") != "admin":
             raise HTTPException(403, "Not your upload")
+    if body and body.actual_size and body.actual_size > _max_bytes_setting(db):
+        raise HTTPException(400, f"File exceeds {_max_gb_value(db):g} GB limit")
 
     db_parts = db.query(Part).filter(Part.upload_id == upload_id).all()
     if not db_parts:
@@ -1922,6 +1921,9 @@ async def import_from_url(
         except Exception as exc:
             raise HTTPException(400, f"Mega.nz error: {exc}")
 
+        if mega_file_size and mega_file_size > _max_bytes_setting(db):
+            raise HTTPException(400, f"Remote file exceeds {_max_gb_value(db):g} GB limit")
+
         # Create storage slot
         file_key_r2  = f"uploads/{uuid.uuid4()}/{filename}"
         default_prov = _get_default_provider(db)
@@ -2012,8 +2014,8 @@ async def import_from_url(
     # ── Direct file URL ──
     content_length = int(meta.get("content-length", 0) or 0)
 
-    if content_length and content_length > MAX_BYTES:
-        raise HTTPException(400, f"Remote file exceeds {os.getenv('MAX_FILE_SIZE_GB', 10)} GB limit")
+    if content_length and content_length > _max_bytes_setting(db):
+        raise HTTPException(400, f"Remote file exceeds {_max_gb_value(db):g} GB limit")
 
     # Determine filename (user override → Content-Disposition → final URL path)
     filename = (body.filename or "").strip()
@@ -2581,6 +2583,7 @@ async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str,
 
     try:
         file_storage = _get_storage(provider_id, db)
+        max_bytes = _max_bytes_setting(db)
         parts_dict: dict = {}  # part_number → etag
         errors: list = []
         part_number = 0
@@ -2645,9 +2648,9 @@ async def _do_import(upload_id: str, url: str, file_key: str, b2_upload_id: str,
                         total_bytes += len(chunk)
                         prog["bytes_done"] = total_bytes
 
-                        if MAX_BYTES and total_bytes > MAX_BYTES:
+                        if max_bytes and total_bytes > max_bytes:
                             raise ValueError(
-                                f"Remote file exceeds {os.getenv('MAX_FILE_SIZE_GB', '10')} GB limit"
+                                f"Remote file exceeds {max_bytes / 1_073_741_824:g} GB limit"
                             )
 
                         now = loop.time()
@@ -3048,6 +3051,24 @@ def _upsert_setting(db: Session, key: str, value: Optional[str]):
         db.add(SiteSetting(key=key, value=value, updated_at=datetime.utcnow()))
 
 
+def _max_bytes_setting(db: Session) -> int:
+    """Max upload size in bytes — the admin-panel setting overrides the
+    MAX_FILE_SIZE_GB env default."""
+    raw = _get_setting(db, "max_file_size_gb")
+    if raw:
+        try:
+            v = float(raw)
+            if 0 < v <= 10000:
+                return int(v * 1_073_741_824)
+        except ValueError:
+            pass
+    return MAX_BYTES
+
+
+def _max_gb_value(db: Session) -> float:
+    return round(_max_bytes_setting(db) / 1_073_741_824, 2)
+
+
 @app.get("/api/settings")
 async def get_public_settings(db: Session = Depends(get_db)):
     """Public endpoint — returns settings used by landing pages."""
@@ -3058,6 +3079,7 @@ async def get_public_settings(db: Session = Depends(get_db)):
         "monetag_banner":  _get_setting(db, "monetag_banner"),
         "monetag_side":    _get_setting(db, "monetag_side"),
         "download_hint":   _get_setting(db, "download_hint"),
+        "max_file_size_gb": _max_gb_value(db),
     }
 
 
@@ -3068,6 +3090,11 @@ class UpdateSettingsIn(BaseModel):
     monetag_banner: Optional[str] = None
     monetag_side:   Optional[str] = None
     download_hint:  Optional[str] = None
+    max_file_size_gb: Optional[float] = None
+
+
+_TEXT_SETTING_KEYS = ("redirect_url", "popup_url", "monetag_head",
+                      "monetag_banner", "monetag_side", "download_hint")
 
 
 @app.post("/api/admin/settings")
@@ -3076,18 +3103,28 @@ async def update_settings(
     db: Session = Depends(get_db),
     _=Depends(require_admin),
 ):
-    if body.redirect_url:
-        if not body.redirect_url.startswith(("http://", "https://")):
-            raise HTTPException(400, "redirect_url must be an http/https URL")
-    if body.popup_url:
-        if not body.popup_url.startswith(("http://", "https://")):
-            raise HTTPException(400, "popup_url must be an http/https URL")
-    _upsert_setting(db, "redirect_url",   body.redirect_url   or None)
-    _upsert_setting(db, "popup_url",      body.popup_url      or None)
-    _upsert_setting(db, "monetag_head",   body.monetag_head   or None)
-    _upsert_setting(db, "monetag_banner", body.monetag_banner or None)
-    _upsert_setting(db, "monetag_side",   body.monetag_side   or None)
-    _upsert_setting(db, "download_hint",  body.download_hint  or None)
+    # Only touch fields the client actually sent, so saving one setting
+    # can never wipe the others.
+    data = (body.model_dump(exclude_unset=True) if hasattr(body, "model_dump")
+            else body.dict(exclude_unset=True))
+
+    for url_key in ("redirect_url", "popup_url"):
+        if data.get(url_key) and not data[url_key].startswith(("http://", "https://")):
+            raise HTTPException(400, f"{url_key} must be an http/https URL")
+
+    for key in _TEXT_SETTING_KEYS:
+        if key in data:
+            _upsert_setting(db, key, data[key] or None)
+
+    if "max_file_size_gb" in data:
+        v = data["max_file_size_gb"]
+        if v is None:
+            _upsert_setting(db, "max_file_size_gb", None)  # back to env default
+        else:
+            if not (0.1 <= v <= 10000):
+                raise HTTPException(400, "Max upload size must be between 0.1 and 10000 GB")
+            _upsert_setting(db, "max_file_size_gb", f"{v:g}")
+
     db.commit()
     return {"ok": True}
 
