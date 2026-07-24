@@ -1075,6 +1075,7 @@ async def cleanup_candidates(
 
 class CleanupDeleteIn(BaseModel):
     file_ids: list[str]
+    redirect_url: Optional[str] = None   # if set, deleted files' share links point here
 
 
 @app.post("/api/admin/cleanup/delete")
@@ -1089,6 +1090,10 @@ async def cleanup_delete(
     if len(ids) > 2000:
         raise HTTPException(400, "Too many files in one request (max 2000)")
 
+    redirect_url = (body.redirect_url or "").strip() or None
+    if redirect_url and not redirect_url.startswith(("http://", "https://")):
+        raise HTTPException(400, "redirect_url must be an http/https URL")
+
     uploads = db.query(Upload).filter(
         Upload.id.in_(ids), Upload.status == "completed"
     ).all()
@@ -1096,14 +1101,25 @@ async def cleanup_delete(
     deleted = 0
     freed = 0
     for up in uploads:
-        # Never delete a hidden file or an active redirect target through cleanup
+        # Never delete a hidden file through cleanup
         if up.hidden:
             continue
         freed += up.file_size or 0
-        _purge_upload(up, db)
+        # Storage object is removed either way — that's what frees the space.
+        try:
+            _get_storage(up.storage_provider_id, db).delete_object(up.b2_file_key)
+        except Exception:
+            pass
+        db.query(Part).filter(Part.upload_id == up.id).delete()
+        if redirect_url:
+            # Keep the row so the share link stays alive and redirects out
+            up.status = "redirected"
+            up.redirect_url = redirect_url
+        else:
+            db.delete(up)
         deleted += 1
     db.commit()
-    return {"ok": True, "deleted": deleted, "freed_bytes": freed}
+    return {"ok": True, "deleted": deleted, "freed_bytes": freed, "redirected": bool(redirect_url)}
 
 
 class AdminRenameIn(BaseModel):

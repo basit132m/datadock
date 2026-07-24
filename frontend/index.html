@@ -1112,11 +1112,25 @@
               <option value="3">3</option>
               <option value="5">5</option>
               <option value="10">10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
             </select>
           </label>
           <button id="cl-refresh" class="btn-primary"><i class="fa-solid fa-magnifying-glass"></i> Find Files</button>
           <div style="flex:1"></div>
           <button id="cl-delete" class="btn-danger" disabled><i class="fa-solid fa-trash-can"></i> Delete Selected</button>
+        </div>
+        <div style="padding:0 1.25rem 1rem;display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+          <label style="font-size:.8rem;font-weight:600;color:var(--muted);white-space:nowrap">
+            <i class="fa-solid fa-arrow-right-arrow-left" style="margin-right:.3rem"></i> Redirect deleted files to
+          </label>
+          <input id="cl-redirect-url" type="url" placeholder="https://example.com/replacement (optional)"
+            style="flex:1;min-width:240px" />
+        </div>
+        <div style="padding:0 1.25rem 1rem;font-size:.76rem;color:var(--muted)">
+          Leave the redirect blank to fully remove files (their share links stop working). Enter a URL to keep every
+          deleted file's share link alive and send visitors there instead — the file is still removed from storage.
         </div>
         <div id="cl-msg" style="padding:0 1.25rem 1rem;font-size:.82rem"></div>
       </div>

@@ -1214,16 +1214,31 @@ async function confirmCleanupDelete() {
   const ids = [..._clSelected];
   if (!ids.length) return;
   const bytes = _clFiles.filter(f => _clSelected.has(f.id)).reduce((s, f) => s + (f.file_size || 0), 0);
-  if (!confirm(`Permanently delete ${ids.length} file(s) and free ${formatBytes(bytes)}?\n\nThis removes them from storage and cannot be undone. Share links will stop working.`)) return;
+  const redirectUrl = document.getElementById('cl-redirect-url').value.trim();
+
+  if (redirectUrl && !/^https?:\/\//i.test(redirectUrl)) {
+    const msg = document.getElementById('cl-msg');
+    msg.style.color = 'var(--danger)';
+    msg.textContent = 'Redirect URL must start with http:// or https://';
+    return;
+  }
+
+  const tail = redirectUrl
+    ? `\n\nStorage is freed, but each file's share link will REDIRECT to:\n${redirectUrl}`
+    : '\n\nThis removes them from storage and cannot be undone. Share links will stop working.';
+  if (!confirm(`Delete ${ids.length} file(s) and free ${formatBytes(bytes)}?${tail}`)) return;
 
   const btn = document.getElementById('cl-delete');
   const msg = document.getElementById('cl-msg');
   btn.disabled = true;
   btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Deleting…';
   try {
-    const res = await apiFetch('POST', '/api/admin/cleanup/delete', { file_ids: ids });
+    const res = await apiFetch('POST', '/api/admin/cleanup/delete',
+      { file_ids: ids, redirect_url: redirectUrl || null });
     msg.style.color = 'var(--success, #059669)';
-    msg.textContent = `Deleted ${res.deleted} file(s) — freed ${formatBytes(res.freed_bytes)}.`;
+    msg.textContent = res.redirected
+      ? `Removed ${res.deleted} file(s) — freed ${formatBytes(res.freed_bytes)}. Their share links now redirect to your URL.`
+      : `Deleted ${res.deleted} file(s) — freed ${formatBytes(res.freed_bytes)}.`;
     await loadCleanupPage();
     loadDashboard();
   } catch (e) {
