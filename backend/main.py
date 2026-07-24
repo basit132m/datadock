@@ -1123,6 +1123,42 @@ async def cleanup_delete(
     return {"ok": True, "deleted": deleted, "freed_bytes": freed, "redirected": bool(redirect_url)}
 
 
+@app.post("/api/admin/storage/reclaim")
+async def reclaim_storage(
+    limit: int = Query(500, ge=1, le=2000),
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    """Re-issue storage deletes for files already removed logically (redirected or
+    quota_reached) whose objects may still exist — a safety net for deletes that
+    failed silently earlier. On success the key is cleared so it isn't reprocessed;
+    failures are reported (not swallowed) so a bad/read-only token is visible.
+    Call repeatedly until `remaining` is 0."""
+    def _pending_q():
+        return db.query(Upload).filter(
+            Upload.status.in_(["redirected", "quota_reached"]),
+            Upload.b2_file_key.isnot(None),
+            Upload.b2_file_key != "",
+        )
+
+    rows = _pending_q().limit(limit).all()
+    ok = 0
+    failed = 0
+    errors: list = []
+    for u in rows:
+        try:
+            _get_storage(u.storage_provider_id, db).delete_object(u.b2_file_key)
+            u.b2_file_key = ""   # mark as truly purged
+            ok += 1
+        except Exception as exc:
+            failed += 1
+            if len(errors) < 3:
+                errors.append(str(exc)[:200])
+    db.commit()
+    remaining = _pending_q().count()
+    return {"ok": True, "purged": ok, "failed": failed, "remaining": remaining, "errors": errors}
+
+
 class AdminRenameIn(BaseModel):
     filename: str
 

@@ -1368,9 +1368,46 @@ function initMaxSizeForm() {
   });
 }
 
+let _reclaimInit = false;
+function initReclaimBtn() {
+  if (_reclaimInit) return;
+  const btn = document.getElementById('reclaim-btn');
+  if (!btn) return;
+  _reclaimInit = true;
+  btn.addEventListener('click', async () => {
+    const msg = document.getElementById('reclaim-msg');
+    if (!confirm('Re-run storage deletion for all already-removed files?\n\nSafe to run anytime — it only deletes objects for files already gone from the app.')) return;
+    btn.disabled = true;
+    let purged = 0, failed = 0, lastErrors = [];
+    try {
+      // Loop in batches until nothing remains
+      for (let i = 0; i < 1000; i++) {
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Reclaiming… (${purged} done)`;
+        const res = await apiFetch('POST', '/api/admin/storage/reclaim?limit=1000');
+        purged += res.purged;
+        failed += res.failed;
+        if (res.errors && res.errors.length) lastErrors = res.errors;
+        if (res.remaining === 0 || (res.purged === 0 && res.failed === 0)) break;
+        if (res.purged === 0 && res.failed > 0) break; // all failing — stop looping
+      }
+      msg.style.color = failed ? 'var(--danger)' : 'var(--success, #059669)';
+      msg.innerHTML = failed
+        ? `Purged ${purged}, but ${failed} FAILED. Likely your R2 API token is read-only — recreate it as “Object Read &amp; Write”. Error: ${escHtml(lastErrors[0] || '')}`
+        : `Done — re-deleted ${purged} object(s) from storage. Bucket size may still take up to a day to update on your provider's dashboard.`;
+    } catch (e) {
+      msg.style.color = 'var(--danger)';
+      msg.textContent = e.message;
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-recycle"></i> Verify & Reclaim Storage';
+    }
+  });
+}
+
 async function loadStoragePage() {
   loadBandwidthStats();
   loadMaxSizeSetting();
+  initReclaimBtn();
   const list = document.getElementById('storage-list');
   try {
     const providers = await apiFetch('GET', '/api/admin/storage');

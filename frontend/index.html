@@ -383,6 +383,22 @@
       </div>
 
       <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-header"><i class="fa-solid fa-recycle"></i> Reclaim Deleted Storage</div>
+        <div style="padding:1rem 1.25rem">
+          <p style="color:var(--muted);font-size:.875rem;margin:0 0 1rem 0">
+            Re-runs storage deletion for files you've already removed (deleted duplicates, cleaned-up files).
+            Use this if your provider's bucket size didn't drop after deleting — it re-issues the deletes and
+            <b>reports any that fail</b> (e.g. a read-only API token). Note: provider dashboards often update
+            their size figure only once a day, so also re-check tomorrow.
+          </p>
+          <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
+            <button id="reclaim-btn" class="btn-primary"><i class="fa-solid fa-recycle"></i> Verify &amp; Reclaim Storage</button>
+            <span id="reclaim-msg" class="ad-form-msg"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:1.5rem">
         <div class="card-header" id="storage-form-title">Add Storage Provider</div>
         <form id="storage-form" class="ad-form">
           <input type="hidden" id="storage-edit-id" value="" />
