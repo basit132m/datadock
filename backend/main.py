@@ -979,6 +979,18 @@ async def list_files(
     ]
 
 
+def _purge_upload(upload: Upload, db: Session) -> bool:
+    """Delete a file from storage and remove its DB rows. Returns True on success.
+    Storage errors are swallowed so a stuck object never blocks the DB cleanup."""
+    try:
+        _get_storage(upload.storage_provider_id, db).delete_object(upload.b2_file_key)
+    except Exception:
+        pass
+    db.query(Part).filter(Part.upload_id == upload.id).delete()
+    db.delete(upload)
+    return True
+
+
 @app.delete("/api/files/{file_id}")
 async def delete_file(file_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
     upload = (
@@ -988,14 +1000,110 @@ async def delete_file(file_id: str, db: Session = Depends(get_db), _=Depends(req
     )
     if not upload:
         raise HTTPException(404, "File not found")
-    try:
-        _get_storage(upload.storage_provider_id, db).delete_object(upload.b2_file_key)
-    except Exception:
-        pass
-    db.query(Part).filter(Part.upload_id == upload.id).delete()
-    db.delete(upload)
+    _purge_upload(upload, db)
     db.commit()
     return {"ok": True}
+
+
+# ── Storage cleanup ───────────────────────────────────────────────────────────
+
+def _cleanup_query(db: Session, days: int, max_downloads: int):
+    """Files eligible for cleanup: completed, at or below the download threshold,
+    older than `days`, and NOT hidden (hidden files are deliberately kept).
+    Redirect targets are also spared so existing share links never break."""
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    # share_ids that other uploads redirect to — never delete these
+    redirect_targets = db.query(Upload.redirects_to).filter(Upload.redirects_to.isnot(None))
+    return (
+        db.query(Upload)
+        .filter(
+            Upload.status == "completed",
+            func.coalesce(Upload.downloads, 0) <= max_downloads,
+            or_(Upload.completed_at.is_(None), Upload.completed_at <= cutoff),
+            or_(Upload.hidden.is_(None), Upload.hidden == 0),
+            Upload.share_id.notin_(redirect_targets),
+        )
+    )
+
+
+@app.get("/api/admin/cleanup/candidates")
+async def cleanup_candidates(
+    days: int = Query(90, ge=0, le=3650),
+    max_downloads: int = Query(0, ge=0, le=1_000_000),
+    limit: int = Query(500, ge=1, le=2000),
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    # Whole-library totals (for the "you could reclaim X of Y" framing)
+    lib = db.query(
+        func.count(Upload.id), func.coalesce(func.sum(Upload.file_size), 0)
+    ).filter(Upload.status == "completed").one()
+
+    q = _cleanup_query(db, days, max_downloads)
+    totals = q.with_entities(
+        func.count(Upload.id), func.coalesce(func.sum(Upload.file_size), 0)
+    ).one()
+
+    rows = q.order_by(Upload.file_size.desc()).limit(limit).all()
+
+    key_ids = {r.uploaded_by_key_id for r in rows if r.uploaded_by_key_id}
+    names = {}
+    if key_ids:
+        for k in db.query(ApiKey).filter(ApiKey.id.in_(key_ids)).all():
+            names[k.id] = k.name
+
+    now = datetime.utcnow()
+    files = [{
+        "id": r.id,
+        "filename": r.filename,
+        "file_size": r.file_size,
+        "downloads": r.downloads or 0,
+        "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+        "age_days": (now - r.completed_at).days if r.completed_at else None,
+        "uploaded_by": names.get(r.uploaded_by_key_id) if r.uploaded_by_key_id else None,
+    } for r in rows]
+
+    return {
+        "library_files": int(lib[0]),
+        "library_bytes": int(lib[1]),
+        "candidate_files": int(totals[0]),
+        "candidate_bytes": int(totals[1]),
+        "shown": len(files),
+        "files": files,
+    }
+
+
+class CleanupDeleteIn(BaseModel):
+    file_ids: list[str]
+
+
+@app.post("/api/admin/cleanup/delete")
+async def cleanup_delete(
+    body: CleanupDeleteIn,
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    ids = [i for i in (body.file_ids or []) if i]
+    if not ids:
+        raise HTTPException(400, "No files selected")
+    if len(ids) > 2000:
+        raise HTTPException(400, "Too many files in one request (max 2000)")
+
+    uploads = db.query(Upload).filter(
+        Upload.id.in_(ids), Upload.status == "completed"
+    ).all()
+
+    deleted = 0
+    freed = 0
+    for up in uploads:
+        # Never delete a hidden file or an active redirect target through cleanup
+        if up.hidden:
+            continue
+        freed += up.file_size or 0
+        _purge_upload(up, db)
+        deleted += 1
+    db.commit()
+    return {"ok": True, "deleted": deleted, "freed_bytes": freed}
 
 
 class AdminRenameIn(BaseModel):

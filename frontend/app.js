@@ -1118,6 +1118,122 @@ function providerMeta(endpointUrl) {
   return { label: 'Custom S3', icon: 'fa-server', color: '#64748b' };
 }
 
+// ── Storage cleanup ───────────────────────────────────────────────────────────
+
+let _clFiles = [];
+let _clSelected = new Set();
+let _clInit = false;
+
+function initCleanupPage() {
+  if (_clInit) return;
+  _clInit = true;
+  document.getElementById('cl-refresh').addEventListener('click', loadCleanupPage);
+  document.getElementById('cl-delete').addEventListener('click', confirmCleanupDelete);
+}
+
+async function loadCleanupPage() {
+  initCleanupPage();
+  const list = document.getElementById('cl-list');
+  const msg  = document.getElementById('cl-msg');
+  msg.textContent = '';
+  list.innerHTML = '<p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center"><i class="fa-solid fa-spinner fa-spin"></i> Scanning…</p>';
+  _clSelected.clear();
+  _updateClDeleteBtn();
+
+  const days   = document.getElementById('cl-days').value;
+  const maxDl  = document.getElementById('cl-max-dl').value;
+  let data;
+  try {
+    data = await apiFetch('GET', `/api/admin/cleanup/candidates?days=${days}&max_downloads=${maxDl}`);
+  } catch (e) {
+    list.innerHTML = `<p style="padding:1.5rem;color:var(--danger);text-align:center">${escHtml(e.message)}</p>`;
+    return;
+  }
+
+  _clFiles = data.files || [];
+  document.getElementById('cl-total-size').textContent     = formatBytes(data.library_bytes);
+  document.getElementById('cl-reclaim-size').textContent   = formatBytes(data.candidate_bytes);
+  document.getElementById('cl-candidate-count').textContent = data.candidate_files.toLocaleString();
+
+  if (!_clFiles.length) {
+    list.innerHTML = '<p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">No files match these filters. Nothing to clean up.</p>';
+    return;
+  }
+
+  const cappedNote = data.candidate_files > data.shown
+    ? `<div style="padding:.6rem 1.25rem;font-size:.78rem;color:var(--muted);background:var(--bg)">Showing the ${data.shown} largest of ${data.candidate_files.toLocaleString()} matching files (biggest space savings first).</div>`
+    : '';
+
+  list.innerHTML = `
+    ${cappedNote}
+    <table class="files-table">
+      <thead><tr>
+        <th style="width:34px"><input type="checkbox" id="cl-check-all" title="Select all shown"></th>
+        <th>File</th><th>Size</th><th>Downloads</th><th>Age</th><th>Uploaded by</th>
+      </tr></thead>
+      <tbody id="cl-tbody"></tbody>
+    </table>`;
+
+  const tbody = document.getElementById('cl-tbody');
+  tbody.innerHTML = _clFiles.map(f => `
+    <tr data-id="${f.id}">
+      <td><input type="checkbox" class="cl-check" data-id="${f.id}"></td>
+      <td><span class="tf-icon">${fileIcon(f.filename)}</span><span class="tf-name">${escHtml(f.filename)}</span></td>
+      <td>${formatBytes(f.file_size)}</td>
+      <td>${f.downloads}</td>
+      <td>${f.age_days == null ? '—' : f.age_days + 'd'}</td>
+      <td>${f.uploaded_by ? escHtml(f.uploaded_by) : '<span style="color:var(--muted)">—</span>'}</td>
+    </tr>`).join('');
+
+  tbody.querySelectorAll('.cl-check').forEach(cb => {
+    cb.addEventListener('change', () => {
+      if (cb.checked) _clSelected.add(cb.dataset.id); else _clSelected.delete(cb.dataset.id);
+      _updateClDeleteBtn();
+    });
+  });
+  document.getElementById('cl-check-all').addEventListener('change', e => {
+    tbody.querySelectorAll('.cl-check').forEach(cb => {
+      cb.checked = e.target.checked;
+      if (cb.checked) _clSelected.add(cb.dataset.id); else _clSelected.delete(cb.dataset.id);
+    });
+    _updateClDeleteBtn();
+  });
+}
+
+function _updateClDeleteBtn() {
+  const btn = document.getElementById('cl-delete');
+  const n = _clSelected.size;
+  const bytes = _clFiles.filter(f => _clSelected.has(f.id)).reduce((s, f) => s + (f.file_size || 0), 0);
+  btn.disabled = n === 0;
+  btn.innerHTML = n
+    ? `<i class="fa-solid fa-trash-can"></i> Delete ${n} file${n !== 1 ? 's' : ''} (${formatBytes(bytes)})`
+    : '<i class="fa-solid fa-trash-can"></i> Delete Selected';
+}
+
+async function confirmCleanupDelete() {
+  const ids = [..._clSelected];
+  if (!ids.length) return;
+  const bytes = _clFiles.filter(f => _clSelected.has(f.id)).reduce((s, f) => s + (f.file_size || 0), 0);
+  if (!confirm(`Permanently delete ${ids.length} file(s) and free ${formatBytes(bytes)}?\n\nThis removes them from storage and cannot be undone. Share links will stop working.`)) return;
+
+  const btn = document.getElementById('cl-delete');
+  const msg = document.getElementById('cl-msg');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Deleting…';
+  try {
+    const res = await apiFetch('POST', '/api/admin/cleanup/delete', { file_ids: ids });
+    msg.style.color = 'var(--success, #059669)';
+    msg.textContent = `Deleted ${res.deleted} file(s) — freed ${formatBytes(res.freed_bytes)}.`;
+    await loadCleanupPage();
+    loadDashboard();
+  } catch (e) {
+    msg.style.color = 'var(--danger)';
+    msg.textContent = e.message;
+    btn.disabled = false;
+    _updateClDeleteBtn();
+  }
+}
+
 // ── Upload pause control ──────────────────────────────────────────────────────
 
 let uploadsPaused = false;
@@ -3379,7 +3495,7 @@ async function rptReopen(id) {
 
 // ── Page navigation ───────────────────────────────────────────────────────────
 
-const ADMIN_PAGES = ['dashboard', 'ads', 'storage', 'downloads', 'team', 'requests', 'duplicates', 'filemanager', 'filereports', 'referrers'];
+const ADMIN_PAGES = ['dashboard', 'ads', 'storage', 'downloads', 'team', 'requests', 'duplicates', 'filemanager', 'cleanup', 'filereports', 'referrers'];
 // 'support' is visible to both roles — intentionally not in ADMIN_PAGES
 
 function applyRoleUI() {
@@ -3416,6 +3532,7 @@ function showPage(page) {
   if (page === 'support')    loadSupportPage();
   if (page === 'duplicates')   loadDuplicatesPage();
   if (page === 'filemanager')  loadFileManagerPage();
+  if (page === 'cleanup')      loadCleanupPage();
   if (page === 'filereports')  loadFileReportsPage();
 }
 

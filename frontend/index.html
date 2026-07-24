@@ -78,6 +78,9 @@
       <button class="nav-item" data-page="filemanager">
         <i class="fa-solid fa-file-magnifying-glass ni-icon"></i> File Manager
       </button>
+      <button class="nav-item" data-page="cleanup">
+        <i class="fa-solid fa-broom ni-icon"></i> Cleanup
+      </button>
       <button class="nav-item" data-page="filereports">
         <i class="fa-solid fa-flag ni-icon"></i> File Reports
         <span class="nav-badge" id="rpt-nav-badge" hidden>0</span>
@@ -1069,6 +1072,60 @@
         </div>
       </div>
 
+    </div>
+
+    <!-- ── Storage Cleanup ── -->
+    <div id="page-cleanup" class="page">
+      <div class="page-header"><h1>Storage Cleanup</h1></div>
+
+      <div class="dl-stats-grid" style="margin-bottom:1.25rem">
+        <div class="stat-card">
+          <div class="stat-icon" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff"><i class="fa-solid fa-hard-drive"></i></div>
+          <div><div class="stat-label">Total Stored</div><div class="stat-value" id="cl-total-size">—</div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff"><i class="fa-solid fa-broom"></i></div>
+          <div><div class="stat-label">Reclaimable</div><div class="stat-value" id="cl-reclaim-size">—</div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff"><i class="fa-solid fa-file-circle-xmark"></i></div>
+          <div><div class="stat-label">Candidate Files</div><div class="stat-value" id="cl-candidate-count">—</div></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:1.25rem">
+        <div style="padding:1rem 1.25rem;display:flex;gap:1rem;align-items:flex-end;flex-wrap:wrap">
+          <label style="font-size:.8rem;font-weight:600;color:var(--muted)">Not downloaded in
+            <select id="cl-days" style="display:block;margin-top:.3rem">
+              <option value="30">30 days</option>
+              <option value="60">60 days</option>
+              <option value="90" selected>90 days</option>
+              <option value="180">180 days</option>
+              <option value="365">1 year</option>
+              <option value="0">Any time</option>
+            </select>
+          </label>
+          <label style="font-size:.8rem;font-weight:600;color:var(--muted)">Downloads at or below
+            <select id="cl-max-dl" style="display:block;margin-top:.3rem">
+              <option value="0" selected>0 (never downloaded)</option>
+              <option value="1">1</option>
+              <option value="3">3</option>
+              <option value="5">5</option>
+              <option value="10">10</option>
+            </select>
+          </label>
+          <button id="cl-refresh" class="btn-primary"><i class="fa-solid fa-magnifying-glass"></i> Find Files</button>
+          <div style="flex:1"></div>
+          <button id="cl-delete" class="btn-danger" disabled><i class="fa-solid fa-trash-can"></i> Delete Selected</button>
+        </div>
+        <div id="cl-msg" style="padding:0 1.25rem 1rem;font-size:.82rem"></div>
+      </div>
+
+      <div class="card">
+        <div id="cl-list">
+          <p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">Choose filters and click <b>Find Files</b>.</p>
+        </div>
+      </div>
     </div>
 
     <!-- ── File Reports ── -->
