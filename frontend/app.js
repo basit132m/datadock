@@ -2781,8 +2781,6 @@ async function loadDuplicatesPage() {
   list.innerHTML = '';
 
   data.groups.forEach(group => {
-    const canonicalShareId = group.files[0].share_id; // first = most downloads
-
     const card = document.createElement('div');
     card.className = 'card';
     card.style.marginBottom = '1.5rem';
@@ -2794,7 +2792,7 @@ async function loadDuplicatesPage() {
     const matchLabel = group.match_type === 'content'
       ? '<span title="Identical file content"><i class="fa-solid fa-fingerprint"></i> identical content</span>'
       : '<span title="Same filename and exact size — likely the same file (catches imports without a hash)"><i class="fa-solid fa-file-signature"></i> same name &amp; size</span>';
-    const dupIds = group.files.slice(1).map(f => f.id);
+    const allIds = group.files.map(f => f.id).join(',');
     hdr.innerHTML = `
       <span>
         <i class="fa-solid fa-copy" style="color:#f59e0b;margin-right:.4rem"></i>
@@ -2804,13 +2802,7 @@ async function loadDuplicatesPage() {
           · ${matchLabel}
         </span>
       </span>
-      <button class="btn-danger btn-sm dup-merge-all-btn"
-        data-keep="${canonicalShareId}"
-        data-ids="${dupIds.join(',')}"
-        data-count="${dupIds.length}"
-        data-wasted="${group.wasted_bytes}">
-        <i class="fa-solid fa-broom"></i> Delete all ${dupIds.length} duplicates
-      </button>`;
+      <span style="color:var(--muted);font-size:.78rem">Click <b>Keep this one</b> on the file to keep — the rest are deleted &amp; redirected to it.</span>`;
     card.appendChild(hdr);
 
     // Table
@@ -2851,15 +2843,14 @@ async function loadDuplicatesPage() {
         <td style="white-space:nowrap">${file.views.toLocaleString()}</td>
         <td><a href="/f/${file.share_id}" target="_blank" style="font-size:.8rem;font-family:monospace">/f/${file.share_id}</a></td>
         <td style="white-space:nowrap;display:flex;gap:.4rem;flex-wrap:wrap">
-          ${isKeep
-            ? ''
-            : `<button class="btn-danger btn-sm dup-merge-btn"
-                data-file-id="${file.id}"
-                data-share-id="${file.share_id}"
-                data-redirect-to="${canonicalShareId}"
-                data-filename="${escHtml(file.filename)}">
-                <i class="fa-solid fa-code-merge"></i> Delete &amp; Redirect
-              </button>`}
+          <button class="btn-primary btn-sm dup-keep-btn"
+            data-keep-share="${file.share_id}"
+            data-keep-id="${file.id}"
+            data-all-ids="${allIds}"
+            data-filename="${escHtml(file.filename)}"
+            data-count="${group.count - 1}">
+            <i class="fa-solid fa-shield-halved"></i> Keep this one
+          </button>
           <button class="btn-sm dup-ignore-btn"
             data-file-id="${file.id}"
             data-filename="${escHtml(file.filename)}">
@@ -2874,60 +2865,35 @@ async function loadDuplicatesPage() {
     list.appendChild(card);
   });
 
-  // Wire up "Delete all duplicates" (whole-group) buttons
-  list.querySelectorAll('.dup-merge-all-btn').forEach(btn => {
+  // Wire up "Keep this one" buttons — delete & redirect every OTHER copy to it
+  list.querySelectorAll('.dup-keep-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const keep  = btn.dataset.keep;
-      const ids   = (btn.dataset.ids || '').split(',').filter(Boolean);
-      const count = btn.dataset.count;
-      const wasted = formatBytes(parseInt(btn.dataset.wasted || '0', 10));
-      if (!ids.length) return;
+      const keepShare = btn.dataset.keepShare;
+      const keepId    = btn.dataset.keepId;
+      const filename  = btn.dataset.filename;
+      const others    = (btn.dataset.allIds || '').split(',').filter(id => id && id !== keepId);
+      if (!others.length) return;
       if (!confirm(
-        `Delete all ${count} duplicate(s) and keep the top file?\n\n` +
-        `• ${count} file(s) removed from storage (frees ${wasted})\n` +
-        `• Their share links permanently redirect to /f/${keep}\n\n` +
+        `Keep this file and delete the other ${others.length} copy(ies)?\n\n` +
+        `Keeping: ${filename}\n/f/${keepShare}\n\n` +
+        `• The other ${others.length} file(s) are removed from storage\n` +
+        `• Their share links permanently redirect to the kept file\n\n` +
         `This cannot be undone.`
       )) return;
 
       btn.disabled = true;
-      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Deleting…';
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Working…';
       try {
         const res = await apiFetch('POST', '/api/admin/duplicates/merge-group',
-          { keep_share_id: keep, file_ids: ids });
-        if (res.merged < ids.length) {
-          alert(`Merged ${res.merged} of ${ids.length}. Some files were skipped (not confirmed duplicates).`);
+          { keep_share_id: keepShare, file_ids: others });
+        if (res.merged < others.length) {
+          alert(`Deleted ${res.merged} of ${others.length}. Some were skipped (not confirmed duplicates of the kept file).`);
         }
         loadDuplicatesPage();
         loadDashboard();
       } catch (e) {
         btn.disabled = false;
-        btn.innerHTML = `<i class="fa-solid fa-broom"></i> Delete all ${ids.length} duplicates`;
-        alert('Error: ' + e.message);
-      }
-    });
-  });
-
-  // Wire up merge buttons
-  list.querySelectorAll('.dup-merge-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const { fileId, shareId, redirectTo, filename } = btn.dataset;
-      if (!confirm(
-        `Delete duplicate and redirect its links?\n\n` +
-        `File: ${filename}\n` +
-        `Share link /f/${shareId} will permanently redirect to /f/${redirectTo}\n\n` +
-        `• The file will be removed from storage\n` +
-        `• All existing shared links will continue to work (redirected)\n\n` +
-        `This cannot be undone.`
-      )) return;
-
-      btn.disabled = true;
-      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-      try {
-        await apiFetch('POST', `/api/admin/files/${fileId}/merge`, { redirect_to: redirectTo });
-        loadDuplicatesPage();
-      } catch (e) {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-code-merge"></i> Delete &amp; Redirect';
+        btn.innerHTML = '<i class="fa-solid fa-shield-halved"></i> Keep this one';
         alert('Error: ' + e.message);
       }
     });
