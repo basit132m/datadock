@@ -1252,38 +1252,69 @@ class MergeUploadIn(BaseModel):
     redirect_to: str  # share_id of the canonical file to redirect to
 
 
+_DUP_COPY_SUFFIX_RE = re.compile(r'\s*\(\d+\)\s*$')  # trailing " (1)", " (2)" auto-rename markers
+
+
+def _dup_name_key(name: str) -> str:
+    """Normalize a filename for duplicate matching: lowercase, trim, collapse
+    whitespace, and drop a trailing "(n)" copy marker before the extension.
+    So "Game (1).ZIP" and "game.zip" produce the same key."""
+    s = (name or "").strip().lower()
+    if "." in s:
+        stem, ext = s.rsplit(".", 1)
+    else:
+        stem, ext = s, ""
+    stem = _DUP_COPY_SUFFIX_RE.sub("", stem).strip()
+    stem = re.sub(r"\s+", " ", stem)
+    return f"{stem}.{ext}" if ext else stem
+
+
 @app.get("/api/admin/duplicates")
 async def get_duplicates(db: Session = Depends(get_db), _=Depends(require_admin)):
-    """Return groups of completed uploads that share the same file_hash (excluding ignored files)."""
-    from collections import defaultdict
-
-    # Only count non-excluded files when finding hashes with 2+ copies
-    dup_hashes = (
-        db.query(Upload.file_hash)
-        .filter(
-            Upload.status == "completed",
-            Upload.file_hash.isnot(None),
-            Upload.file_hash != "",
-            Upload.dup_excluded != 1,
-        )
-        .group_by(Upload.file_hash)
-        .having(func.count(Upload.id) > 1)
-        .all()
-    )
-    if not dup_hashes:
-        return {"groups": [], "total_groups": 0, "total_wasted_bytes": 0, "total_duplicate_files": 0}
-
-    hash_list = [h[0] for h in dup_hashes]
+    """Find duplicate uploads aggressively. Two files are considered the same if
+    they share EITHER an identical content hash OR the same normalized filename
+    AND exact byte size — the latter catches imported files (which have no hash)
+    and re-uploaded copies. Groups are connected components across both signals."""
     uploads = (
         db.query(Upload)
-        .filter(
-            Upload.file_hash.in_(hash_list),
-            Upload.status == "completed",
-            Upload.dup_excluded != 1,
-        )
-        .order_by(Upload.file_hash, Upload.completed_at)
+        .filter(Upload.status == "completed", Upload.dup_excluded != 1)
+        .order_by(Upload.completed_at)
         .all()
     )
+
+    # ── Union-find over hash-key and (name+size)-key ─────────────────────────
+    parent: dict = {u.id: u.id for u in uploads}
+
+    def find(x):
+        root = x
+        while parent[root] != root:
+            root = parent[root]
+        while parent[x] != root:
+            parent[x], x = root, parent[x]
+        return root
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    seen_key: dict = {}
+    for u in uploads:
+        keys = []
+        if u.file_hash:                       # identical content
+            keys.append(("h", u.file_hash))
+        if u.file_size:                       # same name + exact size
+            keys.append(("ns", _dup_name_key(u.filename), u.file_size))
+        for k in keys:
+            if k in seen_key:
+                union(u.id, seen_key[k])
+            else:
+                seen_key[k] = u.id
+
+    from collections import defaultdict
+    comps: dict = defaultdict(list)
+    for u in uploads:
+        comps[find(u.id)].append(u)
 
     key_ids = list({u.uploaded_by_key_id for u in uploads if u.uploaded_by_key_id})
     key_map: dict = {}
@@ -1291,24 +1322,23 @@ async def get_duplicates(db: Session = Depends(get_db), _=Depends(require_admin)
         keys = db.query(ApiKey).filter(ApiKey.id.in_(key_ids)).all()
         key_map = {k.id: k.name for k in keys}
 
-    groups: dict = defaultdict(list)
-    for u in uploads:
-        groups[u.file_hash].append(u)
-
     result_groups = []
     total_wasted = 0
     total_duplicates = 0
 
-    for h, files in groups.items():
+    for files in comps.values():
         if len(files) < 2:
             continue
-        file_size = files[0].file_size or 0
+        file_size = max((f.file_size or 0) for f in files)
         wasted = file_size * (len(files) - 1)
         total_wasted += wasted
         total_duplicates += len(files) - 1
         files_sorted = sorted(files, key=lambda u: (-(u.downloads or 0), u.created_at or datetime.min))
+        hashes = {f.file_hash for f in files if f.file_hash}
+        match_type = "content" if len(hashes) == 1 and all(f.file_hash for f in files) else "name+size"
         result_groups.append({
-            "file_hash": h,
+            "file_hash": (next(iter(hashes)) if hashes else ""),
+            "match_type": match_type,
             "count": len(files),
             "wasted_bytes": wasted,
             "files": [

@@ -2791,13 +2791,16 @@ async function loadDuplicatesPage() {
     const hdr = document.createElement('div');
     hdr.className = 'card-header';
     hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem';
+    const matchLabel = group.match_type === 'content'
+      ? '<span title="Identical file content"><i class="fa-solid fa-fingerprint"></i> identical content</span>'
+      : '<span title="Same filename and exact size — likely the same file (catches imports without a hash)"><i class="fa-solid fa-file-signature"></i> same name &amp; size</span>';
     hdr.innerHTML = `
       <span>
         <i class="fa-solid fa-copy" style="color:#f59e0b;margin-right:.4rem"></i>
         <strong>${group.count} copies</strong>
         <span style="color:var(--muted);font-size:.8rem;margin-left:.75rem">
           · <span style="color:#ef4444">${formatBytes(group.wasted_bytes)} wasted</span>
-          · hash: <code style="font-size:.75rem">${group.file_hash.slice(0, 16)}…</code>
+          · ${matchLabel}
         </span>
       </span>`;
     card.appendChild(hdr);
