@@ -1141,7 +1141,8 @@ async function loadCleanupPage() {
   _updateClDeleteBtn();
 
   const days   = document.getElementById('cl-days').value;
-  const maxDl  = document.getElementById('cl-max-dl').value;
+  const maxDlRaw = document.getElementById('cl-max-dl').value;
+  const maxDl  = maxDlRaw === 'any' ? 1000000000 : maxDlRaw;
   let data;
   try {
     data = await apiFetch('GET', `/api/admin/cleanup/candidates?days=${days}&max_downloads=${maxDl}`);

@@ -1029,7 +1029,7 @@ def _cleanup_query(db: Session, days: int, max_downloads: int):
 @app.get("/api/admin/cleanup/candidates")
 async def cleanup_candidates(
     days: int = Query(90, ge=0, le=3650),
-    max_downloads: int = Query(0, ge=0, le=1_000_000),
+    max_downloads: int = Query(0, ge=0, le=1_000_000_000),
     limit: int = Query(500, ge=1, le=2000),
     db: Session = Depends(get_db),
     _=Depends(require_admin),
