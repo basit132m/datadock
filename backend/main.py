@@ -3789,17 +3789,19 @@ async def serve_home():
     return FileResponse(os.path.join(FRONTEND_DIR, "home.html"))
 
 
+_NO_CACHE  = {"Cache-Control": "no-cache"}
+
+
 @app.get("/admin", include_in_schema=False)
 async def serve_index():
-    return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+    # no-cache so the admin panel HTML always revalidates — otherwise a cached
+    # index.html runs against freshly-served app.js and new UI elements go missing.
+    return FileResponse(os.path.join(FRONTEND_DIR, "index.html"), headers=_NO_CACHE)
 
 
 @app.get("/request", include_in_schema=False)
 async def serve_request():
-    return FileResponse(os.path.join(FRONTEND_DIR, "request.html"))
-
-
-_NO_CACHE  = {"Cache-Control": "no-cache"}
+    return FileResponse(os.path.join(FRONTEND_DIR, "request.html"), headers=_NO_CACHE)
 _IMG_CACHE = {"Cache-Control": "public, max-age=604800"}  # 7 days for images
 
 
