@@ -1226,7 +1226,7 @@ async function confirmCleanupDelete() {
 
   const tail = redirectUrl
     ? `\n\nStorage is freed, but each file's share link will REDIRECT to:\n${redirectUrl}`
-    : '\n\nThis removes them from storage and cannot be undone. Share links will stop working.';
+    : "\n\nStorage is freed. Each file's share link stays alive showing a \"max downloads reached — visit tomorrow\" notice.";
   if (!confirm(`Delete ${ids.length} file(s) and free ${formatBytes(bytes)}?${tail}`)) return;
 
   const btn = document.getElementById('cl-delete');
@@ -1239,7 +1239,7 @@ async function confirmCleanupDelete() {
     msg.style.color = 'var(--success, #059669)';
     msg.textContent = res.redirected
       ? `Removed ${res.deleted} file(s) — freed ${formatBytes(res.freed_bytes)}. Their share links now redirect to your URL.`
-      : `Deleted ${res.deleted} file(s) — freed ${formatBytes(res.freed_bytes)}.`;
+      : `Removed ${res.deleted} file(s) — freed ${formatBytes(res.freed_bytes)}. Their share links now show the "max downloads reached" notice.`;
     await loadCleanupPage();
     loadDashboard();
   } catch (e) {

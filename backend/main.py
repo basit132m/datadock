@@ -1116,7 +1116,8 @@ async def cleanup_delete(
             up.status = "redirected"
             up.redirect_url = redirect_url
         else:
-            db.delete(up)
+            # Keep the link alive showing a "max downloads reached" notice
+            up.status = "quota_reached"
         deleted += 1
     db.commit()
     return {"ok": True, "deleted": deleted, "freed_bytes": freed, "redirected": bool(redirect_url)}
@@ -1484,6 +1485,14 @@ async def get_share_info(
         if canonical and canonical != share_id:
             return RedirectResponse(f"/api/f/{canonical}", status_code=301)
         raise HTTPException(404, "File not found")
+    # Retired file — keep the link alive with a "max downloads reached" notice
+    if upload and upload.status == "quota_reached":
+        return {
+            "state": "quota_reached",
+            "filename": upload.filename,
+            "message": _get_setting(db, "quota_message")
+                or "This file has reached its maximum downloads for today. Please visit again tomorrow to download it.",
+        }
     if not upload or upload.status != "completed" or upload.hidden:
         raise HTTPException(404, "File not found")
 

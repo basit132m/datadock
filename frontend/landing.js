@@ -165,6 +165,20 @@
       return;
     }
 
+    // Retired file — show a "max downloads reached, come back tomorrow" notice
+    if (fileRes.value && fileRes.value.state === 'quota_reached') {
+      document.getElementById('lc-loading').hidden = true;
+      if (fileRes.value.filename) {
+        document.getElementById('lc-quota-filename').textContent = fileRes.value.filename;
+      }
+      if (fileRes.value.message) {
+        document.getElementById('lc-quota-msg').textContent = fileRes.value.message;
+      }
+      document.getElementById('lc-quota').hidden = false;
+      document.title = 'DataDock – Max downloads reached';
+      return;
+    }
+
     const settings      = (settingsRes.status === 'fulfilled' && settingsRes.value) ? settingsRes.value : {};
     const redirectUrl   = settings.redirect_url   || null;
     const popupUrl      = settings.popup_url      || null;

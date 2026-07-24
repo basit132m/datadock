@@ -520,6 +520,7 @@ select { background: var(--surface); color: var(--text); }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 .lp-err-icon { font-size: 3rem; color: var(--lp-err-icon); margin-bottom: .75rem; }
+.lp-quota-icon { font-size: 3rem; color: #f59e0b; margin-bottom: .75rem; }
 .lp-state h2 { font-size: 1.25rem; color: var(--lp-txt); margin-bottom: .4rem; }
 .lp-go-home {
   display: inline-flex; align-items: center; gap: .4rem; margin-top: 1.25rem;
