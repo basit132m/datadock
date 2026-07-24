@@ -2748,11 +2748,39 @@ function initSupportPage() {
 
 // ── Duplicates ────────────────────────────────────────────────────────────────
 
+async function mergeAllDuplicates() {
+  const btn = document.getElementById('dup-merge-all-btn');
+  const files  = btn.dataset.files || '?';
+  const wasted = formatBytes(parseInt(btn.dataset.wasted || '0', 10));
+  if (!confirm(
+    `Auto-clean ALL duplicate groups?\n\n` +
+    `• In each group the copy with the MOST downloads is kept (ties → most views, then oldest)\n` +
+    `• All other copies (${files} file(s)) are deleted from storage — frees ${wasted}\n` +
+    `• Every deleted copy's share link permanently redirects to the kept file\n\n` +
+    `This cannot be undone.`
+  )) return;
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Cleaning up…';
+  try {
+    const res = await apiFetch('POST', '/api/admin/duplicates/merge-all');
+    alert(`Done — deleted ${res.merged} duplicate(s) across ${res.groups} group(s), freed ${formatBytes(res.freed_bytes)}.`);
+    loadDuplicatesPage();
+    loadDashboard();
+  } catch (e) {
+    btn.disabled = false;
+    alert('Error: ' + e.message);
+    loadDuplicatesPage();
+  }
+}
+
 async function loadDuplicatesPage() {
   const list = document.getElementById('dup-list');
   const statsDiv = document.getElementById('dup-stats');
+  const mergeAllBtn = document.getElementById('dup-merge-all-btn');
   list.innerHTML = '<p style="padding:2rem;color:var(--muted);font-size:.875rem;text-align:center"><i class="fa-solid fa-spinner fa-spin"></i> Scanning for duplicates…</p>';
   statsDiv.style.display = 'none';
+  if (mergeAllBtn) mergeAllBtn.style.display = 'none';
 
   let data;
   try {
@@ -2760,6 +2788,11 @@ async function loadDuplicatesPage() {
   } catch (e) {
     list.innerHTML = `<p style="padding:2rem;color:var(--danger);text-align:center">${e.message}</p>`;
     return;
+  }
+
+  if (mergeAllBtn && !mergeAllBtn._wired) {
+    mergeAllBtn._wired = true;
+    mergeAllBtn.addEventListener('click', mergeAllDuplicates);
   }
 
   if (!data.groups.length) {
@@ -2777,6 +2810,14 @@ async function loadDuplicatesPage() {
   document.getElementById('dup-stat-wasted').textContent  = formatBytes(data.total_wasted_bytes);
   document.getElementById('dup-stat-files').textContent   = data.total_duplicate_files.toLocaleString();
   statsDiv.style.display = '';
+
+  if (mergeAllBtn) {
+    mergeAllBtn.style.display = '';
+    mergeAllBtn.innerHTML =
+      `<i class="fa-solid fa-wand-magic-sparkles"></i> Delete all ${data.total_duplicate_files.toLocaleString()} duplicates (free ${formatBytes(data.total_wasted_bytes)})`;
+    mergeAllBtn.dataset.wasted = data.total_wasted_bytes;
+    mergeAllBtn.dataset.files  = data.total_duplicate_files;
+  }
 
   list.innerHTML = '';
 

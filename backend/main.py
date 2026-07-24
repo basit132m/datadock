@@ -1269,20 +1269,17 @@ def _dup_name_key(name: str) -> str:
     return f"{stem}.{ext}" if ext else stem
 
 
-@app.get("/api/admin/duplicates")
-async def get_duplicates(db: Session = Depends(get_db), _=Depends(require_admin)):
-    """Find duplicate uploads aggressively. Two files are considered the same if
-    they share EITHER an identical content hash OR the same normalized filename
-    AND exact byte size — the latter catches imported files (which have no hash)
-    and re-uploaded copies. Groups are connected components across both signals."""
+def _duplicate_components(db: Session) -> list:
+    """Return connected components (lists of Upload) of duplicate files. Two files
+    are linked if they share an identical content hash OR the same normalized
+    filename + exact byte size. Only components with 2+ files are returned."""
+    from collections import defaultdict
     uploads = (
         db.query(Upload)
         .filter(Upload.status == "completed", Upload.dup_excluded != 1)
         .order_by(Upload.completed_at)
         .all()
     )
-
-    # ── Union-find over hash-key and (name+size)-key ─────────────────────────
     parent: dict = {u.id: u.id for u in uploads}
 
     def find(x):
@@ -1311,12 +1308,30 @@ async def get_duplicates(db: Session = Depends(get_db), _=Depends(require_admin)
             else:
                 seen_key[k] = u.id
 
-    from collections import defaultdict
     comps: dict = defaultdict(list)
     for u in uploads:
         comps[find(u.id)].append(u)
+    return [files for files in comps.values() if len(files) >= 2]
 
-    key_ids = list({u.uploaded_by_key_id for u in uploads if u.uploaded_by_key_id})
+
+def _pick_keeper(files: list):
+    """Choose which copy to keep: most downloads, then most views, then oldest."""
+    return sorted(
+        files,
+        key=lambda u: (-(u.downloads or 0), -(u.views or 0), u.created_at or datetime.min),
+    )[0]
+
+
+@app.get("/api/admin/duplicates")
+async def get_duplicates(db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Find duplicate uploads aggressively. Two files are considered the same if
+    they share EITHER an identical content hash OR the same normalized filename
+    AND exact byte size — the latter catches imported files (which have no hash)
+    and re-uploaded copies. Groups are connected components across both signals."""
+    components = _duplicate_components(db)
+    all_files = [u for files in components for u in files]
+
+    key_ids = list({u.uploaded_by_key_id for u in all_files if u.uploaded_by_key_id})
     key_map: dict = {}
     if key_ids:
         keys = db.query(ApiKey).filter(ApiKey.id.in_(key_ids)).all()
@@ -1326,7 +1341,7 @@ async def get_duplicates(db: Session = Depends(get_db), _=Depends(require_admin)
     total_wasted = 0
     total_duplicates = 0
 
-    for files in comps.values():
+    for files in components:
         if len(files) < 2:
             continue
         file_size = max((f.file_size or 0) for f in files)
@@ -1506,6 +1521,39 @@ async def merge_duplicate_group(
         merged += 1
     db.commit()
     return {"ok": True, "merged": merged, "freed_bytes": freed, "redirects_to": canonical.share_id}
+
+
+@app.post("/api/admin/duplicates/merge-all")
+async def merge_all_duplicates(db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Auto-resolve every duplicate group in one pass: keep the copy with the most
+    downloads (ties broken by views, then oldest), delete the rest from storage,
+    and redirect their share links to the kept file."""
+    components = _duplicate_components(db)
+    groups = 0
+    merged = 0
+    freed = 0
+    for files in components:
+        keeper = _pick_keeper(files)
+        if not keeper.share_id:
+            continue  # can't redirect to a file without a share link
+        group_merged = 0
+        for dup in files:
+            if dup.id == keeper.id:
+                continue
+            try:
+                _get_storage(dup.storage_provider_id, db).delete_object(dup.b2_file_key)
+            except Exception:
+                pass
+            db.query(Part).filter(Part.upload_id == dup.id).delete()
+            dup.status = "redirected"
+            dup.redirects_to = keeper.share_id
+            freed += dup.file_size or 0
+            group_merged += 1
+        if group_merged:
+            groups += 1
+            merged += group_merged
+    db.commit()
+    return {"ok": True, "groups": groups, "merged": merged, "freed_bytes": freed}
 
 
 @app.post("/api/auth/verify")
