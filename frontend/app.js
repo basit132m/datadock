@@ -2794,6 +2794,7 @@ async function loadDuplicatesPage() {
     const matchLabel = group.match_type === 'content'
       ? '<span title="Identical file content"><i class="fa-solid fa-fingerprint"></i> identical content</span>'
       : '<span title="Same filename and exact size — likely the same file (catches imports without a hash)"><i class="fa-solid fa-file-signature"></i> same name &amp; size</span>';
+    const dupIds = group.files.slice(1).map(f => f.id);
     hdr.innerHTML = `
       <span>
         <i class="fa-solid fa-copy" style="color:#f59e0b;margin-right:.4rem"></i>
@@ -2802,7 +2803,14 @@ async function loadDuplicatesPage() {
           · <span style="color:#ef4444">${formatBytes(group.wasted_bytes)} wasted</span>
           · ${matchLabel}
         </span>
-      </span>`;
+      </span>
+      <button class="btn-danger btn-sm dup-merge-all-btn"
+        data-keep="${canonicalShareId}"
+        data-ids="${dupIds.join(',')}"
+        data-count="${dupIds.length}"
+        data-wasted="${group.wasted_bytes}">
+        <i class="fa-solid fa-broom"></i> Delete all ${dupIds.length} duplicates
+      </button>`;
     card.appendChild(hdr);
 
     // Table
@@ -2864,6 +2872,39 @@ async function loadDuplicatesPage() {
     wrap.appendChild(table);
     card.appendChild(wrap);
     list.appendChild(card);
+  });
+
+  // Wire up "Delete all duplicates" (whole-group) buttons
+  list.querySelectorAll('.dup-merge-all-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const keep  = btn.dataset.keep;
+      const ids   = (btn.dataset.ids || '').split(',').filter(Boolean);
+      const count = btn.dataset.count;
+      const wasted = formatBytes(parseInt(btn.dataset.wasted || '0', 10));
+      if (!ids.length) return;
+      if (!confirm(
+        `Delete all ${count} duplicate(s) and keep the top file?\n\n` +
+        `• ${count} file(s) removed from storage (frees ${wasted})\n` +
+        `• Their share links permanently redirect to /f/${keep}\n\n` +
+        `This cannot be undone.`
+      )) return;
+
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Deleting…';
+      try {
+        const res = await apiFetch('POST', '/api/admin/duplicates/merge-group',
+          { keep_share_id: keep, file_ids: ids });
+        if (res.merged < ids.length) {
+          alert(`Merged ${res.merged} of ${ids.length}. Some files were skipped (not confirmed duplicates).`);
+        }
+        loadDuplicatesPage();
+        loadDashboard();
+      } catch (e) {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-broom"></i> Delete all ${ids.length} duplicates`;
+        alert('Error: ' + e.message);
+      }
+    });
   });
 
   // Wire up merge buttons

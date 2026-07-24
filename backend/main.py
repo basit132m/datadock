@@ -1435,8 +1435,16 @@ async def merge_duplicate(
     if duplicate.id == canonical.id:
         raise HTTPException(400, "Source and target are the same file")
 
-    if duplicate.file_hash != canonical.file_hash:
-        raise HTTPException(400, "Files do not share the same content hash")
+    # Accept the same pairing rule the detector uses: identical content hash OR
+    # same normalized filename + exact byte size (catches imports with no hash).
+    same_hash = bool(duplicate.file_hash) and duplicate.file_hash == canonical.file_hash
+    same_name_size = (
+        (duplicate.file_size or 0) == (canonical.file_size or 0)
+        and (duplicate.file_size or 0) > 0
+        and _dup_name_key(duplicate.filename) == _dup_name_key(canonical.filename)
+    )
+    if not (same_hash or same_name_size):
+        raise HTTPException(400, "Files are not duplicates (different content and different name/size)")
 
     try:
         _get_storage(duplicate.storage_provider_id, db).delete_object(duplicate.b2_file_key)
@@ -1448,6 +1456,56 @@ async def merge_duplicate(
     duplicate.redirects_to = canonical.share_id
     db.commit()
     return {"ok": True, "redirects_to": canonical.share_id}
+
+
+class MergeGroupIn(BaseModel):
+    keep_share_id: str          # canonical to keep and redirect everything else to
+    file_ids: list[str]         # duplicates to delete + redirect
+
+
+@app.post("/api/admin/duplicates/merge-group")
+async def merge_duplicate_group(
+    body: MergeGroupIn,
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    """Delete every listed duplicate and redirect its share link to the kept file,
+    in one call. Skips files that aren't a real duplicate of the canonical."""
+    canonical = db.query(Upload).filter(
+        Upload.share_id == body.keep_share_id, Upload.status == "completed"
+    ).first()
+    if not canonical:
+        raise HTTPException(404, "Canonical file not found")
+
+    dups = db.query(Upload).filter(
+        Upload.id.in_([i for i in body.file_ids if i]),
+        Upload.status == "completed",
+    ).all()
+
+    merged = 0
+    freed = 0
+    for dup in dups:
+        if dup.id == canonical.id:
+            continue
+        same_hash = bool(dup.file_hash) and dup.file_hash == canonical.file_hash
+        same_name_size = (
+            (dup.file_size or 0) == (canonical.file_size or 0)
+            and (dup.file_size or 0) > 0
+            and _dup_name_key(dup.filename) == _dup_name_key(canonical.filename)
+        )
+        if not (same_hash or same_name_size):
+            continue
+        try:
+            _get_storage(dup.storage_provider_id, db).delete_object(dup.b2_file_key)
+        except Exception:
+            pass
+        db.query(Part).filter(Part.upload_id == dup.id).delete()
+        dup.status = "redirected"
+        dup.redirects_to = canonical.share_id
+        freed += dup.file_size or 0
+        merged += 1
+    db.commit()
+    return {"ok": True, "merged": merged, "freed_bytes": freed, "redirects_to": canonical.share_id}
 
 
 @app.post("/api/auth/verify")
