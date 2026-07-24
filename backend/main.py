@@ -1305,6 +1305,43 @@ def _dup_name_key(name: str) -> str:
     return f"{stem}.{ext}" if ext else stem
 
 
+# Generic tokens that don't help tell two files apart (format/platform words)
+_DUP_STOPWORDS = {
+    "nsp", "xci", "nsz", "xcz", "iso", "zip", "rar", "7z", "pkg", "bin",
+    "switch", "nintendo", "edition", "base", "game", "eur", "usa", "jpn",
+    "the", "of", "and", "for", "version", "update", "dlc", "repack",
+}
+
+
+def _dup_tokens(name: str) -> set:
+    stem = name.rsplit(".", 1)[0] if "." in name else name
+    toks = re.findall(r"[a-z0-9]+", stem.lower())
+    return {t for t in toks if len(t) > 1 and t not in _DUP_STOPWORDS}
+
+
+def _names_similar(a: str, b: str) -> bool:
+    """True if two filenames clearly refer to the same title — used only among
+    files of the exact same byte size, so this decides "same game, different
+    filename". Requires 2+ shared meaningful words and Jaccard >= 0.5."""
+    ta, tb = _dup_tokens(a), _dup_tokens(b)
+    if len(ta) < 2 or len(tb) < 2:
+        # Short names: fall back to exact normalized-name equality
+        return _dup_name_key(a) == _dup_name_key(b)
+    inter = len(ta & tb)
+    union = len(ta | tb)
+    return inter >= 2 and union > 0 and (inter / union) >= 0.5
+
+
+def _are_duplicates(a: Upload, b: Upload) -> bool:
+    """Same pairing rule the detector uses: identical content hash, OR exact same
+    byte size with a matching/similar title."""
+    if a.file_hash and a.file_hash == b.file_hash:
+        return True
+    if (a.file_size or 0) > 0 and a.file_size == b.file_size and _names_similar(a.filename, b.filename):
+        return True
+    return False
+
+
 def _duplicate_components(db: Session) -> list:
     """Return connected components (lists of Upload) of duplicate files. Two files
     are linked if they share an identical content hash OR the same normalized
@@ -1332,17 +1369,32 @@ def _duplicate_components(db: Session) -> list:
             parent[ra] = rb
 
     seen_key: dict = {}
+    size_buckets: dict = defaultdict(list)
     for u in uploads:
         keys = []
         if u.file_hash:                       # identical content
             keys.append(("h", u.file_hash))
         if u.file_size:                       # same name + exact size
             keys.append(("ns", _dup_name_key(u.filename), u.file_size))
+            size_buckets[u.file_size].append(u)
         for k in keys:
             if k in seen_key:
                 union(u.id, seen_key[k])
             else:
                 seen_key[k] = u.id
+
+    # Aggressive pass: among files of the EXACT same byte size, link any whose
+    # names clearly refer to the same title (catches "Game.NSP" vs "Game Edition").
+    for bucket in size_buckets.values():
+        n = len(bucket)
+        if n < 2 or n > 200:   # cap keeps this from blowing up on huge same-size sets
+            continue
+        for i in range(n):
+            for j in range(i + 1, n):
+                if find(bucket[i].id) == find(bucket[j].id):
+                    continue
+                if _names_similar(bucket[i].filename, bucket[j].filename):
+                    union(bucket[i].id, bucket[j].id)
 
     comps: dict = defaultdict(list)
     for u in uploads:
@@ -1486,15 +1538,7 @@ async def merge_duplicate(
     if duplicate.id == canonical.id:
         raise HTTPException(400, "Source and target are the same file")
 
-    # Accept the same pairing rule the detector uses: identical content hash OR
-    # same normalized filename + exact byte size (catches imports with no hash).
-    same_hash = bool(duplicate.file_hash) and duplicate.file_hash == canonical.file_hash
-    same_name_size = (
-        (duplicate.file_size or 0) == (canonical.file_size or 0)
-        and (duplicate.file_size or 0) > 0
-        and _dup_name_key(duplicate.filename) == _dup_name_key(canonical.filename)
-    )
-    if not (same_hash or same_name_size):
+    if not _are_duplicates(duplicate, canonical):
         raise HTTPException(400, "Files are not duplicates (different content and different name/size)")
 
     try:
@@ -1538,13 +1582,7 @@ async def merge_duplicate_group(
     for dup in dups:
         if dup.id == canonical.id:
             continue
-        same_hash = bool(dup.file_hash) and dup.file_hash == canonical.file_hash
-        same_name_size = (
-            (dup.file_size or 0) == (canonical.file_size or 0)
-            and (dup.file_size or 0) > 0
-            and _dup_name_key(dup.filename) == _dup_name_key(canonical.filename)
-        )
-        if not (same_hash or same_name_size):
+        if not _are_duplicates(dup, canonical):
             continue
         try:
             _get_storage(dup.storage_provider_id, db).delete_object(dup.b2_file_key)

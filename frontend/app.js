@@ -2869,7 +2869,7 @@ async function loadDuplicatesPage() {
     hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem';
     const matchLabel = group.match_type === 'content'
       ? '<span title="Identical file content"><i class="fa-solid fa-fingerprint"></i> identical content</span>'
-      : '<span title="Same filename and exact size — likely the same file (catches imports without a hash)"><i class="fa-solid fa-file-signature"></i> same name &amp; size</span>';
+      : '<span title="Exact same byte size and a matching title — likely the same file even with a different filename"><i class="fa-solid fa-file-signature"></i> same size &amp; title</span>';
     const allIds = group.files.map(f => f.id).join(',');
     hdr.innerHTML = `
       <span>
