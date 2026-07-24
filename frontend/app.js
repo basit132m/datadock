@@ -1118,6 +1118,80 @@ function providerMeta(endpointUrl) {
   return { label: 'Custom S3', icon: 'fa-server', color: '#64748b' };
 }
 
+// ── Upload pause control ──────────────────────────────────────────────────────
+
+let uploadsPaused = false;
+
+function _applyUploadPausedUI() {
+  const banner   = document.getElementById('uploads-paused-banner');
+  const dropZone = document.getElementById('drop-zone');
+  const importBtn = document.getElementById('import-btn');
+  const fileInput = document.getElementById('file-input');
+  // Admins are exempt — they can still upload while paused for members
+  const blocked = uploadsPaused && userRole !== 'admin';
+
+  if (banner) {
+    if (uploadsPaused) {
+      banner.style.display = 'flex';
+      document.getElementById('uploads-paused-text').textContent = (userRole === 'admin')
+        ? 'Uploads are paused for members. As an admin you can still upload.'
+        : 'Uploads are temporarily paused by the administrator. Please try again later.';
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+  if (dropZone) {
+    dropZone.style.opacity = blocked ? '.5' : '';
+    dropZone.style.pointerEvents = blocked ? 'none' : '';
+  }
+  if (importBtn) importBtn.disabled = blocked;
+  if (fileInput) fileInput.disabled = blocked;
+}
+
+function _applyUploadAdminControl() {
+  const card = document.getElementById('uploads-admin-control');
+  if (!card) return;
+  card.style.display = userRole === 'admin' ? '' : 'none';
+  if (userRole !== 'admin') return;
+  const desc = document.getElementById('uploads-control-desc');
+  const btn  = document.getElementById('uploads-toggle-btn');
+  if (uploadsPaused) {
+    desc.innerHTML = '<span style="color:#dc2626;font-weight:600">Uploads are PAUSED</span> — members cannot upload or import from URL.';
+    btn.className = 'btn-primary';
+    btn.innerHTML = '<i class="fa-solid fa-play"></i> Resume Uploads';
+  } else {
+    desc.textContent = 'Uploads and URL imports are currently enabled for all members.';
+    btn.className = 'btn-danger';
+    btn.innerHTML = '<i class="fa-solid fa-pause"></i> Pause All Uploads';
+  }
+}
+
+async function refreshUploadControls() {
+  try {
+    const s = await apiFetch('GET', '/api/settings');
+    uploadsPaused = !!s.uploads_paused;
+  } catch {}
+  _applyUploadAdminControl();
+  _applyUploadPausedUI();
+}
+
+async function toggleUploadsPaused() {
+  const btn = document.getElementById('uploads-toggle-btn');
+  const next = !uploadsPaused;
+  if (next && !confirm('Pause all uploads and URL imports for members?\n\nIn-progress uploads will finish, but no new ones can start until you resume.')) return;
+  btn.disabled = true;
+  try {
+    await apiFetch('POST', '/api/admin/settings', { uploads_paused: next });
+    uploadsPaused = next;
+    _applyUploadAdminControl();
+    _applyUploadPausedUI();
+  } catch (e) {
+    alert('Failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function loadMaxSizeSetting() {
   try {
     const s = await apiFetch('GET', '/api/settings');
@@ -3313,6 +3387,10 @@ function applyRoleUI() {
     const btn = document.querySelector(`.nav-item[data-page="${page}"]`);
     if (btn) btn.style.display = userRole === 'admin' ? '' : 'none';
   });
+  // Role may have just been corrected from the optimistic 'admin' — re-sync the
+  // upload page's admin control + paused banner if it's the visible page.
+  const upPage = document.getElementById('page-upload');
+  if (upPage && upPage.classList.contains('active')) refreshUploadControls();
 }
 
 function showPage(page) {
@@ -3326,6 +3404,7 @@ function showPage(page) {
   document.getElementById(`page-${page}`).classList.add('active');
   const navBtn = document.querySelector(`[data-page="${page}"]`);
   if (navBtn) navBtn.classList.add('active');
+  if (page === 'upload')    refreshUploadControls();
   if (page === 'dashboard') loadDashboard();
   if (page === 'files')     loadFileList();
   if (page === 'ads')       loadAdsPage();
@@ -3403,6 +3482,8 @@ function initApp() {
   initSupportPage();
   initMaxSizeForm();
   loadMaxSizeSetting();   // sets maxUploadBytes for the upload guard (all roles)
+  const upToggle = document.getElementById('uploads-toggle-btn');
+  if (upToggle) upToggle.addEventListener('click', toggleUploadsPaused);
   applyRoleUI();
 
   document.querySelectorAll('#dl-period-tabs .dl-period-btn').forEach(btn => {

@@ -671,9 +671,10 @@ class CompleteUploadIn(BaseModel):
 async def init_upload(
     body: InitUploadIn,
     db: Session = Depends(get_db),
-    _=Depends(require_auth),
+    auth: dict = Depends(require_auth),
     auth_key: Optional[ApiKey] = Depends(get_current_key),
 ):
+    _assert_uploads_enabled(auth, db)
     if body.file_size > _max_bytes_setting(db):
         raise HTTPException(400, f"File exceeds {_max_gb_value(db):g} GB limit")
     if body.file_size <= 0:
@@ -747,10 +748,11 @@ async def init_upload(
 async def relay_init(
     body: BrowserRelayInitIn,
     db: Session = Depends(get_db),
-    _=Depends(require_auth),
+    auth: dict = Depends(require_auth),
     auth_key: Optional[ApiKey] = Depends(get_current_key),
 ):
     """Create an upload slot for browser-side relay (no file_size required)."""
+    _assert_uploads_enabled(auth, db)
     safe_name = os.path.basename(body.filename).replace("\0", "") or "unnamed"
     file_key = f"uploads/{uuid.uuid4()}/{safe_name}"
     default_prov = _get_default_provider(db)
@@ -1860,9 +1862,10 @@ async def import_from_url(
     body: ImportIn,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    _=Depends(require_auth),
+    auth: dict = Depends(require_auth),
     auth_key: Optional[ApiKey] = Depends(get_current_key),
 ):
+    _assert_uploads_enabled(auth, db)
     await _assert_public_url(body.url)
 
     # ── Mega.nz — client-side encrypted, cannot be handled by normal HTTP pipeline ──
@@ -3069,6 +3072,22 @@ def _max_gb_value(db: Session) -> float:
     return round(_max_bytes_setting(db) / 1_073_741_824, 2)
 
 
+def _uploads_paused(db: Session) -> bool:
+    return _get_setting(db, "uploads_paused") == "1"
+
+
+def _assert_uploads_enabled(auth: dict, db: Session):
+    """Block new uploads/imports when an admin has paused the system.
+    Admins are exempt so they can still upload while it's paused for the team."""
+    if auth.get("role") == "admin":
+        return
+    if _uploads_paused(db):
+        raise HTTPException(
+            503,
+            "Uploads are temporarily paused by the administrator. Please try again later.",
+        )
+
+
 @app.get("/api/settings")
 async def get_public_settings(db: Session = Depends(get_db)):
     """Public endpoint — returns settings used by landing pages."""
@@ -3080,6 +3099,7 @@ async def get_public_settings(db: Session = Depends(get_db)):
         "monetag_side":    _get_setting(db, "monetag_side"),
         "download_hint":   _get_setting(db, "download_hint"),
         "max_file_size_gb": _max_gb_value(db),
+        "uploads_paused":  _uploads_paused(db),
     }
 
 
@@ -3091,6 +3111,7 @@ class UpdateSettingsIn(BaseModel):
     monetag_side:   Optional[str] = None
     download_hint:  Optional[str] = None
     max_file_size_gb: Optional[float] = None
+    uploads_paused: Optional[bool] = None
 
 
 _TEXT_SETTING_KEYS = ("redirect_url", "popup_url", "monetag_head",
@@ -3124,6 +3145,9 @@ async def update_settings(
             if not (0.1 <= v <= 10000):
                 raise HTTPException(400, "Max upload size must be between 0.1 and 10000 GB")
             _upsert_setting(db, "max_file_size_gb", f"{v:g}")
+
+    if "uploads_paused" in data:
+        _upsert_setting(db, "uploads_paused", "1" if data["uploads_paused"] else None)
 
     db.commit()
     return {"ok": True}

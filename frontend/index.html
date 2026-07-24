@@ -142,6 +142,27 @@
         <h1>Upload Files</h1>
       </div>
 
+      <div id="uploads-admin-control" class="card" style="margin-bottom:1.25rem;display:none">
+        <div style="padding:1rem 1.25rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+          <div style="flex:1;min-width:200px">
+            <div style="font-weight:600;font-size:.95rem;display:flex;align-items:center;gap:.5rem">
+              <i class="fa-solid fa-power-off" style="color:var(--primary)"></i> Upload System
+            </div>
+            <div id="uploads-control-desc" style="color:var(--muted);font-size:.82rem;margin-top:.25rem">
+              Uploads and URL imports are currently enabled for all members.
+            </div>
+          </div>
+          <button id="uploads-toggle-btn" class="btn-danger">
+            <i class="fa-solid fa-pause"></i> Pause All Uploads
+          </button>
+        </div>
+      </div>
+
+      <div id="uploads-paused-banner" class="uploads-paused-banner" style="display:none">
+        <i class="fa-solid fa-circle-pause"></i>
+        <span id="uploads-paused-text">Uploads are temporarily paused by the administrator.</span>
+      </div>
+
       <div id="drop-zone">
         <div class="drop-icon"><i class="fa-solid fa-cloud-arrow-up"></i></div>
         <div class="drop-title">Drop files here or click to browse</div>

@@ -2583,3 +2583,12 @@ select { background: var(--surface); color: var(--text); }
   padding: .12rem .5rem; vertical-align: middle;
 }
 .fm-hide-active { color: #b45309; border-color: #fcd34d; background: #fef3c7; }
+
+/* ── Uploads paused banner ── */
+.uploads-paused-banner {
+  display: flex; align-items: center; gap: .6rem;
+  padding: .85rem 1.15rem; margin-bottom: 1.25rem;
+  background: #fef2f2; border: 1.5px solid #fecaca; border-radius: .6rem;
+  color: #b91c1c; font-size: .875rem; font-weight: 600;
+}
+.uploads-paused-banner i { font-size: 1rem; flex-shrink: 0; }
