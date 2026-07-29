@@ -1283,6 +1283,39 @@
   </div>
 </div>
 
+<!-- ── Hide (DMCA) modal ── -->
+<div id="fm-hide-modal" class="fm-modal-overlay" style="display:none">
+  <div class="fm-modal">
+    <div class="fm-modal-header">
+      <span><i class="fa-solid fa-eye-slash" style="color:#b45309"></i> <span id="fm-hide-title">Hide File (DMCA)</span></span>
+      <button class="fm-modal-close" onclick="closeFmHideModal()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="fm-modal-body">
+      <p style="font-size:.82rem;color:var(--muted);margin:0 0 .75rem">
+        <b id="fm-hide-filename" style="color:var(--text)"></b>
+      </p>
+      <p style="font-size:.8rem;color:var(--muted);margin:0 0 .75rem">
+        The file is blocked from downloads/preview while hidden (stays in storage). Optionally send its
+        share link to another URL so links shared elsewhere don't hit a 404. Leave blank to show 404.
+      </p>
+      <label style="font-size:.8rem;font-weight:600;color:var(--muted)">Redirect share link to (optional):</label>
+      <input id="fm-hide-url" type="url" placeholder="https://example.com/replacement"
+        style="width:100%;box-sizing:border-box"
+        onkeydown="if(event.key==='Enter')confirmFmHide();if(event.key==='Escape')closeFmHideModal()" />
+      <div id="fm-hide-err" style="color:#ef4444;font-size:.8rem;font-weight:500;min-height:1rem"></div>
+    </div>
+    <div class="fm-modal-footer">
+      <button id="fm-hide-unhide" class="btn-sm danger" style="margin-right:auto;display:none" onclick="fmUnhide()">
+        <i class="fa-solid fa-eye"></i> Unhide (make public)
+      </button>
+      <button class="btn-sm" onclick="closeFmHideModal()">Cancel</button>
+      <button id="fm-hide-save" class="btn-primary" onclick="confirmFmHide()">
+        <i class="fa-solid fa-eye-slash"></i> Hide file
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Member rename modal ── -->
 <div id="member-rename-modal" class="fm-modal-overlay" style="display:none">
   <div class="fm-modal">

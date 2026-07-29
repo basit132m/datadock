@@ -3228,7 +3228,9 @@ function renderFmGrid() {
     const hideBtn     = `<button class="btn-sm${f.hidden ? ' fm-hide-active' : ''}" onclick="fmToggleHide('${f.id}')" title="${hideTitle}"><i class="fa-solid ${hideIcon}"></i></button>`;
     const delBtn      = `<button class="btn-danger" onclick="openFmDeleteModal('${f.id}')"><i class="fa-solid fa-trash-can"></i> Delete</button>`;
     const delBtnSm    = `<button class="btn-danger" style="padding:.35rem .65rem" onclick="openFmDeleteModal('${f.id}')"><i class="fa-solid fa-trash-can"></i></button>`;
-    const hiddenBadge = f.hidden ? '<span class="fm-hidden-badge"><i class="fa-solid fa-eye-slash"></i> Hidden</span>' : '';
+    const hiddenBadge = f.hidden
+      ? `<span class="fm-hidden-badge" title="${f.hidden_redirect_url ? 'Redirects to: ' + escHtml(f.hidden_redirect_url) : 'Shows 404'}"><i class="fa-solid fa-eye-slash"></i> Hidden${f.hidden_redirect_url ? ' →' : ''}</span>`
+      : '';
     const hiddenCls   = f.hidden ? ' fm-card-hidden' : '';
 
     if (fmView === 'list') {
@@ -3295,21 +3297,54 @@ function fmGoPage(p) {
   document.getElementById('main').scrollTop = 0;
 }
 
-async function fmToggleHide(id) {
-  const f = fmAllFiles.find(x => x.id === id);
-  if (!f) return;
-  const hide = !f.hidden;
-  if (hide && !confirm(
-    `Hide "${f.filename}"?\n\nThe share link, download and preview will all return "File not found" ` +
-    `to visitors. The file stays in storage and you can unhide it anytime.`)) return;
+let fmHideTarget = null;
+
+function fmToggleHide(id) {
+  // Always open the modal — hiding, editing the redirect, or unhiding
+  fmHideTarget = fmAllFiles.find(x => x.id === id) || null;
+  if (!fmHideTarget) return;
+  const isHidden = !!fmHideTarget.hidden;
+  document.getElementById('fm-hide-filename').textContent = fmHideTarget.filename;
+  document.getElementById('fm-hide-url').value = fmHideTarget.hidden_redirect_url || '';
+  document.getElementById('fm-hide-err').textContent = '';
+  document.getElementById('fm-hide-title').textContent = isHidden ? 'Hidden File (DMCA)' : 'Hide File (DMCA)';
+  document.getElementById('fm-hide-save').innerHTML = isHidden
+    ? '<i class="fa-solid fa-floppy-disk"></i> Update redirect'
+    : '<i class="fa-solid fa-eye-slash"></i> Hide file';
+  document.getElementById('fm-hide-unhide').style.display = isHidden ? '' : 'none';
+  document.getElementById('fm-hide-modal').style.display = 'flex';
+  setTimeout(() => document.getElementById('fm-hide-url').focus(), 50);
+}
+
+function closeFmHideModal() {
+  document.getElementById('fm-hide-modal').style.display = 'none';
+  fmHideTarget = null;
+}
+
+async function _fmHideApply(hidden) {
+  if (!fmHideTarget) return;
+  const id  = fmHideTarget.id;
+  const url = document.getElementById('fm-hide-url').value.trim();
+  const err = document.getElementById('fm-hide-err');
+  err.textContent = '';
+  if (hidden && url && !/^https?:\/\//i.test(url)) {
+    err.textContent = 'Redirect URL must start with http:// or https://';
+    return;
+  }
   try {
-    const res = await apiFetch('POST', `/api/admin/files/${id}/hide`, { hidden: hide });
-    fmAllFiles = fmAllFiles.map(x => x.id === id ? { ...x, hidden: res.hidden } : x);
+    const res = await apiFetch('POST', `/api/admin/files/${id}/hide`,
+      { hidden, redirect_url: hidden ? (url || null) : null });
+    fmAllFiles = fmAllFiles.map(x => x.id === id
+      ? { ...x, hidden: res.hidden, hidden_redirect_url: res.redirect_url || '' } : x);
+    closeFmHideModal();
     renderFmGrid();
   } catch (e) {
-    alert('Failed: ' + e.message);
+    err.textContent = e.message;
   }
 }
+
+function confirmFmHide()  { _fmHideApply(true); }
+function fmUnhide()       { _fmHideApply(false); }
 
 function openFmDeleteModal(id) {
   fmDeleteTarget = fmAllFiles.find(f => f.id === id) || null;

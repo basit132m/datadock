@@ -974,6 +974,7 @@ async def list_files(
             "completed_at": f.completed_at.isoformat() if f.completed_at else None,
             "uploaded_by": uploader_names.get(f.uploaded_by_key_id) if f.uploaded_by_key_id else None,
             "hidden": bool(f.hidden or 0),
+            "hidden_redirect_url": f.hidden_redirect_url or "",
         }
         for f in rows
     ]
@@ -1165,6 +1166,7 @@ class AdminRenameIn(BaseModel):
 
 class AdminHideIn(BaseModel):
     hidden: bool
+    redirect_url: Optional[str] = None   # where the hidden share link should redirect (optional)
 
 
 @app.post("/api/admin/files/{file_id}/hide")
@@ -1174,15 +1176,20 @@ async def admin_hide_file(
     db: Session = Depends(get_db),
     _=Depends(require_admin),
 ):
-    """Hide/unhide a file. Hidden files stay in storage and in the admin panel,
-    but every public route (landing page, download, preview) returns 404 —
-    resolves DMCA notices without deleting the file."""
+    """Hide/unhide a file. Hidden files stay in storage and in the admin panel.
+    A hidden file's share link either returns 404 or, if a redirect URL is set,
+    permanently redirects there — so links shared elsewhere don't break after a
+    DMCA takedown. Downloads/previews are always blocked while hidden."""
     upload = db.query(Upload).filter(Upload.id == file_id).first()
     if not upload:
         raise HTTPException(404, "File not found")
+    redirect_url = (body.redirect_url or "").strip() or None
+    if redirect_url and not redirect_url.startswith(("http://", "https://")):
+        raise HTTPException(400, "redirect_url must be an http/https URL")
     upload.hidden = 1 if body.hidden else 0
+    upload.hidden_redirect_url = redirect_url if body.hidden else None
     db.commit()
-    return {"ok": True, "hidden": bool(upload.hidden)}
+    return {"ok": True, "hidden": bool(upload.hidden), "redirect_url": upload.hidden_redirect_url}
 
 
 @app.post("/api/admin/files/{file_id}/rename")
@@ -1703,7 +1710,12 @@ async def get_share_info(
             "message": _get_setting(db, "quota_message")
                 or "This file has reached its maximum downloads for today. Please visit again tomorrow to download it.",
         }
-    if not upload or upload.status != "completed" or upload.hidden:
+    # Hidden (DMCA) file: redirect its share link if a target was set, else 404
+    if upload and upload.hidden:
+        if upload.hidden_redirect_url:
+            return RedirectResponse(upload.hidden_redirect_url, status_code=302)
+        raise HTTPException(404, "File not found")
+    if not upload or upload.status != "completed":
         raise HTTPException(404, "File not found")
 
     from sqlalchemy import text as _sql_text
@@ -4112,14 +4124,17 @@ async def share_page(share_id: str, request: Request, db: Session = Depends(get_
         canonical = _resolve_canonical(share_id, db)
         if canonical and canonical != share_id:
             return RedirectResponse(f"/f/{canonical}", status_code=301)
+    # Hidden (DMCA) file: redirect to the set target, else show the landing shell
+    if upload and upload.hidden:
+        if upload.hidden_redirect_url:
+            return RedirectResponse(upload.hidden_redirect_url, status_code=302)
+        return FileResponse(os.path.join(FRONTEND_DIR, "landing.html"))
     upload = (
         db.query(Upload)
         .filter(Upload.share_id == share_id, Upload.status == "completed")
         .first()
     )
-    if not upload or upload.hidden:
-        # Hidden files serve the bare landing shell; its API call 404s and the
-        # visitor sees the standard "file not found" state (DMCA-safe).
+    if not upload:
         return FileResponse(os.path.join(FRONTEND_DIR, "landing.html"))
 
     base_url = str(request.base_url).rstrip("/")
