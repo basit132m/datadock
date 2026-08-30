@@ -321,18 +321,25 @@
               <select id="ad-type" required>
                 <option value="banner">Banner (image)</option>
                 <option value="button">Button (text)</option>
+                <option value="script">Custom Script (JS)</option>
               </select>
             </label>
-            <label>Label / Button Text
+            <label>Label / Button Text <span class="muted-label" id="ad-label-note"></span>
               <input id="ad-label" type="text" placeholder="e.g. Download Now" required />
             </label>
           </div>
-          <div class="ad-form-row">
+          <div class="ad-form-row" id="ad-url-row">
             <label id="ad-image-wrap">Image URL <span class="muted-label">(banners only)</span>
               <input id="ad-image-url" type="url" placeholder="https://…/banner.jpg" />
             </label>
-            <label>Destination URL
-              <input id="ad-link-url" type="url" placeholder="https://example.com" required />
+            <label id="ad-link-wrap">Destination URL
+              <input id="ad-link-url" type="url" placeholder="https://example.com" />
+            </label>
+          </div>
+          <div class="ad-form-row" id="ad-script-row" style="display:none">
+            <label style="flex:1">Custom Script <span class="muted-label">(paste JS, with or without &lt;script&gt; tags — runs on every download page)</span>
+              <textarea id="ad-script-code" rows="8" placeholder="&lt;script&gt;/* your ad/monetization code */&lt;/script&gt;"
+                style="width:100%;box-sizing:border-box;font-family:monospace;font-size:.8rem"></textarea>
             </label>
           </div>
           <div class="ad-form-row">

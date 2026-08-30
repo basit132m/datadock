@@ -1696,7 +1696,11 @@ async function loadAdsPage() {
       tr.innerHTML = `
         <td><span class="ad-type-badge ad-type-${ad.type}">${ad.type}</span></td>
         <td class="tf-name" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(ad.label)}">${escHtml(ad.label)}</td>
-        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a href="${escHtml(ad.link_url)}" target="_blank" rel="noopener" style="color:var(--primary)">${escHtml(ad.link_url)}</a></td>
+        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${
+          ad.type === 'script'
+            ? '<span style="color:var(--muted)"><i class="fa-solid fa-code"></i> custom script</span>'
+            : `<a href="${escHtml(ad.link_url)}" target="_blank" rel="noopener" style="color:var(--primary)">${escHtml(ad.link_url)}</a>`
+        }</td>
         <td>${ad.display_order}</td>
         <td><span class="ad-status ${ad.active ? 'ad-on' : 'ad-off'}">${ad.active ? 'Active' : 'Paused'}</span></td>
         <td class="tf-actions">
@@ -1732,9 +1736,15 @@ function initAdForm() {
   const imageWrap = document.getElementById('ad-image-wrap');
   const msgEl    = document.getElementById('ad-form-msg');
 
-  typeEl.addEventListener('change', () => {
-    imageWrap.style.opacity = typeEl.value === 'banner' ? '1' : '0.4';
-  });
+  function applyAdType() {
+    const t = typeEl.value;
+    document.getElementById('ad-url-row').style.display    = t === 'script' ? 'none' : '';
+    document.getElementById('ad-script-row').style.display = t === 'script' ? '' : 'none';
+    imageWrap.style.opacity = t === 'banner' ? '1' : '0.4';
+    document.getElementById('ad-label-note').textContent = t === 'script' ? '(internal name)' : '';
+  }
+  typeEl.addEventListener('change', applyAdType);
+  applyAdType();
 
   form.addEventListener('submit', async e => {
     e.preventDefault();
@@ -1744,6 +1754,7 @@ function initAdForm() {
       label:         document.getElementById('ad-label').value.trim(),
       image_url:     document.getElementById('ad-image-url').value.trim() || null,
       link_url:      document.getElementById('ad-link-url').value.trim(),
+      script_code:   document.getElementById('ad-script-code').value.trim() || null,
       active:        document.getElementById('ad-active').checked ? 1 : 0,
       display_order: parseInt(document.getElementById('ad-order').value, 10) || 0,
     };

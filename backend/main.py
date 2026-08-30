@@ -3305,10 +3305,11 @@ async def test_storage_provider(
 
 
 class AdIn(BaseModel):
-    type: str           # "banner" or "button"
+    type: str           # "banner" | "button" | "script"
     label: str
     image_url: Optional[str] = None
-    link_url: str
+    link_url: Optional[str] = ""
+    script_code: Optional[str] = None
     active: int = 1
     display_order: int = 0
 
@@ -3331,20 +3332,33 @@ async def list_ads_admin(db: Session = Depends(get_db), _=Depends(require_admin)
     return [_ad_dict(a) for a in rows]
 
 
-@app.post("/api/admin/ads")
-async def create_ad(body: AdIn, db: Session = Depends(get_db), _=Depends(require_admin)):
-    if body.type not in ("banner", "button"):
-        raise HTTPException(400, "type must be 'banner' or 'button'")
-    if not body.link_url.startswith(("http://", "https://")):
+def _validate_ad(body: AdIn) -> tuple:
+    """Validate an ad payload; returns (link_url, script_code) to store."""
+    if body.type not in ("banner", "button", "script"):
+        raise HTTPException(400, "type must be 'banner', 'button' or 'script'")
+    if body.type == "script":
+        code = (body.script_code or "").strip()
+        if not code:
+            raise HTTPException(400, "script_code is required for a script ad")
+        return "", code
+    link = (body.link_url or "").strip()
+    if not link.startswith(("http://", "https://")):
         raise HTTPException(400, "link_url must be an http/https URL")
     if body.type == "banner" and body.image_url and not body.image_url.startswith(("http://", "https://")):
         raise HTTPException(400, "image_url must be an http/https URL")
+    return link, None
+
+
+@app.post("/api/admin/ads")
+async def create_ad(body: AdIn, db: Session = Depends(get_db), _=Depends(require_admin)):
+    link_url, script_code = _validate_ad(body)
     ad = Ad(
         id=str(uuid.uuid4()),
         type=body.type,
         label=body.label[:300],
         image_url=body.image_url,
-        link_url=body.link_url,
+        link_url=link_url,
+        script_code=script_code,
         active=body.active,
         display_order=body.display_order,
         created_at=datetime.utcnow(),
@@ -3359,10 +3373,12 @@ async def update_ad(ad_id: str, body: AdIn, db: Session = Depends(get_db), _=Dep
     ad = db.query(Ad).filter(Ad.id == ad_id).first()
     if not ad:
         raise HTTPException(404, "Ad not found")
+    link_url, script_code = _validate_ad(body)
     ad.type = body.type
     ad.label = body.label[:300]
     ad.image_url = body.image_url
-    ad.link_url = body.link_url
+    ad.link_url = link_url
+    ad.script_code = script_code
     ad.active = body.active
     ad.display_order = body.display_order
     db.commit()
@@ -3386,6 +3402,7 @@ def _ad_dict(a: Ad):
         "label": a.label,
         "image_url": a.image_url,
         "link_url": a.link_url,
+        "script_code": a.script_code or "",
         "active": a.active,
         "display_order": a.display_order,
         "created_at": a.created_at.isoformat() if a.created_at else None,

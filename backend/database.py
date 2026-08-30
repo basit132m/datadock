@@ -76,6 +76,7 @@ def _migrate():
             "CREATE INDEX IF NOT EXISTS ix_referrers_day ON referrers (day)",
             "ALTER TABLE uploads ADD COLUMN hidden INTEGER DEFAULT 0",
             "ALTER TABLE uploads ADD COLUMN hidden_redirect_url VARCHAR(500)",
+            "ALTER TABLE ads ADD COLUMN script_code TEXT",
         ]:
             try:
                 conn.execute(text(sql))

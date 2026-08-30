@@ -72,10 +72,11 @@ class Ad(Base):
     __tablename__ = "ads"
 
     id = Column(String(36), primary_key=True)
-    type = Column(String(20), nullable=False)          # "banner" or "button"
+    type = Column(String(20), nullable=False)          # "banner" | "button" | "script"
     label = Column(String(300), nullable=False)        # button text or alt text
     image_url = Column(Text, nullable=True)            # banners only
     link_url = Column(Text, nullable=False)
+    script_code = Column(Text, nullable=True)          # raw JS/HTML for "script" ads
     active = Column(Integer, default=1, nullable=False)
     display_order = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, nullable=False)

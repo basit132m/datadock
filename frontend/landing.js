@@ -95,14 +95,42 @@
   }
 
   // ── Ad rendering ──────────────────────────────────────────────────────────
+  // Inject and EXECUTE an ad's custom script. innerHTML alone never runs
+  // <script> tags, so each one is re-created as a live element.
+  function injectAdScript(code, container) {
+    if (!code) return;
+    const tmp = document.createElement('div');
+    tmp.innerHTML = code;
+    const scripts = tmp.querySelectorAll('script');
+    if (scripts.length) {
+      Array.from(tmp.childNodes).forEach(n => {
+        if (n.nodeName === 'SCRIPT') {
+          const s = document.createElement('script');
+          for (const attr of n.attributes) s.setAttribute(attr.name, attr.value);
+          if (n.src) s.async = true; else s.textContent = n.textContent;
+          container.appendChild(s);
+        } else {
+          container.appendChild(n.cloneNode(true));
+        }
+      });
+    } else {
+      // Raw JS pasted without <script> tags
+      const s = document.createElement('script');
+      s.textContent = code;
+      container.appendChild(s);
+    }
+  }
+
   function renderAds(ads) {
     const banners = ads.filter(a => a.type === 'banner');
     const buttons = ads.filter(a => a.type === 'button');
+    const scripts = ads.filter(a => a.type === 'script');
     const mid = Math.ceil(banners.length / 2);
 
     banners.slice(0, mid).forEach(ad => document.getElementById('ads-top').appendChild(makeBanner(ad)));
     banners.slice(mid).forEach(ad => document.getElementById('ads-bottom').appendChild(makeBanner(ad)));
     buttons.forEach(ad => document.getElementById('ads-buttons').appendChild(makeAdBtn(ad)));
+    scripts.forEach(ad => injectAdScript(ad.script_code, document.body));
   }
 
   function makeBanner(ad) {
