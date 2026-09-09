@@ -256,6 +256,28 @@
       injectAdCode(monetagSide, document.getElementById('ads-right'), false);
     }
 
+    // Download-page click script (popunder/monetization). Injected on load so it
+    // can arm its OWN click listener and open the popup on the visitor's first
+    // real click gesture — which is how these ad scripts avoid popup blockers.
+    // Only <script> parts run; any pasted HTML (e.g. a <button>) is ignored.
+    if (downloadClickScript) {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = downloadClickScript;
+      const scripts = tmp.querySelectorAll('script');
+      if (scripts.length) {
+        scripts.forEach(orig => {
+          const s = document.createElement('script');
+          for (const a of orig.attributes) s.setAttribute(a.name, a.value);
+          if (orig.src) s.async = true; else s.textContent = orig.textContent;
+          document.body.appendChild(s);
+        });
+      } else {
+        const s = document.createElement('script');
+        s.textContent = downloadClickScript;
+        document.body.appendChild(s);
+      }
+    }
+
     const d = fileRes.value;
     const type = getType(d.filename);
 
@@ -314,41 +336,20 @@
       }, true); // capture phase — fires before any element handler
     }
 
-    // Run ONLY the <script> parts of a pasted snippet (ignore any HTML like a
-    // stray <button>). innerHTML never executes scripts, so each is re-created.
-    function runFirstClickScript(code) {
-      if (!code) return;
-      const tmp = document.createElement('div');
-      tmp.innerHTML = code;
-      const scripts = tmp.querySelectorAll('script');
-      if (scripts.length) {
-        scripts.forEach(orig => {
-          const s = document.createElement('script');
-          for (const a of orig.attributes) s.setAttribute(a.name, a.value);
-          if (orig.src) s.async = true; else s.textContent = orig.textContent;
-          document.body.appendChild(s);
-        });
-      } else {
-        const s = document.createElement('script');
-        s.textContent = code;
-        document.body.appendChild(s);
-      }
-    }
-
     // ── Download button ───────────────────────────────────────────────────────
-    // First click fires the ad(s): the redirect URL (new tab) and/or the custom
-    // first-click script. The second click starts the download.
-    let firstClickAdDone = !(redirectUrl || downloadClickScript);
+    // First click opens the Redirect URL ad (new tab); the second click starts
+    // the download. The download-page click script (above) handles its own
+    // popunder independently on the visitor's first click.
+    let redirectDone = !redirectUrl;
     dlBtn.addEventListener('click', async e => {
       e.preventDefault();
 
       // If this click just fired the pop-up handler, don't also trigger download/redirect
       if (e === popupClickEvent) return;
 
-      if (!firstClickAdDone) {
-        firstClickAdDone = true;
-        if (redirectUrl) window.open(redirectUrl, '_blank', 'noopener,noreferrer');
-        if (downloadClickScript) runFirstClickScript(downloadClickScript);
+      if (!redirectDone) {
+        redirectDone = true;
+        window.open(redirectUrl, '_blank', 'noopener,noreferrer');
         dlBtnState('fa-arrow-up-right-from-square', 'Click again to download', 'Ad opened in new tab');
         dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
         return;
