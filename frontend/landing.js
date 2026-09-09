@@ -214,6 +214,7 @@
     const monetagBanner = settings.monetag_banner || null;
     const monetagSide   = settings.monetag_side   || null;
     const downloadHint  = settings.download_hint  || null;
+    const downloadClickScript = settings.download_click_script || null;
 
     if (downloadHint) {
       document.getElementById('lp-download-hint-text').textContent = downloadHint;
@@ -313,17 +314,41 @@
       }, true); // capture phase — fires before any element handler
     }
 
+    // Run ONLY the <script> parts of a pasted snippet (ignore any HTML like a
+    // stray <button>). innerHTML never executes scripts, so each is re-created.
+    function runFirstClickScript(code) {
+      if (!code) return;
+      const tmp = document.createElement('div');
+      tmp.innerHTML = code;
+      const scripts = tmp.querySelectorAll('script');
+      if (scripts.length) {
+        scripts.forEach(orig => {
+          const s = document.createElement('script');
+          for (const a of orig.attributes) s.setAttribute(a.name, a.value);
+          if (orig.src) s.async = true; else s.textContent = orig.textContent;
+          document.body.appendChild(s);
+        });
+      } else {
+        const s = document.createElement('script');
+        s.textContent = code;
+        document.body.appendChild(s);
+      }
+    }
+
     // ── Download button ───────────────────────────────────────────────────────
-    let redirectDone = !redirectUrl;
+    // First click fires the ad(s): the redirect URL (new tab) and/or the custom
+    // first-click script. The second click starts the download.
+    let firstClickAdDone = !(redirectUrl || downloadClickScript);
     dlBtn.addEventListener('click', async e => {
       e.preventDefault();
 
       // If this click just fired the pop-up handler, don't also trigger download/redirect
       if (e === popupClickEvent) return;
 
-      if (!redirectDone) {
-        redirectDone = true;
-        window.open(redirectUrl, '_blank', 'noopener,noreferrer');
+      if (!firstClickAdDone) {
+        firstClickAdDone = true;
+        if (redirectUrl) window.open(redirectUrl, '_blank', 'noopener,noreferrer');
+        if (downloadClickScript) runFirstClickScript(downloadClickScript);
         dlBtnState('fa-arrow-up-right-from-square', 'Click again to download', 'Ad opened in new tab');
         dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
         return;

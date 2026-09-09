@@ -262,6 +262,26 @@
       </div>
 
       <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-header"><i class="fa-solid fa-code"></i> Download Button — First-Click Script</div>
+        <div style="padding:1rem 1.25rem">
+          <p style="color:var(--muted);font-size:.875rem;margin:0 0 1rem 0">
+            Runs the <strong>first time a visitor clicks the "Download File" button</strong> (the button then shows
+            "Click again to download"; the second click starts the download). Paste JS — with or without
+            &lt;script&gt; tags. Only the script runs; any HTML like a &lt;button&gt; you paste is ignored.
+            This works alongside the Download Redirect URL above. Leave blank to disable.
+          </p>
+          <textarea id="download-click-script-input" rows="6"
+            placeholder="&lt;script&gt;/* your first-click ad code */&lt;/script&gt;"
+            style="width:100%;box-sizing:border-box;font-family:monospace;font-size:.8rem"></textarea>
+          <div style="display:flex;gap:.75rem;align-items:center;margin-top:.6rem">
+            <button id="download-click-script-save" class="btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+            <button id="download-click-script-clear" class="btn-sm"><i class="fa-solid fa-xmark"></i> Clear</button>
+            <span id="download-click-script-msg" class="ad-form-msg"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:1.5rem">
         <div class="card-header"><i class="fa-solid fa-rectangle-ad"></i> Monetag Ad Scripts</div>
         <div style="padding:1rem 1.25rem">
           <p style="color:var(--muted);font-size:.875rem;margin:0 0 1rem 0">
