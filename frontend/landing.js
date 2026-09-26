@@ -367,20 +367,20 @@
 
     if (adButtonUrl) {
       // ── Ad-button funnel ────────────────────────────────────────────────────
-      // With a pop-up URL:   click1 = pop-up + become ad button; click2 = ad tab +
-      //   become real button; click3 = download.
-      // Without a pop-up URL: click1 = ad tab + become real button; click2 = download.
-      let stage = popupUrl ? 'popup' : 'ad';
+      // The pop-up URL is opened by its own capture handler on the first click
+      // anywhere. On the button: the click that opened the pop-up is skipped
+      // (so no wasted click); the next click opens the ad; the one after
+      // downloads. Without a pop-up URL: click1 = ad, click2 = download.
+      let adOpened = false;
       dlBtn.addEventListener('click', async e => {
         e.preventDefault();
-        if (stage === 'popup') {
-          // the pop-up URL already opened via its own capture handler on this click
-          stage = 'ad';
-          return;
-        }
-        if (stage === 'ad') {
+        // If this same click just fired the pop-up, wait for the next click
+        if (e === popupClickEvent) return;
+        if (!adOpened) {
+          adOpened = true;
           openAdButtonTab();
-          stage = 'download';
+          dlBtnState('fa-arrow-up-right-from-square', 'Click again to download', 'Ad opened in new tab');
+          dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
           return;
         }
         dlBtn.style.background = '';
