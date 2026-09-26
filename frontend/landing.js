@@ -216,6 +216,24 @@
     const downloadHint  = settings.download_hint  || null;
     const downloadClickScript = settings.download_click_script || null;
 
+    // Ad download-button: extract the smartlink URL from a pasted URL or full ad code
+    const adButtonUrl = (function (raw) {
+      if (!raw) return null;
+      raw = raw.trim();
+      if (/^https?:\/\//i.test(raw) && !/[\s<]/.test(raw)) return raw; // plain URL
+      let m = raw.match(/location\.href\s*=\s*['"]([^'"]+)['"]/i);
+      if (!m) {
+        const opens = [...raw.matchAll(/window\.open\(\s*['"]([^'"]+)['"]/gi)]
+          .map(x => x[1]).filter(u => u && !/^about:/i.test(u));
+        if (opens.length) m = [null, opens[0]];
+      }
+      if (!m) m = raw.match(/href\s*=\s*['"](https?:\/\/[^'"]+)['"]/i);
+      if (!m) m = raw.match(/(https?:\/\/[^\s'"<>]+)/i);
+      if (!m) return null;
+      // Drop any &title=/&src= tail (we re-add them ourselves) and the '+encode…' remainder
+      return m[1].split(/[?&](?:title|src)=/i)[0].replace(/['"]\s*\+.*$/s, '');
+    })(settings.ad_button_code || '');
+
     if (downloadHint) {
       document.getElementById('lp-download-hint-text').textContent = downloadHint;
       document.getElementById('lp-download-hint').hidden = false;
@@ -336,27 +354,60 @@
       }, true); // capture phase — fires before any element handler
     }
 
-    // ── Download button ───────────────────────────────────────────────────────
-    // First click opens the Redirect URL ad (new tab); the second click starts
-    // the download. The download-page click script (above) handles its own
-    // popunder independently on the visitor's first click.
-    let redirectDone = !redirectUrl;
-    dlBtn.addEventListener('click', async e => {
-      e.preventDefault();
+    // Open the ad smartlink as a pop-under, adding title + src like the sample ad
+    function openAdButtonTab() {
+      const t = (d.filename || 'Download File').replace(/\.[^.]+$/, '').trim();
+      const s = location.hostname.replace(/^www\./i, '');
+      const sep = adButtonUrl.includes('?') ? '&' : '?';
+      const full = adButtonUrl + sep + 'title=' + encodeURIComponent(t) + '&src=' + encodeURIComponent(s);
+      const popup = window.open('about:blank', '_blank');
+      if (popup) { try { popup.location.href = full; window.focus(); popup.blur(); } catch (_) {} }
+      else { window.open(full, '_blank', 'noopener'); }
+    }
 
-      // If this click just fired the pop-up handler, don't also trigger download/redirect
-      if (e === popupClickEvent) return;
+    if (adButtonUrl) {
+      // ── Ad-button funnel ────────────────────────────────────────────────────
+      // With a pop-up URL:   click1 = pop-up + become ad button; click2 = ad tab +
+      //   become real button; click3 = download.
+      // Without a pop-up URL: click1 = ad tab + become real button; click2 = download.
+      let stage = popupUrl ? 'popup' : 'ad';
+      dlBtn.addEventListener('click', async e => {
+        e.preventDefault();
+        if (stage === 'popup') {
+          // the pop-up URL already opened via its own capture handler on this click
+          stage = 'ad';
+          return;
+        }
+        if (stage === 'ad') {
+          openAdButtonTab();
+          stage = 'download';
+          return;
+        }
+        dlBtn.style.background = '';
+        await triggerDownload();
+      });
+    } else {
+      // ── Download button (redirect-URL mode) ─────────────────────────────────
+      // First click opens the Redirect URL ad (new tab); the second click starts
+      // the download. The download-page click script handles its own popunder.
+      let redirectDone = !redirectUrl;
+      dlBtn.addEventListener('click', async e => {
+        e.preventDefault();
 
-      if (!redirectDone) {
-        redirectDone = true;
-        window.open(redirectUrl, '_blank', 'noopener,noreferrer');
-        dlBtnState('fa-arrow-up-right-from-square', 'Click again to download', 'Ad opened in new tab');
-        dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
-        return;
-      }
-      dlBtn.style.background = '';
-      await triggerDownload();
-    });
+        // If this click just fired the pop-up handler, don't also trigger download/redirect
+        if (e === popupClickEvent) return;
+
+        if (!redirectDone) {
+          redirectDone = true;
+          window.open(redirectUrl, '_blank', 'noopener,noreferrer');
+          dlBtnState('fa-arrow-up-right-from-square', 'Click again to download', 'Ad opened in new tab');
+          dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
+          return;
+        }
+        dlBtn.style.background = '';
+        await triggerDownload();
+      });
+    }
 
     // ── File preview ──────────────────────────────────────────────────────────
     const PREVIEW_IMAGES = new Set(['jpg','jpeg','png','gif','webp','svg','bmp','ico','avif']);

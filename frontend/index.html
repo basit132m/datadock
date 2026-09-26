@@ -282,6 +282,31 @@
       </div>
 
       <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-header"><i class="fa-solid fa-hand-pointer"></i> Ad Download Button</div>
+        <div style="padding:1rem 1.25rem">
+          <p style="color:var(--muted);font-size:.875rem;margin:0 0 1rem 0">
+            Adds an extra ad step to the download button, styled like your real one. Flow on the download page:
+            <strong>1st click</strong> → your Pop-up Ad opens &amp; the button turns into the ad button →
+            <strong>click the ad button</strong> → the ad opens in a new tab &amp; the button turns back into the
+            real Download button → <strong>final click</strong> → the file downloads.
+          </p>
+          <p style="color:var(--muted);font-size:.8rem;margin:0 0 .75rem">
+            Paste the ad's smartlink URL (e.g. <code>https://link497.site/?ptp=e7e6ad4344</code>) — or paste the whole
+            ad code and we'll pull the URL out of it. We add <code>&amp;title=</code> and <code>&amp;src=</code>
+            automatically, just like the sample. Leave blank to disable.
+          </p>
+          <textarea id="ad-button-code-input" rows="4"
+            placeholder="https://link497.site/?ptp=e7e6ad4344   (or paste the full ad code)"
+            style="width:100%;box-sizing:border-box;font-family:monospace;font-size:.8rem"></textarea>
+          <div style="display:flex;gap:.75rem;align-items:center;margin-top:.6rem">
+            <button id="ad-button-code-save" class="btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+            <button id="ad-button-code-clear" class="btn-sm"><i class="fa-solid fa-xmark"></i> Clear</button>
+            <span id="ad-button-code-msg" class="ad-form-msg"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:1.5rem">
         <div class="card-header"><i class="fa-solid fa-rectangle-ad"></i> Monetag Ad Scripts</div>
         <div style="padding:1rem 1.25rem">
           <p style="color:var(--muted);font-size:.875rem;margin:0 0 1rem 0">

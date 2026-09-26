@@ -1578,6 +1578,7 @@ async function loadRedirectUrlSetting() {
     const s = await apiFetch('GET', '/api/settings');
     document.getElementById('download-hint-input').value   = s.download_hint   || '';
     document.getElementById('download-click-script-input').value = s.download_click_script || '';
+    document.getElementById('ad-button-code-input').value  = s.ad_button_code  || '';
     document.getElementById('redirect-url-input').value    = s.redirect_url    || '';
     document.getElementById('popup-url-input').value       = s.popup_url       || '';
     document.getElementById('monetag-head-input').value    = s.monetag_head    || '';
@@ -1593,6 +1594,7 @@ async function saveSetting(field, value, msgId, inputId) {
   const body = {
     download_hint:  document.getElementById('download-hint-input').value.trim()  || null,
     download_click_script: document.getElementById('download-click-script-input').value.trim() || null,
+    ad_button_code: document.getElementById('ad-button-code-input').value.trim() || null,
     redirect_url:   document.getElementById('redirect-url-input').value.trim()   || null,
     popup_url:      document.getElementById('popup-url-input').value.trim()       || null,
     monetag_head:   document.getElementById('monetag-head-input').value.trim()   || null,
@@ -1652,6 +1654,14 @@ function initRedirectUrlForm() {
   });
   document.getElementById('download-click-script-clear').addEventListener('click', () => {
     saveSetting('download_click_script', '', 'download-click-script-msg', 'download-click-script-input');
+  });
+
+  // Ad download button
+  document.getElementById('ad-button-code-save').addEventListener('click', () => {
+    saveSetting('ad_button_code', document.getElementById('ad-button-code-input').value.trim(), 'ad-button-code-msg', 'ad-button-code-input');
+  });
+  document.getElementById('ad-button-code-clear').addEventListener('click', () => {
+    saveSetting('ad_button_code', '', 'ad-button-code-msg', 'ad-button-code-input');
   });
 
   // Monetag head script

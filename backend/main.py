@@ -3471,6 +3471,7 @@ async def get_public_settings(db: Session = Depends(get_db)):
         "monetag_side":    _get_setting(db, "monetag_side"),
         "download_hint":   _get_setting(db, "download_hint"),
         "download_click_script": _get_setting(db, "download_click_script"),
+        "ad_button_code":  _get_setting(db, "ad_button_code"),
         "max_file_size_gb": _max_gb_value(db),
         "uploads_paused":  _uploads_paused(db),
     }
@@ -3484,13 +3485,14 @@ class UpdateSettingsIn(BaseModel):
     monetag_side:   Optional[str] = None
     download_hint:  Optional[str] = None
     download_click_script: Optional[str] = None
+    ad_button_code: Optional[str] = None
     max_file_size_gb: Optional[float] = None
     uploads_paused: Optional[bool] = None
 
 
 _TEXT_SETTING_KEYS = ("redirect_url", "popup_url", "monetag_head",
                       "monetag_banner", "monetag_side", "download_hint",
-                      "download_click_script")
+                      "download_click_script", "ad_button_code")
 
 
 @app.post("/api/admin/settings")
