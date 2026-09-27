@@ -594,6 +594,39 @@ async def _startup():
         )
     init_db()
     _seed_master_key()
+    asyncio.create_task(_uptime_heartbeat_loop())
+
+
+_APP_START = datetime.utcnow()
+_UPTIME_RETENTION_DAYS = 120
+
+
+async def _uptime_heartbeat_loop():
+    """Record a heartbeat every minute so the status page can measure real uptime.
+    INSERT OR IGNORE dedupes across uvicorn workers (minute is the primary key)."""
+    from database import SessionLocal
+    from sqlalchemy import text as _t
+    loop = asyncio.get_event_loop()
+    while True:
+        try:
+            def _tick():
+                db = SessionLocal()
+                try:
+                    now = datetime.utcnow()
+                    db.execute(
+                        _t("INSERT OR IGNORE INTO uptime_minutes (minute) VALUES (:m)"),
+                        {"m": now.strftime("%Y-%m-%dT%H:%M")},
+                    )
+                    if now.minute % 30 == 0:   # prune old rows twice an hour
+                        cutoff = (now - timedelta(days=_UPTIME_RETENTION_DAYS)).strftime("%Y-%m-%dT%H:%M")
+                        db.execute(_t("DELETE FROM uptime_minutes WHERE minute < :c"), {"c": cutoff})
+                    db.commit()
+                finally:
+                    db.close()
+            await loop.run_in_executor(None, _tick)
+        except Exception:
+            pass
+        await asyncio.sleep(60)
 
 
 def _share_id() -> str:
@@ -4169,6 +4202,11 @@ async def serve_home():
     return FileResponse(os.path.join(FRONTEND_DIR, "home.html"))
 
 
+@app.get("/status", include_in_schema=False)
+async def serve_status():
+    return FileResponse(os.path.join(FRONTEND_DIR, "status.html"), headers={"Cache-Control": "no-cache"})
+
+
 _NO_CACHE  = {"Cache-Control": "no-cache"}
 
 
@@ -4255,6 +4293,99 @@ _BROWSE_SORT = {
     "largest":  Upload.file_size.desc(),
     "smallest": Upload.file_size.asc(),
 }
+
+
+@app.get("/api/status")
+async def public_status(db: Session = Depends(get_db)):
+    """Public status page data: component health + real uptime from heartbeats."""
+    from sqlalchemy import text as _t
+    now = datetime.utcnow()
+    loop = asyncio.get_event_loop()
+
+    # ── Component health ────────────────────────────────────────────────────
+    components = []
+
+    # Website & API — if this responds, it's up
+    components.append({"name": "Website & API", "status": "operational",
+                       "desc": "Admin panel, download pages and API"})
+
+    # Database
+    db_ok = True
+    try:
+        db.execute(_t("SELECT 1"))
+    except Exception:
+        db_ok = False
+    components.append({"name": "Database", "status": "operational" if db_ok else "down",
+                       "desc": "File records and accounts"})
+
+    # File storage (default provider) — quick reachability check with a timeout
+    storage_status = "operational"
+    try:
+        prov = _get_default_provider(db)
+        st = _get_storage(prov.id if prov else None, db)
+        await asyncio.wait_for(loop.run_in_executor(None, st.test_connection), timeout=6.0)
+    except Exception:
+        storage_status = "down"
+    components.append({"name": "File Storage", "status": storage_status,
+                       "desc": "Cloud object storage (uploads)"})
+
+    # Downloads / CDN
+    components.append({"name": "Downloads (CDN)",
+                       "status": "operational" if WORKER_URL else "degraded",
+                       "desc": "Cloudflare-served file downloads"})
+
+    # ── Uptime from heartbeats ──────────────────────────────────────────────
+    DAYS = 90
+    start_key = (now - timedelta(days=DAYS)).strftime("%Y-%m-%dT%H:%M")
+    rows = db.execute(
+        _t("SELECT substr(minute,1,10) d, COUNT(*) c FROM uptime_minutes "
+           "WHERE minute >= :s GROUP BY d"),
+        {"s": start_key},
+    ).fetchall()
+    counts = {r[0]: r[1] for r in rows}
+    first_min = db.execute(_t("SELECT MIN(minute) FROM uptime_minutes")).scalar()
+    first_day = first_min[:10] if first_min else None
+
+    def _expected(day):
+        if day == now.date():
+            return now.hour * 60 + now.minute + 1
+        return 1440
+
+    daily = []
+    for i in range(DAYS - 1, -1, -1):
+        day = (now - timedelta(days=i)).date()
+        ds = day.isoformat()
+        monitored = first_day is not None and ds >= first_day
+        up = counts.get(ds, 0)
+        exp = max(_expected(day), 1)
+        pct = min(100.0, round(up / exp * 100, 2)) if monitored else None
+        daily.append({"date": ds, "uptime": pct, "monitored": monitored,
+                      "down_minutes": (max(exp - up, 0) if monitored else 0)})
+
+    def _window_uptime(n):
+        up_sum = exp_sum = 0
+        for i in range(n):
+            day = (now - timedelta(days=i)).date()
+            ds = day.isoformat()
+            if first_day is None or ds < first_day:
+                continue
+            up_sum += counts.get(ds, 0)
+            exp_sum += max(_expected(day), 1)
+        return round(up_sum / exp_sum * 100, 3) if exp_sum else None
+
+    overall_down = any(c["status"] == "down" for c in components)
+    overall_degraded = any(c["status"] == "degraded" for c in components)
+    overall = "down" if overall_down else ("degraded" if overall_degraded else "operational")
+
+    return {
+        "overall": overall,
+        "components": components,
+        "uptime_30d": _window_uptime(30),
+        "uptime_90d": _window_uptime(90),
+        "daily": daily,
+        "monitoring_since": first_day,
+        "checked_at": now.isoformat() + "Z",
+    }
 
 
 @app.get("/api/public/stats")

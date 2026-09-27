@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>System Status — DataDock</title>
+<meta name="robots" content="index,follow">
+<link rel="icon" href="/favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+  :root{
+    --bg:#f4f6fb; --card:#fff; --text:#0f172a; --muted:#64748b; --border:#e5e9f2;
+    --green:#16a34a; --green-bg:#dcfce7; --amber:#d97706; --amber-bg:#fef3c7;
+    --red:#dc2626; --red-bg:#fee2e2; --gray:#cbd5e1; --primary:#6366f1;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{--bg:#0b1120;--card:#111a2e;--text:#e6ebf5;--muted:#94a3b8;--border:#1e293b;
+      --green-bg:#052e16;--amber-bg:#3a2a06;--red-bg:#3b0d0d;--gray:#334155;}
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.5}
+  .wrap{max-width:880px;margin:0 auto;padding:1.5rem 1.1rem 4rem}
+  .top{display:flex;align-items:center;gap:.6rem;padding:.5rem 0 1.5rem}
+  .top img{height:34px;width:auto;border-radius:8px}
+  .top .brand{font-weight:800;font-size:1.15rem;letter-spacing:-.02em}
+  .top .brand span{color:var(--primary)}
+  .top a{margin-left:auto;font-size:.85rem;color:var(--muted);text-decoration:none;font-weight:600}
+  .top a:hover{color:var(--primary)}
+
+  .banner{display:flex;align-items:center;gap:1rem;padding:1.4rem 1.5rem;border-radius:16px;
+    background:var(--card);border:1.5px solid var(--border);box-shadow:0 6px 24px rgba(2,8,23,.05);margin-bottom:1.5rem}
+  .banner .dot{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;font-size:1.4rem;flex-shrink:0}
+  .banner h1{margin:0;font-size:1.3rem;letter-spacing:-.02em}
+  .banner p{margin:.15rem 0 0;color:var(--muted);font-size:.9rem}
+  .st-operational{background:var(--green-bg);color:var(--green)}
+  .st-degraded{background:var(--amber-bg);color:var(--amber)}
+  .st-down{background:var(--red-bg);color:var(--red)}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem}
+  @media(max-width:560px){.grid{grid-template-columns:1fr}}
+  .stat{background:var(--card);border:1.5px solid var(--border);border-radius:14px;padding:1.1rem 1.25rem}
+  .stat .lbl{font-size:.78rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+  .stat .val{font-size:1.9rem;font-weight:800;letter-spacing:-.02em;margin-top:.15rem}
+
+  .card{background:var(--card);border:1.5px solid var(--border);border-radius:16px;
+    padding:1.25rem 1.5rem;margin-bottom:1.5rem}
+  .card h2{margin:0 0 1rem;font-size:1.02rem;letter-spacing:-.01em}
+
+  .comp{display:flex;align-items:center;gap:.75rem;padding:.7rem 0;border-top:1px solid var(--border)}
+  .comp:first-of-type{border-top:none}
+  .comp .cname{font-weight:600;font-size:.94rem}
+  .comp .cdesc{color:var(--muted);font-size:.8rem}
+  .comp .cstat{margin-left:auto;display:flex;align-items:center;gap:.45rem;font-weight:600;font-size:.85rem}
+  .cdot{width:11px;height:11px;border-radius:50%}
+  .cdot.operational{background:var(--green)}.cstat.operational{color:var(--green)}
+  .cdot.degraded{background:var(--amber)}.cstat.degraded{color:var(--amber)}
+  .cdot.down{background:var(--red)}.cstat.down{color:var(--red)}
+
+  .bars{display:flex;gap:2px;align-items:flex-end;height:38px;margin:.4rem 0 .3rem;overflow:hidden}
+  .bar{flex:1 1 0;min-width:2px;height:100%;border-radius:2px;background:var(--gray)}
+  .bar.op{background:var(--green)}.bar.part{background:var(--amber)}.bar.down{background:var(--red)}
+  .bars-legend{display:flex;justify-content:space-between;color:var(--muted);font-size:.75rem;margin-top:.35rem}
+  .bars-title{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:.4rem}
+  .bars-title .pct{font-weight:700;color:var(--green)}
+
+  .foot{text-align:center;color:var(--muted);font-size:.8rem;margin-top:1.5rem}
+  .foot a{color:var(--primary);text-decoration:none}
+  .loading{text-align:center;color:var(--muted);padding:3rem 0}
+  .tip{position:fixed;background:#0f172a;color:#fff;font-size:.74rem;padding:.4rem .6rem;border-radius:7px;
+    pointer-events:none;opacity:0;transition:opacity .12s;z-index:10;white-space:nowrap;transform:translate(-50%,-120%)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <img src="/logo.webp" alt="DataDock" onerror="this.style.display='none'">
+    <div class="brand">Data<span>Dock</span></div>
+    <a href="/">← Back to site</a>
+  </div>
+
+  <div id="content">
+    <div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading status…</div>
+  </div>
+
+  <div class="foot">
+    <span id="foot-since"></span>
+    <div style="margin-top:.3rem">Auto-refreshes every 60s · <span id="foot-checked"></span></div>
+  </div>
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+
+function fmtPct(p){ return p == null ? '—' : (Number.isInteger(p) ? p + '%' : p.toFixed(p >= 99 ? 2 : 1) + '%'); }
+function fmtDate(iso){ try { return new Date(iso).toLocaleDateString('en-US',{month:'short',day:'numeric'}); } catch { return iso; } }
+
+const OVERALL = {
+  operational: { cls:'st-operational', icon:'fa-circle-check', title:'All Systems Operational', sub:'Everything is running smoothly.' },
+  degraded:    { cls:'st-degraded',    icon:'fa-triangle-exclamation', title:'Partial Degradation', sub:'Some services are experiencing issues.' },
+  down:        { cls:'st-down',        icon:'fa-circle-xmark', title:'Major Outage', sub:'One or more core services are down.' },
+};
+const CLABEL = { operational:'Operational', degraded:'Degraded', down:'Down' };
+
+async function load(){
+  let d;
+  try { d = await fetch('/api/status').then(r => r.ok ? r.json() : Promise.reject()); }
+  catch { $('content').innerHTML = '<div class="loading">Could not load status. Please retry shortly.</div>'; return; }
+
+  const ov = OVERALL[d.overall] || OVERALL.operational;
+
+  const comps = d.components.map(c => `
+    <div class="comp">
+      <div>
+        <div class="cname">${esc(c.name)}</div>
+        <div class="cdesc">${esc(c.desc || '')}</div>
+      </div>
+      <div class="cstat ${c.status}"><span class="cdot ${c.status}"></span>${CLABEL[c.status] || c.status}</div>
+    </div>`).join('');
+
+  const bars = d.daily.map(day => {
+    let cls = '', label;
+    if (!day.monitored || day.uptime == null) { cls = ''; label = fmtDate(day.date) + ' · no data'; }
+    else if (day.uptime >= 99.9) { cls = 'op';   label = fmtDate(day.date) + ' · ' + fmtPct(day.uptime); }
+    else if (day.uptime >= 90)   { cls = 'part'; label = fmtDate(day.date) + ' · ' + fmtPct(day.uptime) + ' (' + day.down_minutes + 'm down)'; }
+    else                         { cls = 'down'; label = fmtDate(day.date) + ' · ' + fmtPct(day.uptime) + ' (' + day.down_minutes + 'm down)'; }
+    return `<div class="bar ${cls}" data-tip="${esc(label)}"></div>`;
+  }).join('');
+
+  $('content').innerHTML = `
+    <div class="banner">
+      <div class="dot ${ov.cls}"><i class="fa-solid ${ov.icon}"></i></div>
+      <div><h1>${ov.title}</h1><p>${ov.sub}</p></div>
+    </div>
+
+    <div class="grid">
+      <div class="stat"><div class="lbl">Uptime — 30 days</div><div class="val">${fmtPct(d.uptime_30d)}</div></div>
+      <div class="stat"><div class="lbl">Uptime — 90 days</div><div class="val">${fmtPct(d.uptime_90d)}</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Services</h2>
+      ${comps}
+    </div>
+
+    <div class="card">
+      <div class="bars-title">
+        <h2 style="margin:0">Uptime — last 90 days</h2>
+        <span class="pct">${fmtPct(d.uptime_90d)}</span>
+      </div>
+      <div class="bars">${bars}</div>
+      <div class="bars-legend"><span>90 days ago</span><span>Today</span></div>
+    </div>`;
+
+  $('foot-since').textContent = d.monitoring_since ? ('Monitoring since ' + fmtDate(d.monitoring_since)) : 'Monitoring just started';
+  $('foot-checked').textContent = 'Last checked ' + new Date(d.checked_at).toLocaleTimeString();
+
+  wireTips();
+}
+
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+function wireTips(){
+  const tip = $('tip');
+  document.querySelectorAll('.bar[data-tip]').forEach(b => {
+    b.addEventListener('mouseenter', () => {
+      tip.textContent = b.dataset.tip;
+      const r = b.getBoundingClientRect();
+      tip.style.left = (r.left + r.width/2) + 'px';
+      tip.style.top = (r.top) + 'px';
+      tip.style.opacity = '1';
+    });
+    b.addEventListener('mouseleave', () => { tip.style.opacity = '0'; });
+  });
+}
+
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>

@@ -169,6 +169,14 @@ class DownloadToken(Base):
     expires    = Column(DateTime, nullable=False, index=True)
 
 
+class UptimeMinute(Base):
+    """One row per UTC minute the server was alive (heartbeat). Missing minutes
+    between the first and now = downtime. Deduped across workers by the PK."""
+    __tablename__ = "uptime_minutes"
+
+    minute = Column(String(16), primary_key=True)   # 'YYYY-MM-DDTHH:MM'
+
+
 class Referrer(Base):
     __tablename__ = "referrers"
 
