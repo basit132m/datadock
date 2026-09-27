@@ -33,8 +33,16 @@
   .banner{display:flex;align-items:center;gap:1rem;padding:1.4rem 1.5rem;border-radius:16px;
     background:var(--card);border:1.5px solid var(--border);box-shadow:0 6px 24px rgba(2,8,23,.05);margin-bottom:1.5rem}
   .banner .dot{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;font-size:1.4rem;flex-shrink:0}
+  .banner .txt{min-width:0}
   .banner h1{margin:0;font-size:1.3rem;letter-spacing:-.02em}
   .banner p{margin:.15rem 0 0;color:var(--muted);font-size:.9rem}
+  .live{margin-left:auto;display:flex;align-items:center;gap:.4rem;font-size:.72rem;font-weight:700;
+    text-transform:uppercase;letter-spacing:.06em;color:var(--green);flex-shrink:0}
+  .live-dot{width:9px;height:9px;border-radius:50%;background:var(--green);
+    box-shadow:0 0 0 0 rgba(22,163,74,.6);animation:pulse 1.8s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(22,163,74,.55)}70%{box-shadow:0 0 0 8px rgba(22,163,74,0)}100%{box-shadow:0 0 0 0 rgba(22,163,74,0)}}
+  .flash{animation:flash .6s ease}
+  @keyframes flash{0%{background:rgba(99,102,241,.12)}100%{background:transparent}}
   .st-operational{background:var(--green-bg);color:var(--green)}
   .st-degraded{background:var(--amber-bg);color:var(--amber)}
   .st-down{background:var(--red-bg);color:var(--red)}
@@ -87,7 +95,7 @@
 
   <div class="foot">
     <span id="foot-since"></span>
-    <div style="margin-top:.3rem">Auto-refreshes every 60s · <span id="foot-checked"></span></div>
+    <div style="margin-top:.3rem">Live · <span id="foot-checked">Updating…</span></div>
   </div>
 </div>
 <div class="tip" id="tip"></div>
@@ -98,6 +106,7 @@ const $ = id => document.getElementById(id);
 
 function fmtPct(p){ return p == null ? '—' : (Number.isInteger(p) ? p + '%' : p.toFixed(p >= 99 ? 2 : 1) + '%'); }
 function fmtDate(iso){ try { return new Date(iso).toLocaleDateString('en-US',{month:'short',day:'numeric'}); } catch { return iso; } }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
 const OVERALL = {
   operational: { cls:'st-operational', icon:'fa-circle-check', title:'All Systems Operational', sub:'Everything is running smoothly.' },
@@ -106,80 +115,133 @@ const OVERALL = {
 };
 const CLABEL = { operational:'Operational', degraded:'Degraded', down:'Down' };
 
-async function load(){
-  let d;
-  try { d = await fetch('/api/status').then(r => r.ok ? r.json() : Promise.reject()); }
-  catch { $('content').innerHTML = '<div class="loading">Could not load status. Please retry shortly.</div>'; return; }
+let shellBuilt = false;
+let lastUpdated = null;   // Date of last successful fetch
 
-  const ov = OVERALL[d.overall] || OVERALL.operational;
-
-  const comps = d.components.map(c => `
-    <div class="comp">
-      <div>
-        <div class="cname">${esc(c.name)}</div>
-        <div class="cdesc">${esc(c.desc || '')}</div>
-      </div>
-      <div class="cstat ${c.status}"><span class="cdot ${c.status}"></span>${CLABEL[c.status] || c.status}</div>
-    </div>`).join('');
-
-  const bars = d.daily.map(day => {
-    let cls = '', label;
-    if (!day.monitored || day.uptime == null) { cls = ''; label = fmtDate(day.date) + ' · no data'; }
-    else if (day.uptime >= 99.9) { cls = 'op';   label = fmtDate(day.date) + ' · ' + fmtPct(day.uptime); }
-    else if (day.uptime >= 90)   { cls = 'part'; label = fmtDate(day.date) + ' · ' + fmtPct(day.uptime) + ' (' + day.down_minutes + 'm down)'; }
-    else                         { cls = 'down'; label = fmtDate(day.date) + ' · ' + fmtPct(day.uptime) + ' (' + day.down_minutes + 'm down)'; }
-    return `<div class="bar ${cls}" data-tip="${esc(label)}"></div>`;
-  }).join('');
-
+// Build the page structure once; live polls only patch values (no flicker/reload).
+function buildShell(d){
   $('content').innerHTML = `
     <div class="banner">
-      <div class="dot ${ov.cls}"><i class="fa-solid ${ov.icon}"></i></div>
-      <div><h1>${ov.title}</h1><p>${ov.sub}</p></div>
+      <div class="dot" id="ov-dot"><i class="fa-solid" id="ov-icon"></i></div>
+      <div class="txt"><h1 id="ov-title"></h1><p id="ov-sub"></p></div>
+      <div class="live"><span class="live-dot"></span> Live</div>
     </div>
 
     <div class="grid">
-      <div class="stat"><div class="lbl">Uptime — 30 days</div><div class="val">${fmtPct(d.uptime_30d)}</div></div>
-      <div class="stat"><div class="lbl">Uptime — 90 days</div><div class="val">${fmtPct(d.uptime_90d)}</div></div>
+      <div class="stat"><div class="lbl">Uptime — 30 days</div><div class="val" id="u30">—</div></div>
+      <div class="stat"><div class="lbl">Uptime — 90 days</div><div class="val" id="u90">—</div></div>
     </div>
 
     <div class="card">
       <h2>Services</h2>
-      ${comps}
+      <div id="comp-list"></div>
     </div>
 
     <div class="card">
       <div class="bars-title">
         <h2 style="margin:0">Uptime — last 90 days</h2>
-        <span class="pct">${fmtPct(d.uptime_90d)}</span>
+        <span class="pct" id="bars-pct">—</span>
       </div>
-      <div class="bars">${bars}</div>
+      <div class="bars" id="bars"></div>
       <div class="bars-legend"><span>90 days ago</span><span>Today</span></div>
     </div>`;
 
-  $('foot-since').textContent = d.monitoring_since ? ('Monitoring since ' + fmtDate(d.monitoring_since)) : 'Monitoring just started';
-  $('foot-checked').textContent = 'Last checked ' + new Date(d.checked_at).toLocaleTimeString();
+  // Component rows (names are stable — created once, statuses patched live)
+  $('comp-list').innerHTML = d.components.map((c, i) => `
+    <div class="comp">
+      <div>
+        <div class="cname">${esc(c.name)}</div>
+        <div class="cdesc">${esc(c.desc || '')}</div>
+      </div>
+      <div class="cstat" id="cstat-${i}"><span class="cdot" id="cdot-${i}"></span><span id="clabel-${i}"></span></div>
+    </div>`).join('');
 
+  // Bars (one per day — created once, today's bar patched live)
+  $('bars').innerHTML = d.daily.map((_, i) => `<div class="bar" id="bar-${i}" data-tip=""></div>`).join('');
   wireTips();
+  shellBuilt = true;
 }
 
-function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function barClass(day){
+  if (!day.monitored || day.uptime == null) return '';
+  if (day.uptime >= 99.9) return 'op';
+  if (day.uptime >= 90)   return 'part';
+  return 'down';
+}
+function barTip(day){
+  if (!day.monitored || day.uptime == null) return fmtDate(day.date) + ' · no data';
+  const base = fmtDate(day.date) + ' · ' + fmtPct(day.uptime);
+  return day.down_minutes ? base + ' (' + day.down_minutes + 'm down)' : base;
+}
+function setText(el, txt){ if (el && el.textContent !== txt){ el.textContent = txt; return true; } return false; }
+
+function apply(d){
+  if (!shellBuilt) buildShell(d);
+
+  const ov = OVERALL[d.overall] || OVERALL.operational;
+  $('ov-dot').className = 'dot ' + ov.cls;
+  $('ov-icon').className = 'fa-solid ' + ov.icon;
+  setText($('ov-title'), ov.title);
+  setText($('ov-sub'), ov.sub);
+
+  if (setText($('u30'), fmtPct(d.uptime_30d))) $('u30').classList.remove('flash'), void $('u30').offsetWidth, $('u30').classList.add('flash');
+  setText($('u90'), fmtPct(d.uptime_90d));
+  setText($('bars-pct'), fmtPct(d.uptime_90d));
+
+  d.components.forEach((c, i) => {
+    const dot = $('cdot-' + i), st = $('cstat-' + i), lb = $('clabel-' + i);
+    if (dot) dot.className = 'cdot ' + c.status;
+    if (st)  st.className = 'cstat ' + c.status;
+    setText(lb, CLABEL[c.status] || c.status);
+  });
+
+  d.daily.forEach((day, i) => {
+    const b = $('bar-' + i);
+    if (!b) return;
+    const cls = barClass(day);
+    if (b.className !== 'bar ' + cls && b.className !== 'bar') b.className = 'bar ' + cls;
+    else b.className = 'bar' + (cls ? ' ' + cls : '');
+    b.dataset.tip = barTip(day);
+  });
+
+  $('foot-since').textContent = d.monitoring_since ? ('Monitoring since ' + fmtDate(d.monitoring_since)) : 'Monitoring just started';
+  lastUpdated = new Date();
+  tickAgo();
+}
+
+async function poll(){
+  try {
+    const d = await fetch('/api/status', { cache: 'no-store' }).then(r => r.ok ? r.json() : Promise.reject());
+    apply(d);
+  } catch {
+    if (!shellBuilt) $('content').innerHTML = '<div class="loading">Could not load status. Retrying…</div>';
+  }
+}
+
+function tickAgo(){
+  if (!lastUpdated) return;
+  const secs = Math.max(0, Math.round((Date.now() - lastUpdated.getTime()) / 1000));
+  const ago = secs < 5 ? 'just now' : secs < 60 ? secs + 's ago' : Math.round(secs/60) + 'm ago';
+  $('foot-checked').textContent = 'Updated ' + ago;
+}
 
 function wireTips(){
   const tip = $('tip');
-  document.querySelectorAll('.bar[data-tip]').forEach(b => {
-    b.addEventListener('mouseenter', () => {
-      tip.textContent = b.dataset.tip;
-      const r = b.getBoundingClientRect();
-      tip.style.left = (r.left + r.width/2) + 'px';
-      tip.style.top = (r.top) + 'px';
-      tip.style.opacity = '1';
-    });
-    b.addEventListener('mouseleave', () => { tip.style.opacity = '0'; });
+  $('bars').addEventListener('mouseover', e => {
+    const b = e.target.closest('.bar'); if (!b) return;
+    tip.textContent = b.dataset.tip;
+    const r = b.getBoundingClientRect();
+    tip.style.left = (r.left + r.width/2) + 'px';
+    tip.style.top = r.top + 'px';
+    tip.style.opacity = '1';
   });
+  $('bars').addEventListener('mouseout', () => { tip.style.opacity = '0'; });
 }
 
-load();
-setInterval(load, 60000);
+poll();
+setInterval(poll, 15000);   // live data refresh (in-place, no reload)
+setInterval(tickAgo, 1000); // live "updated Ns ago" clock
+document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
 </script>
 </body>
 </html>
