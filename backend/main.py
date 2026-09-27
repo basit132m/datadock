@@ -4345,19 +4345,30 @@ async def public_status(db: Session = Depends(get_db)):
     counts = {r[0]: r[1] for r in rows}
     first_min = db.execute(_t("SELECT MIN(minute) FROM uptime_minutes")).scalar()
     first_day = first_min[:10] if first_min else None
+    try:
+        first_dt = datetime.strptime(first_min, "%Y-%m-%dT%H:%M") if first_min else None
+    except ValueError:
+        first_dt = None
 
     def _expected(day):
-        if day == now.date():
-            return now.hour * 60 + now.minute + 1
-        return 1440
+        """Minutes of `day` that fall inside the monitoring window
+        [first heartbeat, now] — so the first partial day isn't counted as
+        downtime for the hours before monitoring began."""
+        if first_dt is None:
+            return 0
+        day_start = datetime(day.year, day.month, day.day)
+        day_end = day_start + timedelta(days=1)
+        lo = max(day_start, first_dt)
+        hi = min(day_end, now + timedelta(minutes=1))
+        return max(int((hi - lo).total_seconds() // 60), 0)
 
     daily = []
     for i in range(DAYS - 1, -1, -1):
         day = (now - timedelta(days=i)).date()
         ds = day.isoformat()
-        monitored = first_day is not None and ds >= first_day
+        exp = _expected(day)
+        monitored = exp > 0
         up = counts.get(ds, 0)
-        exp = max(_expected(day), 1)
         pct = min(100.0, round(up / exp * 100, 2)) if monitored else None
         daily.append({"date": ds, "uptime": pct, "monitored": monitored,
                       "down_minutes": (max(exp - up, 0) if monitored else 0)})
