@@ -395,20 +395,30 @@
     }
 
     if (adEnabled) {
-      // Simple funnel: click1 arms the ad (your pop-up, if any, opens now),
-      // click2 = your ad code fires on this REAL click, click3 = download.
-      let clicks = 0;
+      // Preload the ad on page load so its async config is ready before any click.
+      if (adHasScript) injectAdCodeOnce();
+
+      // Flow: click1 = pop-up (its own handler) but the ad is BLOCKED so it can't
+      // fire yet → click2 = ad fires (event allowed to reach the ad's handler) →
+      // click3 = download. Blocking click1 also avoids two pop-ups on one gesture.
+      let count = 0;
+      const blockFirst = ev => { if (count < 1) ev.stopPropagation(); };
+      dlBtn.addEventListener('mousedown', blockFirst, false);
+      dlBtn.addEventListener('pointerdown', blockFirst, false);
+
       dlBtn.addEventListener('click', async e => {
         e.preventDefault();
-        clicks++;
-        if (clicks === 1) {
-          if (adHasScript) injectAdCodeOnce();   // arm the ad for the next real click
+        count++;
+        if (count === 1) {
+          e.stopPropagation();   // keep the ad tag from firing on the first click
           dlBtnState('fa-arrow-up-right-from-square', 'Click again to download', '');
           dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
           return;
         }
-        if (clicks === 2) {
-          if (!adHasScript) openAdButtonTab();    // plain-URL ad opens here; script ad fires via its own listener
+        if (count === 2) {
+          // Let this real click reach the ad: plain-URL ad opens here; a script ad
+          // fires via its own listener (we do NOT stop propagation this time).
+          if (!adHasScript) openAdButtonTab();
           dlBtnState('fa-arrow-up-right-from-square', 'Click again to download', '');
           return;
         }
