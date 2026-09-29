@@ -383,6 +383,15 @@
           if (n.nodeName !== 'SCRIPT') adSlot.appendChild(n.cloneNode(true));
         });
         adRealBtn = adSlot.querySelector('button, a');
+        if (adRealBtn) {
+          // Keep the ad's class (so its script still binds to the button) but make
+          // it look exactly like our normal download button — no purple restyle.
+          adRealBtn.removeAttribute('style');
+          adRealBtn.removeAttribute('onmouseover');
+          adRealBtn.removeAttribute('onmouseout');
+          adRealBtn.className = (dlBtn.className + ' ' + adRealBtn.className).trim();
+          adRealBtn.innerHTML = origHTML;
+        }
         // place it right where our download button is
         dlBtn.parentNode.insertBefore(adSlot, dlBtn.nextSibling);
         // run the ad scripts now so the tag arms itself and loads its config
