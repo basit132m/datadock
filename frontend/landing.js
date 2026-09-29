@@ -368,58 +368,76 @@
       else { window.open(full, '_blank', 'noopener'); }
     }
 
-    // Inject the admin's real ad code once so its own script arms its click
-    // handler. It then fires the pop-under on the visitor's REAL (trusted) click —
-    // these ad tags reject synthetic clicks and refuse to run with DevTools open.
-    let _adInjected = false;
-    function injectAdCodeOnce() {
-      if (_adInjected) return;
-      _adInjected = true;
+    // Build the admin's ad as its OWN button + script (preloaded so its async
+    // config is ready). You click the real ad button, so the ad tag gets a
+    // genuine trusted click — exactly like on the admin's other sites.
+    let adSlot = null, adRealBtn = null;
+    function buildAdSlot() {
+      if (adSlot) return;
       try {
-        const host = document.createElement('div');
-        host.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden';
-        host.setAttribute('aria-hidden', 'true');
-        document.body.appendChild(host);
+        adSlot = document.createElement('div');
+        adSlot.style.display = 'none';
         const tmp = document.createElement('div');
         tmp.innerHTML = adButtonRaw;
         Array.from(tmp.childNodes).forEach(n => {
-          if (n.nodeName !== 'SCRIPT') host.appendChild(n.cloneNode(true));
+          if (n.nodeName !== 'SCRIPT') adSlot.appendChild(n.cloneNode(true));
         });
+        adRealBtn = adSlot.querySelector('button, a');
+        // place it right where our download button is
+        dlBtn.parentNode.insertBefore(adSlot, dlBtn.nextSibling);
+        // run the ad scripts now so the tag arms itself and loads its config
         tmp.querySelectorAll('script').forEach(orig => {
           const s = document.createElement('script');
           for (const a of orig.attributes) s.setAttribute(a.name, a.value);
           if (orig.src) s.async = true; else s.textContent = orig.textContent;
-          host.appendChild(s);
+          adSlot.appendChild(s);
         });
       } catch (_) {}
     }
 
-    if (adEnabled) {
-      // Preload the ad on page load so its async config is ready before any click.
-      if (adHasScript) injectAdCodeOnce();
-
-      // Flow: click1 = pop-up (its own handler) but the ad is BLOCKED so it can't
-      // fire yet → click2 = ad fires (event allowed to reach the ad's handler) →
-      // click3 = download. Blocking click1 also avoids two pop-ups on one gesture.
-      let count = 0;
-      const blockFirst = ev => { if (count < 1) ev.stopPropagation(); };
-      dlBtn.addEventListener('mousedown', blockFirst, false);
-      dlBtn.addEventListener('pointerdown', blockFirst, false);
-
+    if (adEnabled && adHasScript && /<(button|a)[\s>]/i.test(adButtonRaw)) {
+      // ── Real-ad-button funnel ───────────────────────────────────────────────
+      // click our button (1) → pop-up + show the AD's real button →
+      // click the AD button → ad fires (its own trusted click) → show download →
+      // click download → file. Matches the admin's other sites exactly.
+      buildAdSlot();
+      let phase = 'toAd';
       dlBtn.addEventListener('click', async e => {
         e.preventDefault();
-        count++;
-        if (count === 1) {
-          e.stopPropagation();   // keep the ad tag from firing on the first click
-          dlBtnState('fa-arrow-up-right-from-square', 'Click again to download', '');
-          dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
+        if (phase === 'toAd') {
+          // pop-up (if any) opens via its own handler on this click
+          phase = 'adShown';
+          dlBtn.style.display = 'none';
+          if (adSlot) adSlot.style.display = '';
           return;
         }
-        if (count === 2) {
-          // Let this real click reach the ad: plain-URL ad opens here; a script ad
-          // fires via its own listener (we do NOT stop propagation this time).
-          if (!adHasScript) openAdButtonTab();
-          dlBtnState('fa-arrow-up-right-from-square', 'Click again to download', '');
+        // phase 'download'
+        dlBtn.style.background = '';
+        await triggerDownload();
+      });
+      if (adRealBtn) {
+        adRealBtn.addEventListener('click', () => {
+          // the ad's own handler opens the pop-under; then hand back to download
+          phase = 'download';
+          setTimeout(() => {
+            if (adSlot) adSlot.style.display = 'none';
+            dlBtn.style.display = '';
+            dlBtnState('fa-download', 'Click to Download', '');
+            dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
+          }, 120);
+        });
+      }
+    } else if (adEnabled) {
+      // Plain-URL ad (no <script>): open it ourselves. click1 = ad, click2 = download.
+      let adDone = false;
+      dlBtn.addEventListener('click', async e => {
+        e.preventDefault();
+        if (e === popupClickEvent) return;
+        if (!adDone) {
+          adDone = true;
+          openAdButtonTab();
+          dlBtnState('fa-arrow-up-right-from-square', 'Click again to download', 'Ad opened in new tab');
+          dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
           return;
         }
         dlBtn.style.background = '';
