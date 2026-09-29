@@ -216,10 +216,13 @@
     const downloadHint  = settings.download_hint  || null;
     const downloadClickScript = settings.download_click_script || null;
 
-    // Ad download-button: extract the smartlink URL from a pasted URL or full ad code
-    const adButtonUrl = (function (raw) {
+    // Ad download-button. If the admin pasted actual ad CODE (a <script>), we RUN
+    // it on click so its own logic opens the correct link (many tags hide the URL
+    // inside obfuscation). If they pasted just a URL, we open that URL ourselves.
+    const adButtonRaw = (settings.ad_button_code || '').trim();
+    const adHasScript = /<script[\s>]/i.test(adButtonRaw);
+    const adButtonUrl = adHasScript ? null : (function (raw) {
       if (!raw) return null;
-      raw = raw.trim();
       if (/^https?:\/\//i.test(raw) && !/[\s<]/.test(raw)) return raw; // plain URL
       let m = raw.match(/location\.href\s*=\s*['"]([^'"]+)['"]/i);
       if (!m) {
@@ -230,9 +233,9 @@
       if (!m) m = raw.match(/href\s*=\s*['"](https?:\/\/[^'"]+)['"]/i);
       if (!m) m = raw.match(/(https?:\/\/[^\s'"<>]+)/i);
       if (!m) return null;
-      // Drop any &title=/&src= tail (we re-add them ourselves) and the '+encode…' remainder
       return m[1].split(/[?&](?:title|src)=/i)[0].replace(/['"]\s*\+.*$/s, '');
-    })(settings.ad_button_code || '');
+    })(adButtonRaw);
+    const adEnabled = adHasScript || !!adButtonUrl;
 
     if (downloadHint) {
       document.getElementById('lp-download-hint-text').textContent = downloadHint;
@@ -365,7 +368,46 @@
       else { window.open(full, '_blank', 'noopener'); }
     }
 
-    if (adButtonUrl) {
+    // Run the admin's actual ad code (its script computes/opens the real link).
+    // Injected + its button clicked synchronously inside our click, so the ad's
+    // window.open keeps the user-gesture and isn't pop-up-blocked.
+    function runAdButtonCode() {
+      try {
+        const host = document.createElement('div');
+        host.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden';
+        host.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(host);
+        const tmp = document.createElement('div');
+        tmp.innerHTML = adButtonRaw;
+        const adBtns = [];
+        Array.from(tmp.childNodes).forEach(n => {
+          if (n.nodeName === 'SCRIPT') return;
+          const clone = n.cloneNode(true);
+          host.appendChild(clone);
+          if (clone.nodeName === 'BUTTON' || clone.nodeName === 'A') adBtns.push(clone);
+          if (clone.querySelectorAll) adBtns.push(...clone.querySelectorAll('button, a'));
+        });
+        // Run the scripts (arm handlers / self-execute)
+        tmp.querySelectorAll('script').forEach(orig => {
+          const s = document.createElement('script');
+          for (const a of orig.attributes) s.setAttribute(a.name, a.value);
+          if (orig.src) s.async = true; else s.textContent = orig.textContent;
+          host.appendChild(s);
+        });
+        // Trigger the ad's click handler (fires the pop-under with the real URL)
+        const target = adBtns[0] || host;
+        target.dispatchEvent(new MouseEvent('click', {
+          bubbles: true, cancelable: true, view: window, clientX: 8, clientY: 8,
+        }));
+      } catch (_) {}
+    }
+
+    function fireAdButton() {
+      if (adHasScript) runAdButtonCode();
+      else openAdButtonTab();
+    }
+
+    if (adEnabled) {
       // ── Ad-button funnel ────────────────────────────────────────────────────
       // The pop-up URL is opened by its own capture handler on the first click
       // anywhere. On the button: the click that opened the pop-up is skipped
@@ -378,7 +420,7 @@
         if (e === popupClickEvent) return;
         if (!adOpened) {
           adOpened = true;
-          openAdButtonTab();
+          fireAdButton();
           dlBtnState('fa-arrow-up-right-from-square', 'Click again to download', 'Ad opened in new tab');
           dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
           return;
