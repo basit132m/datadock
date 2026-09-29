@@ -368,10 +368,13 @@
       else { window.open(full, '_blank', 'noopener'); }
     }
 
-    // Run the admin's actual ad code (its script computes/opens the real link).
-    // Injected + its button clicked synchronously inside our click, so the ad's
-    // window.open keeps the user-gesture and isn't pop-up-blocked.
-    function runAdButtonCode() {
+    // Inject the admin's real ad code once so its own script arms its click
+    // handler. It then fires the pop-under on the visitor's REAL (trusted) click —
+    // these ad tags reject synthetic clicks and refuse to run with DevTools open.
+    let _adInjected = false;
+    function injectAdCodeOnce() {
+      if (_adInjected) return;
+      _adInjected = true;
       try {
         const host = document.createElement('div');
         host.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden';
@@ -379,52 +382,50 @@
         document.body.appendChild(host);
         const tmp = document.createElement('div');
         tmp.innerHTML = adButtonRaw;
-        const adBtns = [];
         Array.from(tmp.childNodes).forEach(n => {
-          if (n.nodeName === 'SCRIPT') return;
-          const clone = n.cloneNode(true);
-          host.appendChild(clone);
-          if (clone.nodeName === 'BUTTON' || clone.nodeName === 'A') adBtns.push(clone);
-          if (clone.querySelectorAll) adBtns.push(...clone.querySelectorAll('button, a'));
+          if (n.nodeName !== 'SCRIPT') host.appendChild(n.cloneNode(true));
         });
-        // Run the scripts (arm handlers / self-execute)
         tmp.querySelectorAll('script').forEach(orig => {
           const s = document.createElement('script');
           for (const a of orig.attributes) s.setAttribute(a.name, a.value);
           if (orig.src) s.async = true; else s.textContent = orig.textContent;
           host.appendChild(s);
         });
-        // Trigger the ad's click handler (fires the pop-under with the real URL)
-        const target = adBtns[0] || host;
-        target.dispatchEvent(new MouseEvent('click', {
-          bubbles: true, cancelable: true, view: window, clientX: 8, clientY: 8,
-        }));
       } catch (_) {}
     }
 
-    function fireAdButton() {
-      if (adHasScript) runAdButtonCode();
-      else openAdButtonTab();
-    }
-
     if (adEnabled) {
-      // ── Ad-button funnel ────────────────────────────────────────────────────
-      // The pop-up URL is opened by its own capture handler on the first click
-      // anywhere. On the button: the click that opened the pop-up is skipped
-      // (so no wasted click); the next click opens the ad; the one after
-      // downloads. Without a pop-up URL: click1 = ad, click2 = download.
-      let adOpened = false;
+      // ── Ad-button funnel (real-gesture aware) ───────────────────────────────
+      // For a pasted ad SCRIPT: we arm its handler so the visitor's next REAL
+      // click triggers it (synthetic clicks are rejected by these tags).
+      //   • With a pop-up URL:  click1 = pop-up + arm ad → click2 = ad fires
+      //     (its own listener, trusted) → click3 = download.
+      //   • Without a pop-up:   ad armed on load → click1 = ad fires → click2 = download.
+      // For a plain ad URL we just open it ourselves on the ad click.
+      if (adHasScript && !popupUrl) injectAdCodeOnce();
+
+      let adStageDone = false;
       dlBtn.addEventListener('click', async e => {
         e.preventDefault();
-        // If this same click just fired the pop-up, wait for the next click
-        if (e === popupClickEvent) return;
-        if (!adOpened) {
-          adOpened = true;
-          fireAdButton();
+
+        if (e === popupClickEvent) {
+          // click1: the pop-up just opened. Arm the ad so the NEXT real click fires it.
+          if (adHasScript) injectAdCodeOnce();
           dlBtnState('fa-arrow-up-right-from-square', 'Click again to download', 'Ad opened in new tab');
           dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
           return;
         }
+
+        if (!adStageDone) {
+          adStageDone = true;
+          // Plain-URL ad: open it here. Script ad: its own listener fires on THIS
+          // real click (already armed) — nothing to call.
+          if (!adHasScript) openAdButtonTab();
+          dlBtnState('fa-arrow-up-right-from-square', 'Click again to download', 'Ad opened in new tab');
+          dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
+          return;
+        }
+
         dlBtn.style.background = '';
         await triggerDownload();
       });
