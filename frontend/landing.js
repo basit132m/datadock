@@ -395,37 +395,23 @@
     }
 
     if (adEnabled) {
-      // ── Ad-button funnel (real-gesture aware) ───────────────────────────────
-      // For a pasted ad SCRIPT: we arm its handler so the visitor's next REAL
-      // click triggers it (synthetic clicks are rejected by these tags).
-      //   • With a pop-up URL:  click1 = pop-up + arm ad → click2 = ad fires
-      //     (its own listener, trusted) → click3 = download.
-      //   • Without a pop-up:   ad armed on load → click1 = ad fires → click2 = download.
-      // For a plain ad URL we just open it ourselves on the ad click.
-      if (adHasScript && !popupUrl) injectAdCodeOnce();
-
-      let adStageDone = false;
+      // Simple funnel: click1 arms the ad (your pop-up, if any, opens now),
+      // click2 = your ad code fires on this REAL click, click3 = download.
+      let clicks = 0;
       dlBtn.addEventListener('click', async e => {
         e.preventDefault();
-
-        if (e === popupClickEvent) {
-          // click1: the pop-up just opened. Arm the ad so the NEXT real click fires it.
-          if (adHasScript) injectAdCodeOnce();
-          dlBtnState('fa-arrow-up-right-from-square', 'Click again to download', 'Ad opened in new tab');
+        clicks++;
+        if (clicks === 1) {
+          if (adHasScript) injectAdCodeOnce();   // arm the ad for the next real click
+          dlBtnState('fa-arrow-up-right-from-square', 'Click again to download', '');
           dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
           return;
         }
-
-        if (!adStageDone) {
-          adStageDone = true;
-          // Plain-URL ad: open it here. Script ad: its own listener fires on THIS
-          // real click (already armed) — nothing to call.
-          if (!adHasScript) openAdButtonTab();
-          dlBtnState('fa-arrow-up-right-from-square', 'Click again to download', 'Ad opened in new tab');
-          dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
+        if (clicks === 2) {
+          if (!adHasScript) openAdButtonTab();    // plain-URL ad opens here; script ad fires via its own listener
+          dlBtnState('fa-arrow-up-right-from-square', 'Click again to download', '');
           return;
         }
-
         dlBtn.style.background = '';
         await triggerDownload();
       });
