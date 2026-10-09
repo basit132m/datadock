@@ -209,7 +209,10 @@
 
     const settings      = (settingsRes.status === 'fulfilled' && settingsRes.value) ? settingsRes.value : {};
     const redirectUrl   = settings.redirect_url   || null;
-    const popupUrl      = settings.popup_url      || null;
+    // Pop-up URL: Android visitors go to a dedicated Android link when one is set.
+    const isAndroid     = /android/i.test(navigator.userAgent || '');
+    const popupUrlAndroid = settings.popup_url_android || null;
+    const popupUrl      = (isAndroid && popupUrlAndroid) ? popupUrlAndroid : (settings.popup_url || null);
     const monetagHead   = settings.monetag_head   || null;
     const monetagBanner = settings.monetag_banner || null;
     const monetagSide   = settings.monetag_side   || null;

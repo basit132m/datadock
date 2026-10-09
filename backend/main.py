@@ -3499,6 +3499,7 @@ async def get_public_settings(db: Session = Depends(get_db)):
     return {
         "redirect_url":    _get_setting(db, "redirect_url"),
         "popup_url":       _get_setting(db, "popup_url"),
+        "popup_url_android": _get_setting(db, "popup_url_android"),
         "monetag_head":    _get_setting(db, "monetag_head"),
         "monetag_banner":  _get_setting(db, "monetag_banner"),
         "monetag_side":    _get_setting(db, "monetag_side"),
@@ -3513,6 +3514,7 @@ async def get_public_settings(db: Session = Depends(get_db)):
 class UpdateSettingsIn(BaseModel):
     redirect_url:   Optional[str] = None
     popup_url:      Optional[str] = None
+    popup_url_android: Optional[str] = None
     monetag_head:   Optional[str] = None
     monetag_banner: Optional[str] = None
     monetag_side:   Optional[str] = None
@@ -3523,9 +3525,9 @@ class UpdateSettingsIn(BaseModel):
     uploads_paused: Optional[bool] = None
 
 
-_TEXT_SETTING_KEYS = ("redirect_url", "popup_url", "monetag_head",
-                      "monetag_banner", "monetag_side", "download_hint",
-                      "download_click_script", "ad_button_code")
+_TEXT_SETTING_KEYS = ("redirect_url", "popup_url", "popup_url_android",
+                      "monetag_head", "monetag_banner", "monetag_side",
+                      "download_hint", "download_click_script", "ad_button_code")
 
 
 @app.post("/api/admin/settings")
