@@ -4209,6 +4209,11 @@ async def serve_status():
     return FileResponse(os.path.join(FRONTEND_DIR, "status.html"), headers={"Cache-Control": "no-cache"})
 
 
+@app.get("/advertise", include_in_schema=False)
+async def serve_advertise():
+    return FileResponse(os.path.join(FRONTEND_DIR, "advertise.html"), headers={"Cache-Control": "no-cache"})
+
+
 _NO_CACHE  = {"Cache-Control": "no-cache"}
 
 

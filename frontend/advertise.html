@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Advertise on DataDock</title>
+  <meta name="description" content="Advertise on DataDock — reach a large, engaged audience of downloaders. Banner, button and pop-up placements available. Contact us on Telegram." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    :root{
+      --adv-bg:#f4f6fb; --adv-card:#fff; --adv-text:#0f172a; --adv-muted:#64748b;
+      --adv-border:#e5e9f2; --adv-primary:#6366f1; --adv-primary2:#8b5cf6;
+      --adv-tg-grad1:#2aabee; --adv-tg-grad2:#229ed9;
+    }
+    .hp-body.adv-dark, body.adv-dark{
+      --adv-bg:#0b1120; --adv-card:#111a2e; --adv-text:#e6ebf5; --adv-muted:#94a3b8; --adv-border:#1e293b;
+    }
+    .adv-main{max-width:980px;margin:0 auto;padding:2.5rem 1.1rem 4rem}
+    .adv-hero{text-align:center;margin-bottom:2.5rem}
+    .adv-badge{display:inline-flex;align-items:center;gap:.4rem;font-size:.78rem;font-weight:700;
+      text-transform:uppercase;letter-spacing:.06em;color:var(--adv-primary);
+      background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.25);padding:.35rem .8rem;border-radius:999px}
+    .adv-hero h1{font-size:2.3rem;line-height:1.1;letter-spacing:-.03em;margin:1rem 0 .6rem;color:var(--adv-text)}
+    .adv-hero h1 span{background:linear-gradient(135deg,var(--adv-primary),var(--adv-primary2));
+      -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+    .adv-hero p{font-size:1.05rem;color:var(--adv-muted);max-width:620px;margin:0 auto 1.6rem}
+    .adv-cta{display:inline-flex;align-items:center;gap:.6rem;font-size:1.05rem;font-weight:700;color:#fff;
+      background:linear-gradient(135deg,var(--adv-tg-grad1),var(--adv-tg-grad2));text-decoration:none;
+      padding:.95rem 1.9rem;border-radius:14px;box-shadow:0 10px 24px rgba(34,158,217,.35);transition:transform .15s,box-shadow .15s}
+    .adv-cta:hover{transform:translateY(-2px);box-shadow:0 16px 32px rgba(34,158,217,.45)}
+    .adv-cta i{font-size:1.25rem}
+
+    .adv-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin:0 0 2.5rem}
+    @media(max-width:560px){.adv-stats{grid-template-columns:1fr}}
+    .adv-stat{background:var(--adv-card);border:1.5px solid var(--adv-border);border-radius:14px;padding:1.2rem 1.25rem;text-align:center}
+    .adv-stat .n{font-size:1.7rem;font-weight:800;letter-spacing:-.02em;color:var(--adv-text)}
+    .adv-stat .l{font-size:.8rem;color:var(--adv-muted);font-weight:600;margin-top:.2rem}
+
+    .adv-section-title{font-size:1.3rem;letter-spacing:-.02em;margin:0 0 1.2rem;color:var(--adv-text);text-align:center}
+    .adv-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:1rem;margin-bottom:2.5rem}
+    @media(max-width:640px){.adv-grid{grid-template-columns:1fr}}
+    .adv-item{background:var(--adv-card);border:1.5px solid var(--adv-border);border-radius:14px;padding:1.3rem 1.4rem}
+    .adv-item .ic{width:42px;height:42px;border-radius:11px;display:grid;place-items:center;font-size:1.1rem;color:#fff;
+      background:linear-gradient(135deg,var(--adv-primary),var(--adv-primary2));margin-bottom:.75rem}
+    .adv-item h3{margin:0 0 .35rem;font-size:1.02rem;color:var(--adv-text)}
+    .adv-item p{margin:0;font-size:.88rem;color:var(--adv-muted);line-height:1.55}
+
+    .adv-contact{background:var(--adv-card);border:1.5px solid var(--adv-border);border-radius:18px;
+      padding:2.2rem 1.5rem;text-align:center;box-shadow:0 8px 30px rgba(2,8,23,.05)}
+    .adv-contact h2{margin:0 0 .5rem;font-size:1.5rem;letter-spacing:-.02em;color:var(--adv-text)}
+    .adv-contact p{margin:0 auto 1.4rem;color:var(--adv-muted);max-width:520px;font-size:.95rem}
+    .adv-tg-handle{display:inline-flex;align-items:center;gap:.5rem;font-weight:700;color:var(--adv-text);
+      background:var(--adv-bg);border:1.5px solid var(--adv-border);border-radius:10px;padding:.5rem .9rem;margin-top:1rem;font-size:.95rem}
+    .adv-note{font-size:.82rem;color:var(--adv-muted);margin-top:1.3rem}
+  </style>
+</head>
+<body class="hp-body">
+
+<!-- ── Header ── -->
+<header class="hp-header" id="hp-header">
+  <div class="hp-header-inner">
+    <a href="/" class="hp-logo">
+      <img src="/logo.webp" alt="DataDock" style="height:32px;width:auto">
+    </a>
+    <nav class="hp-nav">
+      <a href="/browse" class="hp-nav-link"><i class="fa-solid fa-folder-open"></i> Browse Files</a>
+      <a href="/status" class="hp-nav-link"><i class="fa-solid fa-heart-pulse"></i> Status</a>
+      <a href="/advertise" class="hp-nav-link"><i class="fa-solid fa-bullhorn"></i> Advertise</a>
+      <a href="/admin" class="hp-nav-link hp-nav-admin"><i class="fa-solid fa-lock"></i> Admin</a>
+    </nav>
+    <button class="hp-theme-toggle" id="hp-theme-toggle" title="Toggle dark mode">
+      <i class="fa-solid fa-moon"></i>
+    </button>
+  </div>
+</header>
+
+<main class="adv-main">
+
+  <section class="adv-hero">
+    <span class="adv-badge"><i class="fa-solid fa-bullhorn"></i> Advertise with us</span>
+    <h1>Put your brand in front of <span>thousands of downloaders</span></h1>
+    <p>DataDock gets a steady stream of highly-engaged visitors every day. Reach them with banner, button, or pop-up placements across our download pages.</p>
+    <a class="adv-cta" href="https://t.me/datadockhost" target="_blank" rel="noopener">
+      <i class="fa-brands fa-telegram"></i> Contact us on Telegram
+    </a>
+  </section>
+
+  <section class="adv-stats" id="adv-stats">
+    <div class="adv-stat"><div class="n" id="adv-files">—</div><div class="l">Files Hosted</div></div>
+    <div class="adv-stat"><div class="n" id="adv-downloads">—</div><div class="l">Data Served</div></div>
+    <div class="adv-stat"><div class="n">Daily</div><div class="l">Fresh Traffic</div></div>
+  </section>
+
+  <h2 class="adv-section-title">Available Ad Placements</h2>
+  <div class="adv-grid">
+    <div class="adv-item">
+      <div class="ic"><i class="fa-solid fa-image"></i></div>
+      <h3>Banner Ads</h3>
+      <p>Image banners shown prominently on every download page — top and bottom slots, plus sticky side columns on desktop.</p>
+    </div>
+    <div class="adv-item">
+      <div class="ic"><i class="fa-solid fa-hand-pointer"></i></div>
+      <h3>Button Ads</h3>
+      <p>High-visibility text/CTA buttons placed near the download action, where attention and click-through are highest.</p>
+    </div>
+    <div class="adv-item">
+      <div class="ic"><i class="fa-solid fa-arrow-up-right-from-square"></i></div>
+      <h3>Pop-up / Direct Link</h3>
+      <p>First-click pop-up or redirect placements — including device-targeted options for desktop and mobile traffic.</p>
+    </div>
+    <div class="adv-item">
+      <div class="ic"><i class="fa-solid fa-gears"></i></div>
+      <h3>Custom Campaigns</h3>
+      <p>Have something specific in mind? We support custom scripts and tailored placements. Tell us your goals and we'll make it work.</p>
+    </div>
+  </div>
+
+  <section class="adv-contact">
+    <h2>Ready to advertise?</h2>
+    <p>Reach out on Telegram and we'll get back to you with placements, traffic details, and pricing. We reply fast.</p>
+    <a class="adv-cta" href="https://t.me/datadockhost" target="_blank" rel="noopener">
+      <i class="fa-brands fa-telegram"></i> Message @datadockhost
+    </a>
+    <div><span class="adv-tg-handle"><i class="fa-brands fa-telegram" style="color:#229ed9"></i> @datadockhost</span></div>
+    <div class="adv-note">Prefer to copy it? Our Telegram handle is <strong>@datadockhost</strong> — search for it in the Telegram app.</div>
+  </section>
+
+</main>
+
+<!-- ── Footer ── -->
+<footer class="hp-footer">
+  <div class="hp-footer-inner">
+    <div class="hp-footer-brand">
+      <img src="/logo.webp" alt="DataDock" style="height:24px;width:auto;opacity:.5">
+      <span class="hp-footer-tagline">Fast &amp; Private File Sharing</span>
+    </div>
+    <div class="hp-footer-links">
+      <a href="/browse">Browse Files</a>
+      <a href="/status">Server Status</a>
+      <a href="/advertise">Advertise</a>
+      <a href="/admin">Admin Login</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  // Theme toggle — mirror the home page's dark-mode behavior
+  var body = document.body;
+  var btn  = document.getElementById('hp-theme-toggle');
+  var icon = btn ? btn.querySelector('i') : null;
+  function apply(dark){
+    body.classList.toggle('hp-dark', dark);
+    body.classList.toggle('adv-dark', dark);
+    if (icon) icon.className = dark ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+  }
+  try { apply(localStorage.getItem('hp-theme') === 'dark'); } catch(e){}
+  if (btn) btn.addEventListener('click', function(){
+    var dark = !body.classList.contains('adv-dark');
+    try { localStorage.setItem('hp-theme', dark ? 'dark' : 'light'); } catch(e){}
+    apply(dark);
+  });
+
+  // Live stats from the public endpoint
+  function fmtBytes(b){ if(!b) return '0'; var u=['B','KB','MB','GB','TB','PB']; var i=Math.floor(Math.log(b)/Math.log(1024)); return (b/Math.pow(1024,i)).toFixed(i?1:0)+' '+u[i]; }
+  function fmtNum(n){ n=Number(n)||0; if(n>=1e6) return (n/1e6).toFixed(1)+'M'; if(n>=1e3) return (n/1e3).toFixed(1)+'K'; return String(n); }
+  fetch('/api/public/stats').then(function(r){ return r.ok ? r.json() : Promise.reject(); }).then(function(s){
+    var f=document.getElementById('adv-files'), d=document.getElementById('adv-downloads');
+    if(f) f.textContent = fmtNum(s.file_count);
+    if(d && typeof s.total_served !== 'undefined') d.textContent = fmtBytes(s.total_served) + ' served';
+    else if(d) d.textContent = '—';
+  }).catch(function(){
+    var f=document.getElementById('adv-files'); if(f) f.textContent='1000s';
+    var d=document.getElementById('adv-downloads'); if(d) d.textContent='High';
+  });
+})();
+</script>
+</body>
+</html>
