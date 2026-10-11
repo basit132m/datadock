@@ -2646,36 +2646,42 @@ select { background: var(--surface); color: var(--text); }
 /* Card → centered single column */
 .lp-card{ max-width:720px; border-radius:26px; }
 .lp-card-inner{ grid-template-columns:1fr; }
-.lp-info-panel{ border-right:none; align-items:center; text-align:center; padding:2.3rem 2rem 1.4rem; gap:1rem; }
+.lp-info-panel{ border-right:none; align-items:center; text-align:center; padding:1.5rem 2rem .9rem; gap:.65rem; }
 .lp-file-details{ display:flex; flex-direction:column; align-items:center; }
-.lp-icon-wrap{ width:92px; height:92px; border-radius:26px; margin:0 auto; box-shadow:0 14px 30px -10px rgba(40,58,46,.35); }
-.lp-file-icon{ font-size:2.5rem; }
+.lp-icon-wrap{ width:70px; height:70px; border-radius:20px; margin:0 auto; box-shadow:0 12px 26px -10px rgba(40,58,46,.35); }
+.lp-file-icon{ font-size:2rem; }
 .lp-ext-chip{ border-radius:999px; border:1px solid rgba(196,122,84,.25); }
 
 /* Filename → natural serif */
-.lp-filename{ font-family:'Fraunces',Georgia,serif; font-size:1.7rem; font-weight:600; letter-spacing:-.01em; line-height:1.22; text-align:center; margin-bottom:0; }
+.lp-filename{ font-family:'Fraunces',Georgia,serif; font-size:1.45rem; font-weight:600; letter-spacing:-.01em; line-height:1.2; text-align:center; margin-bottom:0; }
 
 /* Meta table → centered pills */
 .lp-meta-table{ border:none; border-radius:0; overflow:visible; display:flex; flex-wrap:wrap; justify-content:center; gap:.5rem; margin-top:.3rem; }
-.lp-meta-row{ flex-direction:column; align-items:center; gap:.1rem; border:1px solid var(--lp-meta-bdr); border-radius:14px; background:#f4f6f0; padding:.55rem .95rem; min-width:88px; }
+.lp-meta-row{ flex-direction:column; align-items:center; gap:.1rem; border:1px solid var(--lp-meta-bdr); border-radius:13px; background:#f4f6f0; padding:.45rem .9rem; min-width:84px; }
 .lp-dark .lp-meta-row{ background:#151c10; }
 .lp-meta-row:last-child{ border-bottom:1px solid var(--lp-meta-bdr); }
 .lp-meta-key{ order:2; font-size:.68rem; text-transform:uppercase; letter-spacing:.05em; color:var(--lp-muted); font-weight:600; }
 .lp-meta-key i{ color:var(--lp-spinner-t); }
 .lp-meta-val{ order:1; font-size:1rem; }
 
-/* Action panel below, soft divider */
+/* Action panel below, soft divider — buttons centered in a narrow column */
 .lp-action-panel{ background:transparent; border-top:1px dashed var(--lp-panel-bdr); }
-.lp-action-inner{ padding:1.5rem 2rem 2rem; }
+.lp-action-inner{ padding:1.1rem 2rem 1.4rem; gap:.65rem; align-items:center; }
 .lp-action-label{ text-align:center; }
+/* Keep the download button (and the buttons under it) from spanning the full
+   card width — a tighter, more natural column. */
+.lp-download-btn,
+.lp-copy-btn,
+.lp-report-btn,
+.lp-download-hint{ max-width:460px; }
 
 /* Download button → leaf green */
-.lp-download-btn{ border-radius:18px; padding:1.05rem 1.3rem; justify-content:center;
+.lp-download-btn{ border-radius:16px; padding:.85rem 1.3rem; justify-content:center;
   background:linear-gradient(145deg,#4b9460 0%,#3f7e52 100%);
-  box-shadow:0 16px 34px -12px rgba(63,126,82,.55); }
-.lp-download-btn:hover:not(:disabled){ box-shadow:0 22px 42px -12px rgba(63,126,82,.7); }
+  box-shadow:0 14px 30px -12px rgba(63,126,82,.55); }
+.lp-download-btn:hover:not(:disabled){ box-shadow:0 20px 38px -12px rgba(63,126,82,.7); }
 .lp-dl-icon{ border-radius:12px; }
-.lp-dl-primary{ font-size:1.08rem; }
+.lp-dl-primary{ font-size:1.05rem; }
 
 /* Secondary buttons & hint → natural accents */
 .lp-copy-btn{ border-radius:13px; background:#fbfaf4; }
@@ -2689,12 +2695,18 @@ select { background: var(--surface); color: var(--text); }
 .lp-download-hint .lp-hint-icon{ color:#4b9460; }
 
 /* Trust row */
-.lp-trust{ justify-content:center; gap:1.8rem; border-top:1px dashed var(--lp-trust-bdr); }
+.lp-trust{ justify-content:center; gap:1.6rem; border-top:1px dashed var(--lp-trust-bdr); padding-top:.9rem; }
 .lp-trust-item i{ color:#4b9460; }
+
+/* Tighter outer spacing so the whole card fits without scrolling */
+.lp-main{ padding:1.25rem 1rem 1.75rem; gap:1rem; }
 
 /* Feature cards + preview card softening */
 .lp-feature{ border-radius:18px; }
 .lp-preview-card{ border-radius:20px !important; }
 
-@media (max-width:560px){ .lp-filename{ font-size:1.4rem; } }
+@media (max-width:560px){
+  .lp-filename{ font-size:1.3rem; }
+  .lp-main{ padding:.85rem .6rem 1.5rem; }
+}
 /* ═══ end naturalistic skin ═══ */
