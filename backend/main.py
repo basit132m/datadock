@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from pydantic import BaseModel
@@ -29,7 +29,7 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from database import get_db, init_db
-from models import AccessRequest, Ad, ApiKey, DownloadEvent, DownloadToken, FileReport, Part, Referrer, SiteSetting, StorageProvider, SupportMessage, SupportReply, Upload
+from models import AccessRequest, Ad, ApiKey, BacklinkDomain, DownloadEvent, DownloadToken, FileReport, Part, Referrer, SiteSetting, StorageProvider, SupportMessage, SupportReply, Upload
 from storage import B2Storage, BunnyStorage, S3Storage
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -4214,6 +4214,11 @@ async def serve_advertise():
     return FileResponse(os.path.join(FRONTEND_DIR, "advertise.html"), headers={"Cache-Control": "no-cache"})
 
 
+@app.get("/backlinks", include_in_schema=False)
+async def serve_backlinks():
+    return FileResponse(os.path.join(FRONTEND_DIR, "backlinks.html"), headers={"Cache-Control": "no-cache"})
+
+
 _NO_CACHE  = {"Cache-Control": "no-cache"}
 
 
@@ -4425,6 +4430,156 @@ async def public_stats(db: Session = Depends(get_db)):
         "total_served":  int(row.total_served),
         "total_downloads": int(row.total_downloads),
     }
+
+
+# ── Do-follow backlinks ───────────────────────────────────────────────────────
+
+DEFAULT_USDT_ADDRESS = "0x89fa701bfa38e943cf4b1e93dcc67a32a63483c1"
+
+
+def _backlink_meta(db: Session) -> dict:
+    return {
+        "domain_authority":  _get_setting(db, "seo_domain_authority") or "",
+        "referring_domains": _get_setting(db, "seo_referring_domains") or "",
+        "backlinks":         _get_setting(db, "seo_backlinks") or "",
+        "price_usd":         _get_setting(db, "backlink_price") or "10",
+        "usdt_address":      _get_setting(db, "usdt_erc20_address") or DEFAULT_USDT_ADDRESS,
+    }
+
+
+def _backlink_dict(b: BacklinkDomain) -> dict:
+    return {
+        "id": b.id,
+        "domain": b.domain,
+        "name": b.name or b.domain,
+        "contact": b.contact,
+        "screenshot_url": b.screenshot_url,
+        "status": b.status,
+        "created_at": b.created_at.isoformat() if b.created_at else None,
+        "approved_at": b.approved_at.isoformat() if b.approved_at else None,
+    }
+
+
+@app.get("/api/backlinks")
+async def public_backlinks(db: Session = Depends(get_db)):
+    """Public: SEO metrics + approved do-follow domains for the backlinks page."""
+    meta = _backlink_meta(db)
+    rows = (
+        db.query(BacklinkDomain)
+        .filter(BacklinkDomain.status == "approved")
+        .order_by(BacklinkDomain.approved_at.desc(), BacklinkDomain.created_at.desc())
+        .all()
+    )
+    return {"meta": meta, "domains": [
+        {"domain": b.domain, "name": b.name or b.domain} for b in rows
+    ]}
+
+
+def _normalize_domain_url(raw: str) -> str:
+    raw = (raw or "").strip()
+    if not raw:
+        raise HTTPException(400, "Domain is required")
+    if not raw.startswith(("http://", "https://")):
+        raw = "https://" + raw
+    from urllib.parse import urlparse
+    p = urlparse(raw)
+    host = (p.netloc or "").strip()
+    if not host or "." not in host:
+        raise HTTPException(400, "Enter a valid domain, e.g. example.com")
+    # Store the main domain only (strip any path/query) — scheme + host
+    return f"{p.scheme}://{host}"
+
+
+@app.post("/api/backlinks/request")
+async def backlinks_request(
+    domain: str = Form(..., max_length=300),
+    name: str = Form("", max_length=200),
+    contact: str = Form("", max_length=300),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Public: submit a domain + payment screenshot. Creates a pending request."""
+    url = _normalize_domain_url(domain)
+    if file.content_type not in _ALLOWED_IMG_TYPES:
+        raise HTTPException(400, "Payment screenshot must be a JPEG, PNG, GIF, WebP or BMP image")
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(400, "Screenshot too large — max 10 MB")
+    ext = _IMG_EXT_MAP.get(file.content_type, ".jpg")
+    fname = str(uuid.uuid4()) + ext
+    with open(os.path.join(SUPPORT_MEDIA_DIR, fname), "wb") as f:
+        f.write(content)
+
+    row = BacklinkDomain(
+        id=str(uuid.uuid4()),
+        domain=url,
+        name=(name or "").strip()[:200] or None,
+        contact=(contact or "").strip()[:300] or None,
+        screenshot_url=f"/api/support/media/{fname}",
+        status="pending",
+        created_at=datetime.utcnow(),
+    )
+    db.add(row)
+    db.commit()
+    return {"ok": True, "message": "Request received. We'll review your payment and add your link once confirmed."}
+
+
+@app.get("/api/admin/backlinks")
+async def admin_list_backlinks(db: Session = Depends(get_db), _=Depends(require_admin)):
+    rows = db.query(BacklinkDomain).order_by(BacklinkDomain.created_at.desc()).all()
+    return {"meta": _backlink_meta(db), "requests": [_backlink_dict(b) for b in rows]}
+
+
+class BacklinkStatusIn(BaseModel):
+    status: str  # approved | rejected | pending
+
+
+@app.post("/api/admin/backlinks/{bid}/status")
+async def admin_backlink_status(bid: str, body: BacklinkStatusIn, db: Session = Depends(get_db), _=Depends(require_admin)):
+    if body.status not in ("approved", "rejected", "pending"):
+        raise HTTPException(400, "Invalid status")
+    b = db.query(BacklinkDomain).filter(BacklinkDomain.id == bid).first()
+    if not b:
+        raise HTTPException(404, "Request not found")
+    b.status = body.status
+    b.approved_at = datetime.utcnow() if body.status == "approved" else None
+    db.commit()
+    return {"ok": True, "status": b.status}
+
+
+@app.delete("/api/admin/backlinks/{bid}")
+async def admin_backlink_delete(bid: str, db: Session = Depends(get_db), _=Depends(require_admin)):
+    b = db.query(BacklinkDomain).filter(BacklinkDomain.id == bid).first()
+    if not b:
+        raise HTTPException(404, "Request not found")
+    db.delete(b)
+    db.commit()
+    return {"ok": True}
+
+
+class BacklinkMetaIn(BaseModel):
+    domain_authority:  Optional[str] = None
+    referring_domains: Optional[str] = None
+    backlinks:         Optional[str] = None
+    price_usd:         Optional[str] = None
+    usdt_address:      Optional[str] = None
+
+
+@app.post("/api/admin/backlinks/meta")
+async def admin_backlink_meta(body: BacklinkMetaIn, db: Session = Depends(get_db), _=Depends(require_admin)):
+    data = (body.model_dump(exclude_unset=True) if hasattr(body, "model_dump") else body.dict(exclude_unset=True))
+    keymap = {
+        "domain_authority": "seo_domain_authority",
+        "referring_domains": "seo_referring_domains",
+        "backlinks": "seo_backlinks",
+        "price_usd": "backlink_price",
+        "usdt_address": "usdt_erc20_address",
+    }
+    for k, setting_key in keymap.items():
+        if k in data:
+            _upsert_setting(db, setting_key, (data[k] or "").strip() or None)
+    db.commit()
+    return {"ok": True, "meta": _backlink_meta(db)}
 
 
 @app.get("/api/public/files")

@@ -2593,3 +2593,5 @@ select { background: var(--surface); color: var(--text); }
   color: #b91c1c; font-size: .875rem; font-weight: 600;
 }
 .uploads-paused-banner i { font-size: 1rem; flex-shrink: 0; }
+
+.bl-filter-active { background: #6366f1 !important; color: #fff !important; border-color: #6366f1 !important; }

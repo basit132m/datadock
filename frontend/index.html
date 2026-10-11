@@ -85,6 +85,10 @@
         <i class="fa-solid fa-flag ni-icon"></i> File Reports
         <span class="nav-badge" id="rpt-nav-badge" hidden>0</span>
       </button>
+      <button class="nav-item" data-page="backlinks">
+        <i class="fa-solid fa-link ni-icon"></i> Backlinks
+        <span class="nav-badge" id="bl-nav-badge" hidden>0</span>
+      </button>
     </nav>
     <div class="sidebar-footer">
       <div id="key-badge" class="key-badge">
@@ -1265,6 +1269,50 @@
           </div>
         </div>
         <div id="rpt-list">
+          <p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">Loading…</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Backlinks ── -->
+    <div id="page-backlinks" class="page">
+      <div class="page-header"><h1>Backlinks</h1></div>
+
+      <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-header"><i class="fa-solid fa-gauge-high"></i> SEO Metrics &amp; Pricing (shown on /backlinks)</div>
+        <div style="padding:1rem 1.25rem">
+          <p style="color:var(--muted);font-size:.875rem;margin:0 0 1rem 0">
+            These show on the public backlinks page. Fill them from your SEO tool (Moz, Ahrefs, etc.). Leave blank to hide a metric.
+          </p>
+          <div class="ad-form-row">
+            <label>Domain Authority<input id="bl-meta-da" type="text" placeholder="e.g. 45" /></label>
+            <label>Referring Domains<input id="bl-meta-ref" type="text" placeholder="e.g. 1,200" /></label>
+          </div>
+          <div class="ad-form-row">
+            <label>Total Backlinks<input id="bl-meta-bl" type="text" placeholder="e.g. 38,500" /></label>
+            <label>Price per link (USD)<input id="bl-meta-price" type="text" placeholder="10" /></label>
+          </div>
+          <div class="ad-form-row">
+            <label style="flex:1">USDT ERC20 address<input id="bl-meta-addr" type="text" placeholder="0x…" /></label>
+          </div>
+          <div style="display:flex;gap:.75rem;align-items:center;margin-top:.5rem">
+            <button id="bl-meta-save" class="btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save Metrics</button>
+            <span id="bl-meta-msg" class="ad-form-msg"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header" style="display:flex;align-items:center;gap:.75rem">
+          Link Requests
+          <div style="display:flex;gap:.4rem;margin-left:auto">
+            <button class="btn-sm bl-filter-btn bl-filter-active" data-status="">All</button>
+            <button class="btn-sm bl-filter-btn" data-status="pending">Pending</button>
+            <button class="btn-sm bl-filter-btn" data-status="approved">Approved</button>
+            <button class="btn-sm bl-filter-btn" data-status="rejected">Rejected</button>
+          </div>
+        </div>
+        <div id="bl-list">
           <p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">Loading…</p>
         </div>
       </div>

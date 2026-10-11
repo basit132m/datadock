@@ -78,6 +78,7 @@ def _migrate():
             "ALTER TABLE uploads ADD COLUMN hidden_redirect_url VARCHAR(500)",
             "ALTER TABLE ads ADD COLUMN script_code TEXT",
             "CREATE TABLE IF NOT EXISTS uptime_minutes (minute VARCHAR(16) PRIMARY KEY)",
+            "CREATE TABLE IF NOT EXISTS backlink_domains (id VARCHAR(36) PRIMARY KEY, domain VARCHAR(300) NOT NULL, name VARCHAR(200), contact VARCHAR(300), screenshot_url VARCHAR(500), status VARCHAR(20) DEFAULT 'pending' NOT NULL, created_at DATETIME NOT NULL, approved_at DATETIME)",
         ]:
             try:
                 conn.execute(text(sql))

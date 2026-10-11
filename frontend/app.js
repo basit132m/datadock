@@ -3676,9 +3676,100 @@ async function rptReopen(id) {
   loadFileReportsPage();
 }
 
+// ── Backlinks (admin) ─────────────────────────────────────────────────────────
+
+let _blFilter = '';
+let _blInit = false;
+
+async function loadBacklinksPage() {
+  const list = document.getElementById('bl-list');
+  if (!_blInit) {
+    _blInit = true;
+    document.getElementById('bl-meta-save').addEventListener('click', saveBacklinkMeta);
+    document.querySelectorAll('.bl-filter-btn').forEach(b => {
+      b.addEventListener('click', () => {
+        _blFilter = b.dataset.status;
+        document.querySelectorAll('.bl-filter-btn').forEach(x => x.classList.remove('bl-filter-active'));
+        b.classList.add('bl-filter-active');
+        loadBacklinksPage();
+      });
+    });
+  }
+  list.innerHTML = '<p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</p>';
+  let data;
+  try { data = await apiFetch('GET', '/api/admin/backlinks'); }
+  catch (e) { list.innerHTML = `<p style="padding:1.5rem;color:var(--danger);text-align:center">${escHtml(e.message)}</p>`; return; }
+
+  const m = data.meta || {};
+  document.getElementById('bl-meta-da').value    = m.domain_authority  || '';
+  document.getElementById('bl-meta-ref').value   = m.referring_domains || '';
+  document.getElementById('bl-meta-bl').value    = m.backlinks         || '';
+  document.getElementById('bl-meta-price').value = m.price_usd         || '';
+  document.getElementById('bl-meta-addr').value  = m.usdt_address      || '';
+
+  const all = data.requests || [];
+  const pending = all.filter(r => r.status === 'pending').length;
+  const badge = document.getElementById('bl-nav-badge');
+  if (badge) { badge.hidden = pending === 0; badge.textContent = pending; }
+
+  const rows = _blFilter ? all.filter(r => r.status === _blFilter) : all;
+  if (!rows.length) {
+    list.innerHTML = '<p style="padding:1.5rem;color:var(--muted);font-size:.875rem;text-align:center">No requests.</p>';
+    return;
+  }
+
+  const badgeCls = { pending: 'ad-off', approved: 'ad-on', rejected: 'ad-off' };
+  list.innerHTML = `
+    <table class="files-table"><thead><tr>
+      <th>Domain</th><th>Contact</th><th>Payment</th><th>Submitted</th><th>Status</th><th>Actions</th>
+    </tr></thead><tbody>${rows.map(r => `
+      <tr>
+        <td class="tf-name" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+          <a href="${escHtml(r.domain)}" target="_blank" rel="noopener" style="color:var(--primary)">${escHtml(r.name || r.domain)}</a>
+          <div style="font-size:.72rem;color:var(--muted)">${escHtml(r.domain)}</div>
+        </td>
+        <td style="font-size:.82rem">${r.contact ? escHtml(r.contact) : '<span style="color:var(--muted)">—</span>'}</td>
+        <td>${r.screenshot_url ? `<a href="${escHtml(r.screenshot_url)}" target="_blank" rel="noopener" class="btn-sm">View</a>` : '<span style="color:var(--muted)">—</span>'}</td>
+        <td style="white-space:nowrap;font-size:.82rem">${formatDate(r.created_at)}</td>
+        <td><span class="ad-status ${badgeCls[r.status] || ''}">${r.status}</span></td>
+        <td class="tf-actions" style="white-space:nowrap;display:flex;gap:.35rem;flex-wrap:wrap">
+          ${r.status !== 'approved' ? `<button class="btn-share" onclick="setBacklinkStatus('${r.id}','approved')">Approve</button>` : ''}
+          ${r.status !== 'rejected' ? `<button class="btn-sm" onclick="setBacklinkStatus('${r.id}','rejected')">Reject</button>` : ''}
+          <button class="btn-delete" onclick="deleteBacklink('${r.id}','${escHtml((r.name||r.domain)).replace(/'/g,"\\'")}')">Delete</button>
+        </td>
+      </tr>`).join('')}</tbody></table>`;
+}
+
+async function saveBacklinkMeta() {
+  const msg = document.getElementById('bl-meta-msg');
+  msg.textContent = '';
+  try {
+    await apiFetch('POST', '/api/admin/backlinks/meta', {
+      domain_authority:  document.getElementById('bl-meta-da').value.trim(),
+      referring_domains: document.getElementById('bl-meta-ref').value.trim(),
+      backlinks:         document.getElementById('bl-meta-bl').value.trim(),
+      price_usd:         document.getElementById('bl-meta-price').value.trim(),
+      usdt_address:      document.getElementById('bl-meta-addr').value.trim(),
+    });
+    msg.style.color = 'var(--success)'; msg.textContent = 'Saved!';
+    setTimeout(() => { msg.textContent = ''; }, 2500);
+  } catch (e) { msg.style.color = 'var(--danger)'; msg.textContent = e.message; }
+}
+
+async function setBacklinkStatus(id, status) {
+  try { await apiFetch('POST', `/api/admin/backlinks/${id}/status`, { status }); loadBacklinksPage(); }
+  catch (e) { alert('Failed: ' + e.message); }
+}
+
+async function deleteBacklink(id, label) {
+  if (!confirm(`Delete the request for "${label}"?`)) return;
+  try { await apiFetch('DELETE', `/api/admin/backlinks/${id}`); loadBacklinksPage(); }
+  catch (e) { alert('Failed: ' + e.message); }
+}
+
 // ── Page navigation ───────────────────────────────────────────────────────────
 
-const ADMIN_PAGES = ['dashboard', 'ads', 'storage', 'downloads', 'team', 'requests', 'duplicates', 'filemanager', 'cleanup', 'filereports', 'referrers'];
+const ADMIN_PAGES = ['dashboard', 'ads', 'storage', 'downloads', 'team', 'requests', 'duplicates', 'filemanager', 'cleanup', 'filereports', 'backlinks', 'referrers'];
 // 'support' is visible to both roles — intentionally not in ADMIN_PAGES
 
 function applyRoleUI() {
@@ -3717,6 +3808,7 @@ function showPage(page) {
   if (page === 'filemanager')  loadFileManagerPage();
   if (page === 'cleanup')      loadCleanupPage();
   if (page === 'filereports')  loadFileReportsPage();
+  if (page === 'backlinks')    loadBacklinksPage();
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────

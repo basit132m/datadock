@@ -186,3 +186,17 @@ class Referrer(Base):
     visit_count = Column(Integer, default=1, nullable=False)
     last_seen   = Column(DateTime, nullable=False)
     day         = Column(String(10), nullable=True, index=True)  # 'YYYY-MM-DD' bucket; NULL = legacy lifetime row
+
+
+class BacklinkDomain(Base):
+    """A do-follow backlink request/listing on the public backlinks page."""
+    __tablename__ = "backlink_domains"
+
+    id             = Column(String(36), primary_key=True)
+    domain         = Column(String(300), nullable=False)   # the main domain / URL to link
+    name           = Column(String(200), nullable=True)    # display/anchor text (optional)
+    contact        = Column(String(300), nullable=True)    # submitter email / telegram
+    screenshot_url = Column(String(500), nullable=True)    # payment screenshot
+    status         = Column(String(20), default="pending", nullable=False)  # pending|approved|rejected
+    created_at     = Column(DateTime, nullable=False)
+    approved_at    = Column(DateTime, nullable=True)
