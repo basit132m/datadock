@@ -209,10 +209,13 @@
 
     const settings      = (settingsRes.status === 'fulfilled' && settingsRes.value) ? settingsRes.value : {};
     const redirectUrl   = settings.redirect_url   || null;
-    // Pop-up URL: Android visitors go to a dedicated Android link when one is set.
-    const isAndroid     = /android/i.test(navigator.userAgent || '');
-    const popupUrlAndroid = settings.popup_url_android || null;
-    const popupUrl      = (isAndroid && popupUrlAndroid) ? popupUrlAndroid : (settings.popup_url || null);
+    // Pop-up URL: mobile visitors (Android + iPhone/iPad) go to a dedicated mobile
+    // link when one is set; desktop keeps the normal pop-up.
+    const _ua           = navigator.userAgent || '';
+    const isIOS         = /iphone|ipad|ipod/i.test(_ua) || (/Macintosh/i.test(_ua) && (navigator.maxTouchPoints || 0) > 1);
+    const isMobile      = /android/i.test(_ua) || isIOS;
+    const popupUrlMobile = settings.popup_url_android || null;
+    const popupUrl      = (isMobile && popupUrlMobile) ? popupUrlMobile : (settings.popup_url || null);
     const monetagHead   = settings.monetag_head   || null;
     const monetagBanner = settings.monetag_banner || null;
     const monetagSide   = settings.monetag_side   || null;
