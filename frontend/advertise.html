@@ -50,6 +50,25 @@
     .adv-item h3{margin:0 0 .35rem;font-size:1.02rem;color:var(--adv-text)}
     .adv-item p{margin:0;font-size:.88rem;color:var(--adv-muted);line-height:1.55}
 
+    .adv-live{background:linear-gradient(135deg,var(--adv-primary),var(--adv-primary2));border-radius:18px;
+      padding:2rem 1.5rem;text-align:center;color:#fff;margin:0 0 2.5rem;box-shadow:0 12px 34px rgba(99,102,241,.3)}
+    .adv-live .live-tag{display:inline-flex;align-items:center;gap:.4rem;font-size:.72rem;font-weight:700;
+      text-transform:uppercase;letter-spacing:.08em;opacity:.95}
+    .adv-live .live-dot{width:9px;height:9px;border-radius:50%;background:#fff;box-shadow:0 0 0 0 rgba(255,255,255,.7);animation:advpulse 1.8s infinite}
+    @keyframes advpulse{0%{box-shadow:0 0 0 0 rgba(255,255,255,.6)}70%{box-shadow:0 0 0 9px rgba(255,255,255,0)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}}
+    .adv-live .num{font-size:3rem;font-weight:900;letter-spacing:-.03em;line-height:1.05;margin:.4rem 0 .1rem;font-variant-numeric:tabular-nums}
+    @media(max-width:560px){.adv-live .num{font-size:2.2rem}}
+    .adv-live .cap{font-size:.95rem;opacity:.92;font-weight:600}
+
+    .adv-buy{background:var(--adv-card);border:2px dashed var(--adv-primary);border-radius:18px;
+      padding:2rem 1.5rem;text-align:center;margin:0 0 2.5rem}
+    .adv-buy .ic{width:52px;height:52px;border-radius:14px;display:inline-grid;place-items:center;font-size:1.4rem;color:#fff;
+      background:linear-gradient(135deg,#10b981,#059669);margin-bottom:.8rem}
+    .adv-buy h2{margin:0 0 .5rem;font-size:1.45rem;letter-spacing:-.02em;color:var(--adv-text)}
+    .adv-buy p{margin:0 auto 1.3rem;color:var(--adv-muted);max-width:560px;font-size:.95rem}
+    .adv-buy .adv-cta{background:linear-gradient(135deg,#10b981,#059669);box-shadow:0 10px 24px rgba(16,185,129,.35)}
+    .adv-buy .adv-cta:hover{box-shadow:0 16px 32px rgba(16,185,129,.45)}
+
     .adv-contact{background:var(--adv-card);border:1.5px solid var(--adv-border);border-radius:18px;
       padding:2.2rem 1.5rem;text-align:center;box-shadow:0 8px 30px rgba(2,8,23,.05)}
     .adv-contact h2{margin:0 0 .5rem;font-size:1.5rem;letter-spacing:-.02em;color:var(--adv-text)}
@@ -90,6 +109,12 @@
     </a>
   </section>
 
+  <section class="adv-live">
+    <span class="live-tag"><span class="live-dot"></span> Live &amp; counting</span>
+    <div class="num" id="adv-total-downloads">—</div>
+    <div class="cap">Total downloads served from DataDock</div>
+  </section>
+
   <section class="adv-stats" id="adv-stats">
     <div class="adv-stat"><div class="n" id="adv-files">—</div><div class="l">Files Hosted</div></div>
     <div class="adv-stat"><div class="n" id="adv-downloads">—</div><div class="l">Data Served</div></div>
@@ -119,6 +144,15 @@
       <p>Have something specific in mind? We support custom scripts and tailored placements. Tell us your goals and we'll make it work.</p>
     </div>
   </div>
+
+  <section class="adv-buy">
+    <div class="ic"><i class="fa-solid fa-handshake"></i></div>
+    <h2>Interested in buying DataDock?</h2>
+    <p>The entire website is open to offers. If you'd like to acquire it, send us your best rate on Telegram and we'll get back to you. Serious offers only.</p>
+    <a class="adv-cta" href="https://t.me/datadockhost" target="_blank" rel="noopener">
+      <i class="fa-brands fa-telegram"></i> Make an offer
+    </a>
+  </section>
 
   <section class="adv-contact">
     <h2>Ready to advertise?</h2>
@@ -169,15 +203,39 @@
   // Live stats from the public endpoint
   function fmtBytes(b){ if(!b) return '0'; var u=['B','KB','MB','GB','TB','PB']; var i=Math.floor(Math.log(b)/Math.log(1024)); return (b/Math.pow(1024,i)).toFixed(i?1:0)+' '+u[i]; }
   function fmtNum(n){ n=Number(n)||0; if(n>=1e6) return (n/1e6).toFixed(1)+'M'; if(n>=1e3) return (n/1e3).toFixed(1)+'K'; return String(n); }
-  fetch('/api/public/stats').then(function(r){ return r.ok ? r.json() : Promise.reject(); }).then(function(s){
-    var f=document.getElementById('adv-files'), d=document.getElementById('adv-downloads');
-    if(f) f.textContent = fmtNum(s.file_count);
-    if(d && typeof s.total_served !== 'undefined') d.textContent = fmtBytes(s.total_served) + ' served';
-    else if(d) d.textContent = '—';
-  }).catch(function(){
-    var f=document.getElementById('adv-files'); if(f) f.textContent='1000s';
-    var d=document.getElementById('adv-downloads'); if(d) d.textContent='High';
-  });
+  function group(n){ return (Number(n)||0).toLocaleString('en-US'); }
+
+  // Smoothly count the big total-downloads number up to its latest value
+  var dlEl = document.getElementById('adv-total-downloads');
+  var shown = 0, target = 0, raf = null;
+  function animateTo(v){
+    target = v;
+    if (shown === 0) { shown = v; if (dlEl) dlEl.textContent = group(v); return; } // first load: no long count-up
+    if (raf) return;
+    (function step(){
+      var diff = target - shown;
+      if (Math.abs(diff) < 1) { shown = target; if (dlEl) dlEl.textContent = group(target); raf = null; return; }
+      shown += diff * 0.18;
+      if (dlEl) dlEl.textContent = group(Math.round(shown));
+      raf = requestAnimationFrame(step);
+    })();
+  }
+
+  function load(){
+    fetch('/api/public/stats', { cache:'no-store' }).then(function(r){ return r.ok ? r.json() : Promise.reject(); }).then(function(s){
+      var f=document.getElementById('adv-files'), d=document.getElementById('adv-downloads');
+      if(f) f.textContent = fmtNum(s.file_count);
+      if(d && typeof s.total_served !== 'undefined') d.textContent = fmtBytes(s.total_served) + ' served';
+      if (typeof s.total_downloads !== 'undefined') animateTo(Number(s.total_downloads) || 0);
+      else if (dlEl) dlEl.textContent = group(0);
+    }).catch(function(){
+      var f=document.getElementById('adv-files'); if(f && f.textContent==='—') f.textContent='1000s';
+      var d=document.getElementById('adv-downloads'); if(d && d.textContent==='—') d.textContent='High';
+    });
+  }
+  load();
+  setInterval(load, 15000);                              // live refresh
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden) load(); });
 })();
 </script>
 </body>

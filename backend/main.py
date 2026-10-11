@@ -4413,6 +4413,7 @@ async def public_stats(db: Session = Depends(get_db)):
         func.count(Upload.id).label("file_count"),
         func.coalesce(func.sum(Upload.file_size), 0).label("total_size"),
         func.coalesce(func.sum(Upload.file_size * func.coalesce(Upload.downloads, 0)), 0).label("total_served"),
+        func.coalesce(func.sum(func.coalesce(Upload.downloads, 0)), 0).label("total_downloads"),
     ).filter(
         Upload.status == "completed",
         Upload.share_id.isnot(None),
@@ -4422,6 +4423,7 @@ async def public_stats(db: Session = Depends(get_db)):
         "file_count":    int(row.file_count),
         "total_size":    int(row.total_size),
         "total_served":  int(row.total_served),
+        "total_downloads": int(row.total_downloads),
     }
 
 
