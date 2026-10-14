@@ -1581,6 +1581,7 @@ async function loadRedirectUrlSetting() {
     document.getElementById('ad-button-code-input').value  = s.ad_button_code  || '';
     document.getElementById('redirect-url-input').value    = s.redirect_url    || '';
     document.getElementById('popup-url-input').value       = s.popup_url       || '';
+    document.getElementById('popup-script-input').value    = s.popup_script    || '';
     document.getElementById('popup-android-input').value   = s.popup_url_android || '';
     document.getElementById('monetag-head-input').value    = s.monetag_head    || '';
     document.getElementById('monetag-banner-input').value  = s.monetag_banner  || '';
@@ -1598,6 +1599,7 @@ async function saveSetting(field, value, msgId, inputId) {
     ad_button_code: document.getElementById('ad-button-code-input').value.trim() || null,
     redirect_url:   document.getElementById('redirect-url-input').value.trim()   || null,
     popup_url:      document.getElementById('popup-url-input').value.trim()       || null,
+    popup_script:   document.getElementById('popup-script-input').value.trim()    || null,
     popup_url_android: document.getElementById('popup-android-input').value.trim() || null,
     monetag_head:   document.getElementById('monetag-head-input').value.trim()   || null,
     monetag_banner: document.getElementById('monetag-banner-input').value.trim() || null,
@@ -1648,6 +1650,14 @@ function initRedirectUrlForm() {
   });
   document.getElementById('popup-url-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('popup-url-save').click();
+  });
+
+  // Pop-up Ad #2 — Script tag
+  document.getElementById('popup-script-save').addEventListener('click', () => {
+    saveSetting('popup_script', document.getElementById('popup-script-input').value.trim(), 'popup-script-msg', 'popup-script-input');
+  });
+  document.getElementById('popup-script-clear').addEventListener('click', () => {
+    saveSetting('popup_script', '', 'popup-script-msg', 'popup-script-input');
   });
 
   // Pop-up URL — Android only
