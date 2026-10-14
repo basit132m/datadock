@@ -216,8 +216,6 @@
     const isMobile      = /android/i.test(_ua) || isIOS;
     const popupUrlMobile = settings.popup_url_android || null;
     const popupUrl      = (isMobile && popupUrlMobile) ? popupUrlMobile : (settings.popup_url || null);
-    // Second pop-up: a self-firing <script> pop-under tag (e.g. Monetag OnClick).
-    const popupScript   = (settings.popup_script || '').trim() || null;
     const monetagHead   = settings.monetag_head   || null;
     const monetagBanner = settings.monetag_banner || null;
     const monetagSide   = settings.monetag_side   || null;
@@ -355,45 +353,14 @@
       setTimeout(() => { dlBtn.innerHTML = origHTML; dlBtn.disabled = false; }, 3000);
     }
 
-    // ── Pop-up ads ──────────────────────────────────────────────────────────
-    // Two pop-unders can run together:
-    //   • popupScript — a self-firing <script> tag (e.g. a Monetag OnClick tag)
-    //     that arms its OWN handler and opens on a user click;
-    //   • popupUrl    — a direct smartlink that we open with window.open.
-    // A browser allows only ONE window.open per click gesture, so when both are
-    // set we stagger them: the script pop-under takes the FIRST click (it opens
-    // its own pop), and we open the direct-link pop-up on the SECOND click.
-
-    // Generic: run only the <script>(s) inside an HTML snippet (markup ignored).
-    function runScripts(html, container) {
-      try {
-        const tmp = document.createElement('div');
-        tmp.innerHTML = html;
-        tmp.querySelectorAll('script').forEach(orig => {
-          const s = document.createElement('script');
-          for (const a of orig.attributes) s.setAttribute(a.name, a.value);
-          if (orig.src) s.async = true; else s.textContent = orig.textContent;
-          (container || document.body).appendChild(s);
-        });
-      } catch (_) {}
-    }
-
-    // Arm the self-firing script pop-under NOW so it is ready before the click.
-    // (It loads a hidden config first, so it needs a moment before it can fire.)
-    if (popupScript) runScripts(popupScript, document.body);
-
-    const scriptAd = adEnabled && adHasScript;   // download-button <script> ad
-    let popupClickEvent = null; // the Event that triggered the direct-link popup
-    // Legacy behaviour: when there is NO script pop-under and NO download-button
-    // script ad, the direct-link pop-up fires on the first click anywhere.
-    // When a script pop-under IS set, the download button sequences the two pops
-    // itself (below) so they don't collide, so we skip this auto-handler.
-    if (popupUrl && !scriptAd && !popupScript) {
+    // ── Pop-up ad: first click ANYWHERE on the page opens the popup URL ─────
+    let popupClickEvent = null; // the Event that triggered the popup
+    if (popupUrl) {
       document.addEventListener('click', function popupHandler(e) {
         popupClickEvent = e;
         document.removeEventListener('click', popupHandler, true);
         window.open(popupUrl, '_blank', 'noopener,noreferrer');
-      }, true);
+      }, true); // capture phase — fires before any element handler
     }
 
     // Open the ad smartlink as a pop-under, adding title + src like the sample ad
@@ -407,79 +374,105 @@
       else { window.open(full, '_blank', 'noopener'); }
     }
 
-    // Run the download-button ad's <script>(s) (markup/button ignored).
-    function runAdScripts(container) { runScripts(adButtonRaw, container); }
+    // Build the admin's ad as its OWN button + script (preloaded so its async
+    // config is ready). You click the real ad button, so the ad tag gets a
+    // genuine trusted click — exactly like on the admin's other sites.
+    let adSlot = null, adRealBtn = null;
+    function buildAdSlot() {
+      if (adSlot) return;
+      try {
+        adSlot = document.createElement('div');
+        adSlot.style.display = 'none';
+        const tmp = document.createElement('div');
+        tmp.innerHTML = adButtonRaw;
+        Array.from(tmp.childNodes).forEach(n => {
+          if (n.nodeName !== 'SCRIPT') adSlot.appendChild(n.cloneNode(true));
+        });
+        adRealBtn = adSlot.querySelector('button, a');
+        if (adRealBtn) {
+          // Keep the ad's class (so its script still binds to the button) but make
+          // it look exactly like our normal download button — no purple restyle.
+          adRealBtn.removeAttribute('style');
+          adRealBtn.removeAttribute('onmouseover');
+          adRealBtn.removeAttribute('onmouseout');
+          adRealBtn.className = (dlBtn.className + ' ' + adRealBtn.className).trim();
+          adRealBtn.innerHTML = origHTML;
+        }
+        // place it right where our download button is
+        dlBtn.parentNode.insertBefore(adSlot, dlBtn.nextSibling);
+        // run the ad scripts now so the tag arms itself and loads its config
+        tmp.querySelectorAll('script').forEach(orig => {
+          const s = document.createElement('script');
+          for (const a of orig.attributes) s.setAttribute(a.name, a.value);
+          if (orig.src) s.async = true; else s.textContent = orig.textContent;
+          adSlot.appendChild(s);
+        });
+      } catch (_) {}
+    }
 
-    if (adEnabled && adHasScript) {
-      // ── Script-type download-button ad ──────────────────────────────────────
-      // Obfuscated tags (e.g. a Monetag "OnClick" popunder) arm their OWN global
-      // click handler and open the ad on the FIRST genuine user gesture, then cap
-      // themselves — they don't need the <button> they ship with. So we:
-      //   • run the ad script NOW so it arms (loads its async config),
-      //   • give the FIRST download-button click to the ad tag, clean — nothing
-      //     else calls window.open on that click, so its pop isn't blocked,
-      //   • open the page pop-up (if any) on the SECOND click,
-      //   • start the download on the final click.
-      //
-      // IMPORTANT: no preventDefault here — these tags watch for a real,
-      // un-cancelled click to open their pop; cancelling it stops the ad.
-      runAdScripts(document.body);
-      let step = 0;
+    if (adEnabled && adHasScript && /<(button|a)[\s>]/i.test(adButtonRaw)) {
+      // ── Real-ad-button funnel ───────────────────────────────────────────────
+      // click our button (1) → pop-up + show the AD's real button →
+      // click the AD button → ad fires (its own trusted click) → show download →
+      // click download → file. Matches the admin's other sites exactly.
+      buildAdSlot();
+      let phase = 'toAd';
       dlBtn.addEventListener('click', async e => {
-        if (step === 0) {
-          // Click 1 — clean first gesture → the ad tag's own handler opens its pop.
-          step = 1;
-          dlBtnState('fa-download', 'Click again', '');
-          dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
+        e.preventDefault();
+        if (phase === 'toAd') {
+          // pop-up (if any) opens via its own handler on this click
+          phase = 'adShown';
+          dlBtn.style.display = 'none';
+          if (adSlot) adSlot.style.display = '';
           return;
         }
-        if (step === 1 && popupUrl) {
-          // Click 2 — now fire the page pop-up ad (the ad tag already fired & capped
-          // on click 1, so nothing competes for this gesture).
-          step = 2;
-          window.open(popupUrl, '_blank', 'noopener,noreferrer');
-          dlBtnState('fa-download', 'Click again to download', '');
+        // phase 'download'
+        dlBtn.style.background = '';
+        await triggerDownload();
+      });
+      if (adRealBtn) {
+        adRealBtn.addEventListener('click', () => {
+          // the ad's own handler opens the pop-under; then hand back to download
+          phase = 'download';
+          setTimeout(() => {
+            if (adSlot) adSlot.style.display = 'none';
+            dlBtn.style.display = '';
+            dlBtnState('fa-download', 'Click to Download', '');
+            dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
+          }, 120);
+        });
+      }
+    } else if (adEnabled) {
+      // Plain-URL ad (no <script>): open it ourselves. click1 = ad, click2 = download.
+      let adDone = false;
+      dlBtn.addEventListener('click', async e => {
+        e.preventDefault();
+        if (e === popupClickEvent) return;
+        if (!adDone) {
+          adDone = true;
+          openAdButtonTab();
+          dlBtnState('fa-arrow-up-right-from-square', 'Click again to download', 'Ad opened in new tab');
+          dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
           return;
         }
         dlBtn.style.background = '';
         await triggerDownload();
       });
-    } else if (adEnabled) {
-      // Direct-URL ad button — simple 2-click flow:
-      //   click 1 → the page pop-up opens (its own capture handler), button stays;
-      //   click 2 → the download-button ad link opens in a new tab AND the file
-      //             download starts.
-      dlBtn.addEventListener('click', async e => {
-        e.preventDefault();
-        if (e === popupClickEvent) return;   // this click fired the pop-up; wait for the next
-        openAdButtonTab();                    // open the download-button ad link (new tab)
-        dlBtn.style.background = '';
-        await triggerDownload();              // and start the download
-      });
     } else {
-      // ── Download button: fire any pending pop-ups / redirect, then download ──
-      // Each ad that calls window.open needs its OWN click (a browser allows only
-      // one pop per gesture). Sequence, one click each:
-      //   1) script pop-under  (popupScript) — fires itself on the click,
-      //   2) direct-link pop-up (popupUrl)   — we open it,
-      //   3) redirect URL       (redirectUrl)— we open it,
-      // then the final click starts the download.
-      const gates = [];
-      if (popupScript)             gates.push('scriptpop'); // self-firing tag; just let the click through
-      if (popupUrl && popupScript) gates.push('directpop'); // capture handler is skipped when a script pop-under is set, so open it here
-      if (redirectUrl)             gates.push('redirect');
-      let gi = 0;
+      // ── Download button (redirect-URL mode) ─────────────────────────────────
+      // First click opens the Redirect URL ad (new tab); the second click starts
+      // the download. The download-page click script handles its own popunder.
+      let redirectDone = !redirectUrl;
       dlBtn.addEventListener('click', async e => {
         e.preventDefault();
-        // A click already consumed by the legacy capture pop-up handler (direct
-        // link with no script pop-under) isn't a download step.
+
+        // If this click just fired the pop-up handler, don't also trigger download/redirect
         if (e === popupClickEvent) return;
-        if (gi < gates.length) {
-          const g = gates[gi++];
-          if (g === 'directpop')      window.open(popupUrl,   '_blank', 'noopener,noreferrer');
-          else if (g === 'redirect')  window.open(redirectUrl, '_blank', 'noopener,noreferrer');
-          // 'scriptpop' → nothing to open here; the tag's own handler fires on this click.
-          dlBtnState('fa-download', gi < gates.length ? 'Click again' : 'Click again to download', '');
+
+        if (!redirectDone) {
+          redirectDone = true;
+          window.open(redirectUrl, '_blank', 'noopener,noreferrer');
+          dlBtnState('fa-arrow-up-right-from-square', 'Click again to download', 'Ad opened in new tab');
           dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
           return;
         }

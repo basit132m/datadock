@@ -266,32 +266,6 @@
       </div>
 
       <div class="card" style="margin-bottom:1.5rem">
-        <div class="card-header"><i class="fa-solid fa-arrow-up-right-from-square" style="color:#f59e0b"></i> Pop-up Ad #2 — Script Tag</div>
-        <div style="padding:1rem 1.25rem">
-          <p style="color:var(--muted);font-size:.875rem;margin:0 0 1rem 0">
-            A <strong>second pop-up</strong> that runs a full ad <strong>&lt;script&gt;</strong> tag (e.g. a Monetag
-            OnClick / pop-under tag) instead of a plain link. It loads on every download page and opens on a user
-            click on its own. When the direct-link Pop-up Ad above is also set, the two are <strong>staggered</strong>
-            so they don't block each other: this script pop-under fires on the <strong>1st click</strong>, the
-            direct-link pop-up on the <strong>2nd</strong>.
-          </p>
-          <p style="color:var(--muted);font-size:.8rem;margin:0 0 .75rem">
-            Note: these tags load a hidden config first, so they need <strong>1–2 seconds</strong> after the page
-            loads before they can fire, and they stay quiet while browser DevTools is open. Paste the whole ad code
-            (with its &lt;script&gt;); any bundled &lt;button&gt;/markup is ignored. Leave blank to disable.
-          </p>
-          <textarea id="popup-script-input" rows="5"
-            placeholder="&lt;script&gt;/* paste the full pop-under ad tag here */&lt;/script&gt;"
-            style="width:100%;box-sizing:border-box;font-family:monospace;font-size:.8rem"></textarea>
-          <div style="display:flex;gap:.75rem;align-items:center;margin-top:.6rem">
-            <button id="popup-script-save" class="btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save</button>
-            <button id="popup-script-clear" class="btn-sm"><i class="fa-solid fa-xmark"></i> Clear</button>
-            <span id="popup-script-msg" class="ad-form-msg"></span>
-          </div>
-        </div>
-      </div>
-
-      <div class="card" style="margin-bottom:1.5rem">
         <div class="card-header"><i class="fa-solid fa-mobile-screen-button" style="color:#3ddc84"></i> Pop-up Ad URL — Mobile (Android &amp; iPhone)</div>
         <div style="padding:1rem 1.25rem">
           <p style="color:var(--muted);font-size:.875rem;margin:0 0 1rem 0">
