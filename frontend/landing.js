@@ -354,8 +354,14 @@
     }
 
     // ── Pop-up ad: first click ANYWHERE on the page opens the popup URL ─────
+    // EXCEPTION: when the download-button ad is a self-firing <script> tag, we do
+    // NOT auto-fire the pop-up on the first click — that first clean click is
+    // reserved for the ad tag (see the script-ad branch below), and the pop-up is
+    // opened by us on a later click. Otherwise the pop-up would eat the ad tag's
+    // one-and-only gesture and the ad would never open.
+    const scriptAd = adEnabled && adHasScript;
     let popupClickEvent = null; // the Event that triggered the popup
-    if (popupUrl) {
+    if (popupUrl && !scriptAd) {
       document.addEventListener('click', function popupHandler(e) {
         popupClickEvent = e;
         document.removeEventListener('click', popupHandler, true);
@@ -392,27 +398,32 @@
     if (adEnabled && adHasScript) {
       // ── Script-type download-button ad ──────────────────────────────────────
       // Obfuscated tags (e.g. a Monetag "OnClick" popunder) arm their OWN global
-      // click handler and open the ad on a genuine user gesture — they don't need
-      // the <button> they ship with. So: run the ad script NOW to arm it, keep
-      // OUR normal download button, and let the visitor's real click on it fire
-      // the ad. The second click then starts the download.
+      // click handler and open the ad on the FIRST genuine user gesture, then cap
+      // themselves — they don't need the <button> they ship with. So we:
+      //   • run the ad script NOW so it arms (loads its async config),
+      //   • give the FIRST download-button click to the ad tag, clean — nothing
+      //     else calls window.open on that click, so its pop isn't blocked,
+      //   • open the page pop-up (if any) on the SECOND click,
+      //   • start the download on the final click.
       //
       // IMPORTANT: no preventDefault here — these tags watch for a real,
       // un-cancelled click to open their pop; cancelling it stops the ad.
       runAdScripts(document.body);
-      let adDone = false;
+      let step = 0;
       dlBtn.addEventListener('click', async e => {
-        // If THIS click is the one that fired the page pop-up, let the pop-up have
-        // it alone. The browser allows only one window.open per gesture, so the ad
-        // tag's own pop would be blocked if it shared this click with the pop-up.
-        // The ad therefore gets its OWN next click (same as the direct-URL flow).
-        if (e === popupClickEvent) return;
-        if (!adDone) {
-          adDone = true;
-          // Dedicated genuine gesture for the ad tag's own click handler to open
-          // its pop; then arm the download.
-          dlBtnState('fa-download', 'Click again to download', '');
+        if (step === 0) {
+          // Click 1 — clean first gesture → the ad tag's own handler opens its pop.
+          step = 1;
+          dlBtnState('fa-download', 'Click again', '');
           dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
+          return;
+        }
+        if (step === 1 && popupUrl) {
+          // Click 2 — now fire the page pop-up ad (the ad tag already fired & capped
+          // on click 1, so nothing competes for this gesture).
+          step = 2;
+          window.open(popupUrl, '_blank', 'noopener,noreferrer');
+          dlBtnState('fa-download', 'Click again to download', '');
           return;
         }
         dlBtn.style.background = '';
