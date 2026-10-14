@@ -2674,6 +2674,13 @@ select { background: var(--surface); color: var(--text); }
 .lp-copy-btn,
 .lp-report-btn,
 .lp-download-hint{ max-width:460px; }
+/* Ad-button funnel takeover: when the ad's own button replaces the download
+   button it is wrapped in a <div> inserted right after #lp-download-btn. Keep
+   that slot + button FULL WIDTH so the ad tag's click geometry/overlay matches
+   (the 460px cap is cosmetic, for the normal button only — shrinking the ad
+   button breaks the ad click). */
+.lp-action-inner > #lp-download-btn + div{ align-self:stretch; width:100%; }
+.lp-action-inner > #lp-download-btn + div .lp-download-btn{ max-width:none; width:100%; }
 
 /* Download button → DataDock logo blue */
 .lp-download-btn{ border-radius:16px; padding:.85rem 1.3rem; justify-content:center;
