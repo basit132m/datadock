@@ -445,20 +445,16 @@
         await triggerDownload();
       });
     } else if (adEnabled) {
-      // Plain-URL ad (no <script>): open it ourselves. click1 = ad, click2 = download.
-      let adDone = false;
+      // Direct-URL ad button — simple 2-click flow:
+      //   click 1 → the page pop-up opens (its own capture handler), button stays;
+      //   click 2 → the download-button ad link opens in a new tab AND the file
+      //             download starts.
       dlBtn.addEventListener('click', async e => {
         e.preventDefault();
-        if (e === popupClickEvent) return;
-        if (!adDone) {
-          adDone = true;
-          openAdButtonTab();
-          dlBtnState('fa-arrow-up-right-from-square', 'Click again to download', 'Ad opened in new tab');
-          dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
-          return;
-        }
+        if (e === popupClickEvent) return;   // this click fired the pop-up; wait for the next
+        openAdButtonTab();                    // open the download-button ad link (new tab)
         dlBtn.style.background = '';
-        await triggerDownload();
+        await triggerDownload();              // and start the download
       });
     } else {
       // ── Download button: fire any pending pop-ups / redirect, then download ──
