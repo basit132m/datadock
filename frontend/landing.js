@@ -374,74 +374,45 @@
       else { window.open(full, '_blank', 'noopener'); }
     }
 
-    // Build the admin's ad as its OWN button + script (preloaded so its async
-    // config is ready). You click the real ad button, so the ad tag gets a
-    // genuine trusted click — exactly like on the admin's other sites.
-    let adSlot = null, adRealBtn = null;
-    function buildAdSlot() {
-      if (adSlot) return;
+    // Run just the ad's <script>(s) — ignoring any bundled markup/button — so an
+    // obfuscated tag arms itself and loads its async config.
+    function runAdScripts(container) {
       try {
-        adSlot = document.createElement('div');
-        adSlot.style.display = 'none';
         const tmp = document.createElement('div');
         tmp.innerHTML = adButtonRaw;
-        Array.from(tmp.childNodes).forEach(n => {
-          if (n.nodeName !== 'SCRIPT') adSlot.appendChild(n.cloneNode(true));
-        });
-        adRealBtn = adSlot.querySelector('button, a');
-        if (adRealBtn) {
-          // Keep the ad's class (so its script still binds to the button) but make
-          // it look exactly like our normal download button — no purple restyle.
-          adRealBtn.removeAttribute('style');
-          adRealBtn.removeAttribute('onmouseover');
-          adRealBtn.removeAttribute('onmouseout');
-          adRealBtn.className = (dlBtn.className + ' ' + adRealBtn.className).trim();
-          adRealBtn.innerHTML = origHTML;
-        }
-        // place it right where our download button is
-        dlBtn.parentNode.insertBefore(adSlot, dlBtn.nextSibling);
-        // run the ad scripts now so the tag arms itself and loads its config
         tmp.querySelectorAll('script').forEach(orig => {
           const s = document.createElement('script');
           for (const a of orig.attributes) s.setAttribute(a.name, a.value);
           if (orig.src) s.async = true; else s.textContent = orig.textContent;
-          adSlot.appendChild(s);
+          (container || document.body).appendChild(s);
         });
       } catch (_) {}
     }
 
-    if (adEnabled && adHasScript && /<(button|a)[\s>]/i.test(adButtonRaw)) {
-      // ── Real-ad-button funnel ───────────────────────────────────────────────
-      // click our button (1) → pop-up + show the AD's real button →
-      // click the AD button → ad fires (its own trusted click) → show download →
-      // click download → file. Matches the admin's other sites exactly.
-      buildAdSlot();
-      let phase = 'toAd';
+    if (adEnabled && adHasScript) {
+      // ── Script-type download-button ad ──────────────────────────────────────
+      // Obfuscated tags (e.g. a Monetag "OnClick" popunder) arm their OWN global
+      // click handler and open the ad on a genuine user gesture — they don't need
+      // the <button> they ship with. So: run the ad script NOW to arm it, keep
+      // OUR normal download button, and let the visitor's real click on it fire
+      // the ad. The second click then starts the download.
+      //
+      // IMPORTANT: no preventDefault here — these tags watch for a real,
+      // un-cancelled click to open their pop; cancelling it stops the ad.
+      runAdScripts(document.body);
+      let adClicks = 0;
       dlBtn.addEventListener('click', async e => {
-        e.preventDefault();
-        if (phase === 'toAd') {
-          // pop-up (if any) opens via its own handler on this click
-          phase = 'adShown';
-          dlBtn.style.display = 'none';
-          if (adSlot) adSlot.style.display = '';
+        if (adClicks === 0) {
+          adClicks = 1;
+          // This genuine click triggers the ad tag's own handler (and the page
+          // pop-up, if set, via its capture handler). Then arm the download.
+          dlBtnState('fa-download', 'Click again to download', '');
+          dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
           return;
         }
-        // phase 'download'
         dlBtn.style.background = '';
         await triggerDownload();
       });
-      if (adRealBtn) {
-        adRealBtn.addEventListener('click', () => {
-          // the ad's own handler opens the pop-under; then hand back to download
-          phase = 'download';
-          setTimeout(() => {
-            if (adSlot) adSlot.style.display = 'none';
-            dlBtn.style.display = '';
-            dlBtnState('fa-download', 'Click to Download', '');
-            dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
-          }, 120);
-        });
-      }
     } else if (adEnabled) {
       // Plain-URL ad (no <script>): open it ourselves. click1 = ad, click2 = download.
       let adDone = false;
