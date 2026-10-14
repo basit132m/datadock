@@ -2602,41 +2602,41 @@ select { background: var(--surface); color: var(--text); }
    tweaks. No HTML/JS element IDs change; purely visual.
    ═══════════════════════════════════════════════════════════════════════════ */
 .lp-body{
-  --lp-bg:#f3f1e9; --lp-hdr-bg:rgba(255,253,248,.82); --lp-hdr-bdr:#e5e3d6; --lp-hdr-shdw:0 1px 0 rgba(40,58,46,.04);
-  --lp-card-bg:#fffdf8; --lp-card-bdr:#e8e5d8; --lp-card-shdw:0 24px 60px -24px rgba(40,58,46,.28),0 2px 4px rgba(40,58,46,.05);
-  --lp-panel-bg:#faf8f1; --lp-panel-bdr:#e8e5d8;
-  --lp-txt:#283a2e; --lp-txt2:#5c6b58; --lp-muted:#8a9684; --lp-meta-bdr:#e8e5d8;
-  --lp-chip-bg:#f6ead9; --lp-chip-txt:#c47a54;
-  --lp-copy-bdr:#e3e1d2; --lp-copy-txt:#3f4e41;
-  --lp-trust-bdr:#e8e5d8; --lp-trust-txt:#8a9684; --lp-action-lbl:#8a9684;
-  --lp-feat-bg:#fffdf8; --lp-feat-bdr:#e8e5d8; --lp-feat-shdw:0 2px 10px rgba(40,58,46,.05); --lp-feat-txt:#283a2e; --lp-feat-sub:#73816f;
-  --lp-ftr-bg:transparent; --lp-ftr-bdr:#e5e3d6; --lp-ftr-txt:#73816f;
-  --lp-toggle-bg:#fffdf8; --lp-toggle-txt:#5c6b58;
-  --lp-spinner-b:#e5e3d6; --lp-spinner-t:#4b9460;
-  --lp-ad-bg:rgba(255,255,255,.4); --lp-ad-bdr:#e5e3d6; --lp-ad-txt:#8a9684;
+  --lp-bg:#eef5fb; --lp-hdr-bg:rgba(255,255,255,.82); --lp-hdr-bdr:#d8e7f3; --lp-hdr-shdw:0 1px 0 rgba(23,96,160,.04);
+  --lp-card-bg:#ffffff; --lp-card-bdr:#dce9f4; --lp-card-shdw:0 24px 60px -24px rgba(23,96,160,.3),0 2px 4px rgba(23,96,160,.05);
+  --lp-panel-bg:#f5faff; --lp-panel-bdr:#e2edf7;
+  --lp-txt:#14415f; --lp-txt2:#456982; --lp-muted:#7d99ae; --lp-meta-bdr:#e2edf7;
+  --lp-chip-bg:#e2f0fc; --lp-chip-txt:#1b7bc4;
+  --lp-copy-bdr:#d8e7f3; --lp-copy-txt:#2a5f82;
+  --lp-trust-bdr:#e2edf7; --lp-trust-txt:#7d99ae; --lp-action-lbl:#7d99ae;
+  --lp-feat-bg:#ffffff; --lp-feat-bdr:#e2edf7; --lp-feat-shdw:0 2px 10px rgba(23,96,160,.05); --lp-feat-txt:#14415f; --lp-feat-sub:#5c7d94;
+  --lp-ftr-bg:transparent; --lp-ftr-bdr:#d8e7f3; --lp-ftr-txt:#5c7d94;
+  --lp-toggle-bg:#ffffff; --lp-toggle-txt:#456982;
+  --lp-spinner-b:#d8e7f3; --lp-spinner-t:#1787CA;
+  --lp-ad-bg:rgba(255,255,255,.4); --lp-ad-bdr:#d8e7f3; --lp-ad-txt:#7d99ae;
   background:
-    radial-gradient(900px 480px at 10% -5%, #e7efe2 0%, rgba(231,239,226,0) 60%),
-    radial-gradient(760px 440px at 100% 0%, #f0e9da 0%, rgba(240,233,218,0) 55%),
-    radial-gradient(700px 520px at 88% 112%, #e6eee1 0%, rgba(230,238,225,0) 60%),
+    radial-gradient(900px 480px at 10% -5%, #dcecfa 0%, rgba(220,236,250,0) 60%),
+    radial-gradient(760px 440px at 100% 0%, #e3f1fb 0%, rgba(227,241,251,0) 55%),
+    radial-gradient(700px 520px at 88% 112%, #dcebf8 0%, rgba(220,235,248,0) 60%),
     var(--lp-bg);
   background-attachment: fixed;
 }
 .lp-body.lp-dark{
-  --lp-bg:#11170f; --lp-hdr-bg:rgba(26,34,22,.82); --lp-hdr-bdr:#26331f; --lp-hdr-shdw:none;
-  --lp-card-bg:#1a2216; --lp-card-bdr:#26331f; --lp-card-shdw:0 24px 64px rgba(0,0,0,.5);
-  --lp-panel-bg:#151c10; --lp-panel-bdr:#26331f;
-  --lp-txt:#e7efe0; --lp-txt2:#a9b7a0; --lp-muted:#7d8b74; --lp-meta-bdr:#26331f;
-  --lp-chip-bg:#2e2416; --lp-chip-txt:#e0a877;
-  --lp-copy-bdr:#2d3a26; --lp-copy-txt:#cfe0c4;
-  --lp-trust-bdr:#26331f; --lp-trust-txt:#7d8b74; --lp-action-lbl:#7d8b74;
-  --lp-feat-bg:#1a2216; --lp-feat-bdr:#26331f; --lp-feat-shdw:none; --lp-feat-txt:#e7efe0; --lp-feat-sub:#a9b7a0;
-  --lp-ftr-bdr:#26331f; --lp-ftr-txt:#a9b7a0;
-  --lp-toggle-bg:#1a2216; --lp-toggle-txt:#cfe0c4;
-  --lp-spinner-b:#26331f; --lp-spinner-t:#5aa96f;
-  --lp-ad-bg:rgba(26,34,22,.5); --lp-ad-bdr:#26331f; --lp-ad-txt:#7d8b74;
+  --lp-bg:#0c1a26; --lp-hdr-bg:rgba(16,30,43,.82); --lp-hdr-bdr:#1d3444; --lp-hdr-shdw:none;
+  --lp-card-bg:#122536; --lp-card-bdr:#1d3444; --lp-card-shdw:0 24px 64px rgba(0,0,0,.5);
+  --lp-panel-bg:#0f2030; --lp-panel-bdr:#1d3444;
+  --lp-txt:#dce9f4; --lp-txt2:#9fb6c8; --lp-muted:#6f8a9e; --lp-meta-bdr:#1d3444;
+  --lp-chip-bg:#15344d; --lp-chip-txt:#5bb3ec;
+  --lp-copy-bdr:#243f52; --lp-copy-txt:#bcd4e6;
+  --lp-trust-bdr:#1d3444; --lp-trust-txt:#6f8a9e; --lp-action-lbl:#6f8a9e;
+  --lp-feat-bg:#122536; --lp-feat-bdr:#1d3444; --lp-feat-shdw:none; --lp-feat-txt:#dce9f4; --lp-feat-sub:#9fb6c8;
+  --lp-ftr-bdr:#1d3444; --lp-ftr-txt:#9fb6c8;
+  --lp-toggle-bg:#122536; --lp-toggle-txt:#bcd4e6;
+  --lp-spinner-b:#1d3444; --lp-spinner-t:#3b9bdc;
+  --lp-ad-bg:rgba(16,30,43,.5); --lp-ad-bdr:#1d3444; --lp-ad-txt:#6f8a9e;
   background:
-    radial-gradient(900px 480px at 10% -5%, #16200f 0%, rgba(22,32,15,0) 60%),
-    radial-gradient(760px 440px at 100% 0%, #1d1a10 0%, rgba(29,26,16,0) 55%),
+    radial-gradient(900px 480px at 10% -5%, #0f2538 0%, rgba(15,37,56,0) 60%),
+    radial-gradient(760px 440px at 100% 0%, #10293c 0%, rgba(16,41,60,0) 55%),
     var(--lp-bg);
   background-attachment: fixed;
 }
@@ -2648,17 +2648,17 @@ select { background: var(--surface); color: var(--text); }
 .lp-card-inner{ grid-template-columns:1fr; }
 .lp-info-panel{ border-right:none; align-items:center; text-align:center; padding:1.5rem 2rem .9rem; gap:.65rem; }
 .lp-file-details{ display:flex; flex-direction:column; align-items:center; }
-.lp-icon-wrap{ width:70px; height:70px; border-radius:20px; margin:0 auto; box-shadow:0 12px 26px -10px rgba(40,58,46,.35); }
+.lp-icon-wrap{ width:70px; height:70px; border-radius:20px; margin:0 auto; box-shadow:0 12px 26px -10px rgba(23,96,160,.35); }
 .lp-file-icon{ font-size:2rem; }
-.lp-ext-chip{ border-radius:999px; border:1px solid rgba(196,122,84,.25); }
+.lp-ext-chip{ border-radius:999px; border:1px solid rgba(23,135,202,.25); }
 
 /* Filename → natural serif */
 .lp-filename{ font-family:'Fraunces',Georgia,serif; font-size:1.45rem; font-weight:600; letter-spacing:-.01em; line-height:1.2; text-align:center; margin-bottom:0; }
 
 /* Meta table → centered pills */
 .lp-meta-table{ border:none; border-radius:0; overflow:visible; display:flex; flex-wrap:wrap; justify-content:center; gap:.5rem; margin-top:.3rem; }
-.lp-meta-row{ flex-direction:column; align-items:center; gap:.1rem; border:1px solid var(--lp-meta-bdr); border-radius:13px; background:#f4f6f0; padding:.45rem .9rem; min-width:84px; }
-.lp-dark .lp-meta-row{ background:#151c10; }
+.lp-meta-row{ flex-direction:column; align-items:center; gap:.1rem; border:1px solid var(--lp-meta-bdr); border-radius:13px; background:#eef6fc; padding:.45rem .9rem; min-width:84px; }
+.lp-dark .lp-meta-row{ background:#0f2030; }
 .lp-meta-row:last-child{ border-bottom:1px solid var(--lp-meta-bdr); }
 .lp-meta-key{ order:2; font-size:.68rem; text-transform:uppercase; letter-spacing:.05em; color:var(--lp-muted); font-weight:600; }
 .lp-meta-key i{ color:var(--lp-spinner-t); }
@@ -2675,28 +2675,28 @@ select { background: var(--surface); color: var(--text); }
 .lp-report-btn,
 .lp-download-hint{ max-width:460px; }
 
-/* Download button → leaf green */
+/* Download button → DataDock logo blue */
 .lp-download-btn{ border-radius:16px; padding:.85rem 1.3rem; justify-content:center;
-  background:linear-gradient(145deg,#4b9460 0%,#3f7e52 100%);
-  box-shadow:0 14px 30px -12px rgba(63,126,82,.55); }
-.lp-download-btn:hover:not(:disabled){ box-shadow:0 20px 38px -12px rgba(63,126,82,.7); }
+  background:linear-gradient(145deg,#2a9bd8 0%,#1370ab 100%);
+  box-shadow:0 14px 30px -12px rgba(23,112,171,.55); }
+.lp-download-btn:hover:not(:disabled){ box-shadow:0 20px 38px -12px rgba(23,112,171,.7); }
 .lp-dl-icon{ border-radius:12px; }
 .lp-dl-primary{ font-size:1.05rem; }
 
-/* Secondary buttons & hint → natural accents */
-.lp-copy-btn{ border-radius:13px; background:#fbfaf4; }
-.lp-dark .lp-copy-btn{ background:#151c10; }
-.lp-copy-btn:hover{ border-color:#4b9460; color:#3f7e52; background:rgba(75,148,96,.08); }
-.lp-copy-btn.copied{ border-color:#4b9460; color:#3f7e52; background:rgba(75,148,96,.1); }
+/* Secondary buttons & hint → blue accents */
+.lp-copy-btn{ border-radius:13px; background:#f7fbff; }
+.lp-dark .lp-copy-btn{ background:#0f2030; }
+.lp-copy-btn:hover{ border-color:#1787CA; color:#1370ab; background:rgba(23,135,202,.08); }
+.lp-copy-btn.copied{ border-color:#1787CA; color:#1370ab; background:rgba(23,135,202,.1); }
 .lp-report-btn{ border-radius:12px; }
-.lp-report-btn:hover{ border-color:#c47a54; color:#c47a54; background:rgba(196,122,84,.07); }
-.lp-download-hint{ background:#eef4ea; border-color:#d9e5d2; color:var(--lp-txt2); border-radius:12px; justify-content:center; }
-.lp-dark .lp-download-hint{ background:#182210; border-color:#28371d; }
-.lp-download-hint .lp-hint-icon{ color:#4b9460; }
+.lp-report-btn:hover{ border-color:#dc5b54; color:#dc5b54; background:rgba(220,91,84,.07); }
+.lp-download-hint{ background:#e7f2fb; border-color:#cfe4f5; color:var(--lp-txt2); border-radius:12px; justify-content:center; }
+.lp-dark .lp-download-hint{ background:#102838; border-color:#1d3f55; }
+.lp-download-hint .lp-hint-icon{ color:#1787CA; }
 
 /* Trust row */
 .lp-trust{ justify-content:center; gap:1.6rem; border-top:1px dashed var(--lp-trust-bdr); padding-top:.9rem; }
-.lp-trust-item i{ color:#4b9460; }
+.lp-trust-item i{ color:#1787CA; }
 
 /* Tighter outer spacing so the whole card fits without scrolling */
 .lp-main{ padding:1.25rem 1rem 1.75rem; gap:1rem; }
