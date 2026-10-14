@@ -4235,6 +4235,14 @@ async def serve_request():
 _IMG_CACHE = {"Cache-Control": "public, max-age=604800"}  # 7 days for images
 
 
+@app.get("/adtest", include_in_schema=False)
+async def serve_adtest():
+    # Temporary diagnostic: loads only the Ad Download Button code in isolation
+    # (no download funnel / custom CSS) to test whether the ad tag serves on
+    # this domain by itself. Safe to delete once debugging is done.
+    return FileResponse(os.path.join(FRONTEND_DIR, "adtest.html"), headers=_NO_CACHE)
+
+
 @app.get("/sw.js", include_in_schema=False)
 async def serve_sw():
     return FileResponse(
