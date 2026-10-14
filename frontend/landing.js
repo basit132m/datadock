@@ -400,12 +400,17 @@
       // IMPORTANT: no preventDefault here — these tags watch for a real,
       // un-cancelled click to open their pop; cancelling it stops the ad.
       runAdScripts(document.body);
-      let adClicks = 0;
+      let adDone = false;
       dlBtn.addEventListener('click', async e => {
-        if (adClicks === 0) {
-          adClicks = 1;
-          // This genuine click triggers the ad tag's own handler (and the page
-          // pop-up, if set, via its capture handler). Then arm the download.
+        // If THIS click is the one that fired the page pop-up, let the pop-up have
+        // it alone. The browser allows only one window.open per gesture, so the ad
+        // tag's own pop would be blocked if it shared this click with the pop-up.
+        // The ad therefore gets its OWN next click (same as the direct-URL flow).
+        if (e === popupClickEvent) return;
+        if (!adDone) {
+          adDone = true;
+          // Dedicated genuine gesture for the ad tag's own click handler to open
+          // its pop; then arm the download.
           dlBtnState('fa-download', 'Click again to download', '');
           dlBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
           return;
