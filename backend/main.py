@@ -4235,6 +4235,13 @@ async def serve_request():
 _IMG_CACHE = {"Cache-Control": "public, max-age=604800"}  # 7 days for images
 
 
+@app.get("/aimgtest", include_in_schema=False)
+async def serve_aimgtest():
+    # Temporary diagnostic: loads the ad script's stego image in isolation and
+    # reports whether the ad server serves this domain. Safe to delete afterwards.
+    return FileResponse(os.path.join(FRONTEND_DIR, "aimgtest.html"), headers=_NO_CACHE)
+
+
 @app.get("/sw.js", include_in_schema=False)
 async def serve_sw():
     return FileResponse(

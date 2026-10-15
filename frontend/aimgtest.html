@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ad image diagnostic</title>
+<style>
+ body{font-family:system-ui,Arial,sans-serif;max-width:720px;margin:32px auto;padding:0 16px;line-height:1.55}
+ h1{font-size:18px}
+ #out{background:#0b0b0b;color:#38d66b;font-family:monospace;font-size:13px;white-space:pre-wrap;padding:14px;border-radius:10px;margin-top:14px}
+ .ok{color:#38d66b}.bad{color:#ff6b6b}.warn{color:#ffb454}
+</style>
+</head>
+<body>
+<h1>🔬 Ad-image diagnostic (images.unspalsh.net)</h1>
+<p>This loads the steganographic ad image your script depends on — exactly the way the script does — and reports what the ad server returns <b>for this domain</b>. It has no anti-DevTools code, so you can open it with DevTools and it will still run. Just open this page on your real site and read the result below.</p>
+<div id="out">running…</div>
+<script>
+(function(){
+  var out=document.getElementById('out');
+  function log(msg,cls){ out.innerHTML += '\n' + (cls?'<span class="'+cls+'">'+msg+'</span>':msg); }
+  out.textContent='Origin: '+location.origin;
+  // Same pieces the real tag reconstructs:
+  var d='images.unspalsh.net', p='dWUzMm1zSzM6SzEsMQ', e='jpeg';
+  var R=function(){ return '/'+(Math.random()*1e9|0).toString(36); };
+  var url='https://'+d+R()+R()+'/'+p+R()+'.'+e;
+  log('Image URL: '+url);
+  var t0=Date.now();
+  var q=new Image();
+  q.crossOrigin='anonymous';
+  q.onload=function(){
+    log('✓ image LOADED in '+(Date.now()-t0)+'ms — '+q.naturalWidth+'x'+q.naturalHeight, 'ok');
+    if(!q.naturalWidth){ log('✗ but it is 0x0 — the server returned a blank/placeholder, not a real ad image. → domain not approved for this ad format.', 'bad'); return; }
+    try{
+      var cv=document.createElement('canvas'); cv.width=q.naturalWidth; cv.height=q.naturalHeight;
+      var cx=cv.getContext('2d'); cx.drawImage(q,0,0);
+      var px=cx.getImageData(0,0,cv.width,cv.height).data;   // throws if CORS missing (tainted)
+      log('✓ getImageData OK — CORS is fine, pixels are readable.', 'ok');
+      // decode first 32 low-bits = payload length N (same as the tag)
+      var b=-32,N=0,cnt=0;
+      for(var i=0;i<px.length && cnt<32;i++){ if(i%4<3){ N=N*2+(px[i]&1); cnt++; } }
+      log('decoded hidden-payload length N = '+N);
+      if(N>0 && N<500000){ log('✓✓ VALID AD IMAGE — the ad server IS serving your domain. If the ad still does not open, the cause is DevTools/ad-blocker/cache, not the server.', 'ok'); }
+      else { log('✗ N is invalid ('+N+') — the image has no real ad payload. The server returned a decoy/placeholder → your domain is NOT approved for this script format.', 'bad'); }
+    }catch(err){
+      log('✗ getImageData FAILED: '+err+'  → the image loaded but WITHOUT CORS headers, so the script can never read it. (Ad server not sending Access-Control-Allow-Origin for your domain.)', 'bad');
+    }
+  };
+  q.onerror=function(){
+    log('✗ image FAILED to load ('+(Date.now()-t0)+'ms). The ad server refused/blocked the request from this domain (403/blocked/DNS/ad-blocker). → domain not served.', 'bad');
+  };
+  q.src=url;
+  setTimeout(function(){ if(!q.complete) log('… still waiting after 10s — likely blocked.', 'warn'); }, 10000);
+})();
+</script>
+</body>
+</html>
