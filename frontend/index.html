@@ -328,6 +328,26 @@
       </div>
 
       <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-header"><i class="fa-solid fa-clone" style="color:#a855f7"></i> Second Button Below Download (verbatim HTML + script)</div>
+        <div style="padding:1rem 1.25rem">
+          <p style="color:var(--muted);font-size:.875rem;margin:0 0 1rem 0">
+            Renders a <strong>second button directly below the main Download button</strong>, using your pasted
+            code <strong>exactly as-is</strong> (the button markup is shown and any &lt;script&gt; in it is
+            executed). Use this to drop in an ad network's own button + self-firing tag so it behaves just like on
+            their sample page. The main Download button keeps working normally. Leave blank to disable.
+          </p>
+          <textarea id="second-button-html-input" rows="6"
+            placeholder="&lt;center&gt;&lt;button&gt;…&lt;/button&gt;&lt;/center&gt;&lt;script&gt;…&lt;/script&gt;"
+            style="width:100%;box-sizing:border-box;font-family:monospace;font-size:.8rem"></textarea>
+          <div style="display:flex;gap:.75rem;align-items:center;margin-top:.6rem">
+            <button id="second-button-html-save" class="btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+            <button id="second-button-html-clear" class="btn-sm"><i class="fa-solid fa-xmark"></i> Clear</button>
+            <span id="second-button-html-msg" class="ad-form-msg"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:1.5rem">
         <div class="card-header"><i class="fa-solid fa-rectangle-ad"></i> Monetag Ad Scripts</div>
         <div style="padding:1rem 1.25rem">
           <p style="color:var(--muted);font-size:.875rem;margin:0 0 1rem 0">

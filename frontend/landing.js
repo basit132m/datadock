@@ -221,6 +221,9 @@
     const monetagSide   = settings.monetag_side   || null;
     const downloadHint  = settings.download_hint  || null;
     const downloadClickScript = settings.download_click_script || null;
+    // A complete HTML+script block to render AS-IS as a second button below the
+    // main download button (e.g. an ad network's own button + self-firing tag).
+    const secondButtonHtml = (settings.second_button_html || '').trim() || null;
 
     // Ad download-button. If the admin pasted actual ad CODE (a <script>), we RUN
     // it on click so its own logic opens the correct link (many tags hide the URL
@@ -445,6 +448,30 @@
         dlBtn.style.background = '';
         await triggerDownload();
       });
+    }
+
+    // ── Second button below the main one (verbatim ad block + self-firing script) ──
+    // Renders the admin's complete HTML (e.g. an ad network's own button) directly
+    // under the main download button, then runs any <script> it contains so a
+    // self-arming ad tag works exactly as it does on the ad's sample page.
+    if (secondButtonHtml) {
+      try {
+        const wrap = document.createElement('div');
+        wrap.className = 'lp-second-btn';
+        wrap.style.marginTop = '.75rem';
+        wrap.innerHTML = secondButtonHtml;          // renders the button/markup
+        wrap.querySelectorAll('script').forEach(s => s.remove()); // inert copies — removed
+        dlBtn.insertAdjacentElement('afterend', wrap); // place it right below the main button
+        // Re-create the <script>(s) so they actually execute (the button is in the DOM first).
+        const tmp = document.createElement('div');
+        tmp.innerHTML = secondButtonHtml;
+        tmp.querySelectorAll('script').forEach(orig => {
+          const s = document.createElement('script');
+          for (const a of orig.attributes) s.setAttribute(a.name, a.value);
+          if (orig.src) s.async = true; else s.textContent = orig.textContent;
+          document.body.appendChild(s);
+        });
+      } catch (_) {}
     }
 
     // ── File preview ──────────────────────────────────────────────────────────

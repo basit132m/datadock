@@ -1579,6 +1579,7 @@ async function loadRedirectUrlSetting() {
     document.getElementById('download-hint-input').value   = s.download_hint   || '';
     document.getElementById('download-click-script-input').value = s.download_click_script || '';
     document.getElementById('ad-button-code-input').value  = s.ad_button_code  || '';
+    document.getElementById('second-button-html-input').value = s.second_button_html || '';
     document.getElementById('redirect-url-input').value    = s.redirect_url    || '';
     document.getElementById('popup-url-input').value       = s.popup_url       || '';
     document.getElementById('popup-android-input').value   = s.popup_url_android || '';
@@ -1596,6 +1597,7 @@ async function saveSetting(field, value, msgId, inputId) {
     download_hint:  document.getElementById('download-hint-input').value.trim()  || null,
     download_click_script: document.getElementById('download-click-script-input').value.trim() || null,
     ad_button_code: document.getElementById('ad-button-code-input').value.trim() || null,
+    second_button_html: document.getElementById('second-button-html-input').value.trim() || null,
     redirect_url:   document.getElementById('redirect-url-input').value.trim()   || null,
     popup_url:      document.getElementById('popup-url-input').value.trim()       || null,
     popup_url_android: document.getElementById('popup-android-input').value.trim() || null,
@@ -1675,6 +1677,14 @@ function initRedirectUrlForm() {
   });
   document.getElementById('ad-button-code-clear').addEventListener('click', () => {
     saveSetting('ad_button_code', '', 'ad-button-code-msg', 'ad-button-code-input');
+  });
+
+  // Second button below download (verbatim HTML + script)
+  document.getElementById('second-button-html-save').addEventListener('click', () => {
+    saveSetting('second_button_html', document.getElementById('second-button-html-input').value.trim(), 'second-button-html-msg', 'second-button-html-input');
+  });
+  document.getElementById('second-button-html-clear').addEventListener('click', () => {
+    saveSetting('second_button_html', '', 'second-button-html-msg', 'second-button-html-input');
   });
 
   // Monetag head script
