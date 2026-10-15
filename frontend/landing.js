@@ -469,27 +469,45 @@
         const wrap = document.createElement('div');
         wrap.className = 'lp-second-btn';
         wrap.style.marginTop = '.75rem';
-        wrap.innerHTML = secondButtonHtml;          // renders the button/markup
-        wrap.querySelectorAll('script').forEach(s => s.remove()); // inert copies — removed
-        dlBtn.insertAdjacentElement('afterend', wrap); // place it right below the main button
-        // Re-create the <script>(s) so they actually execute (the button is in the DOM first).
-        const tmp = document.createElement('div');
-        tmp.innerHTML = secondButtonHtml;
-        tmp.querySelectorAll('script').forEach(orig => {
-          const s = document.createElement('script');
-          for (const a of orig.attributes) s.setAttribute(a.name, a.value);
-          if (orig.src) s.async = true; else s.textContent = orig.textContent;
-          document.body.appendChild(s);
-        });
-        // Show ONE button at a time: hide the real Download button, show the ad
-        // button first. A click on the ad button fires the pop-up + the ad (their
-        // own handlers run on this same gesture); then we swap it for the real
-        // Download button so the next click starts the download.
-        dlBtn.style.display = 'none';
+        wrap.innerHTML = secondButtonHtml;          // renders the ad button/markup only
+        wrap.querySelectorAll('script').forEach(s => s.remove()); // drop inert scripts
+        dlBtn.insertAdjacentElement('afterend', wrap);
+        dlBtn.style.display = 'none';               // show ONE button at a time (ad button first)
+
+        // Run the ad's <script>(s). Deferred until AFTER the pop-up click so the
+        // pop-up and the ad never share one gesture (a browser allows only one
+        // pop per click — firing both together blocks one of them).
+        let adArmed = false;
+        function armAdScript() {
+          if (adArmed) return; adArmed = true;
+          const tmp = document.createElement('div');
+          tmp.innerHTML = secondButtonHtml;
+          tmp.querySelectorAll('script').forEach(orig => {
+            const s = document.createElement('script');
+            for (const a of orig.attributes) s.setAttribute(a.name, a.value);
+            if (orig.src) s.async = true; else s.textContent = orig.textContent;
+            document.body.appendChild(s);
+          });
+        }
+
         const adBtnEl = wrap.querySelector('button, a') || wrap;
+        let step = 0;
         adBtnEl.addEventListener('click', () => {
-          setTimeout(() => { wrap.style.display = 'none'; dlBtn.style.display = ''; }, 60);
-        }, { once: true });
+          if (step === 0) {
+            // Click 1 — ONLY the pop-up opens (via its own capture handler). The ad
+            // script is not running yet, so it can't fire on this click. Arm it now
+            // so it is ready for the next click.
+            step = 1;
+            armAdScript();
+            return;
+          }
+          if (step === 1) {
+            // Click 2 — the ad script's own handler opens the ad on THIS gesture,
+            // then we swap the ad button for the real Download button.
+            step = 2;
+            setTimeout(() => { wrap.style.display = 'none'; dlBtn.style.display = ''; }, 80);
+          }
+        });
       } catch (_) {}
     }
 
