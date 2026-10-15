@@ -2595,3 +2595,15 @@ select { background: var(--surface); color: var(--text); }
 .uploads-paused-banner i { font-size: 1rem; flex-shrink: 0; }
 
 .bl-filter-active { background: #6366f1 !important; color: #fff !important; border-color: #6366f1 !important; }
+
+/* Injected second (ad) button below the main download button — keep its label
+   on ONE line and let it fill the action column like the other buttons, so its
+   large side padding can't squeeze the text into two lines. */
+.lp-second-btn { text-align: center; }
+.lp-second-btn button,
+.lp-second-btn a {
+  white-space: nowrap;
+  width: 100%;
+  box-sizing: border-box;
+  justify-content: center;
+}
