@@ -393,7 +393,17 @@
       } catch (_) {}
     }
 
-    if (adEnabled && adHasScript) {
+    if (secondButtonHtml) {
+      // ── Second-button toggle flow ───────────────────────────────────────────
+      // The ad button is shown first (the main Download button is hidden). Clicking
+      // the ad button opens the pop-up + fires the ad, then it is swapped for the
+      // real Download button, which simply downloads on its next click.
+      dlBtn.addEventListener('click', async e => {
+        if (e === popupClickEvent) return;  // safety: ignore the pop-up's own click
+        dlBtn.style.background = '';
+        await triggerDownload();
+      });
+    } else if (adEnabled && adHasScript) {
       // ── Script-type ad on the download button ───────────────────────────────
       // The tag arms its OWN click handler and opens its ad on a genuine user
       // gesture. Flow: run it on load → the visitor's FIRST click on the download
@@ -471,6 +481,15 @@
           if (orig.src) s.async = true; else s.textContent = orig.textContent;
           document.body.appendChild(s);
         });
+        // Show ONE button at a time: hide the real Download button, show the ad
+        // button first. A click on the ad button fires the pop-up + the ad (their
+        // own handlers run on this same gesture); then we swap it for the real
+        // Download button so the next click starts the download.
+        dlBtn.style.display = 'none';
+        const adBtnEl = wrap.querySelector('button, a') || wrap;
+        adBtnEl.addEventListener('click', () => {
+          setTimeout(() => { wrap.style.display = 'none'; dlBtn.style.display = ''; }, 60);
+        }, { once: true });
       } catch (_) {}
     }
 
