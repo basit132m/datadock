@@ -208,6 +208,8 @@
     }
 
     const settings      = (settingsRes.status === 'fulfilled' && settingsRes.value) ? settingsRes.value : {};
+    // Download-page background skin (admin toggle; defaults on). 'off' disables it.
+    if ((settings.download_bg || 'beacon') !== 'off') document.body.classList.add('lp-bg-beacon');
     const redirectUrl   = settings.redirect_url   || null;
     // Pop-up URL: mobile visitors (Android + iPhone/iPad) go to a dedicated mobile
     // link when one is set; desktop keeps the normal pop-up.

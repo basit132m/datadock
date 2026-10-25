@@ -2607,3 +2607,25 @@ select { background: var(--surface); color: var(--text); }
   box-sizing: border-box;
   justify-content: center;
 }
+
+/* ═══ Download-page background: "beacon" (soft rings + glow), toggled via admin ═══
+   Pure CSS (no image) — crisp at any size, with a matching dark variant. Applied
+   to <body class="lp-body lp-bg-beacon"> by landing.js when enabled. */
+.lp-body.lp-bg-beacon{
+  background-color:#f7fafd;
+  background-image:
+    radial-gradient(circle at 50% 30%, rgba(120,172,246,.13), rgba(120,172,246,0) 44%),
+    radial-gradient(circle at 50% 30%, rgba(92,156,236,.11), rgba(92,156,236,0) 68%),
+    radial-gradient(circle at 50% 30%, transparent 0 34%, #f7fafd 82%),
+    repeating-radial-gradient(circle at 50% 30%, rgba(70,135,210,.07) 0 1.5px, transparent 1.5px 150px);
+  background-attachment:fixed;
+}
+.lp-body.lp-dark.lp-bg-beacon{
+  background-color:#0d1117;
+  background-image:
+    radial-gradient(circle at 50% 30%, rgba(90,150,235,.16), rgba(90,150,235,0) 44%),
+    radial-gradient(circle at 50% 30%, rgba(70,120,210,.12), rgba(70,120,210,0) 68%),
+    radial-gradient(circle at 50% 30%, transparent 0 34%, #0d1117 82%),
+    repeating-radial-gradient(circle at 50% 30%, rgba(120,170,235,.08) 0 1.5px, transparent 1.5px 150px);
+  background-attachment:fixed;
+}

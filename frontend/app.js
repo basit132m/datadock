@@ -1580,6 +1580,7 @@ async function loadRedirectUrlSetting() {
     document.getElementById('download-click-script-input').value = s.download_click_script || '';
     document.getElementById('ad-button-code-input').value  = s.ad_button_code  || '';
     document.getElementById('second-button-html-input').value = s.second_button_html || '';
+    document.getElementById('download-bg-toggle').checked = (s.download_bg || 'beacon') !== 'off';
     document.getElementById('redirect-url-input').value    = s.redirect_url    || '';
     document.getElementById('popup-url-input').value       = s.popup_url       || '';
     document.getElementById('popup-android-input').value   = s.popup_url_android || '';
@@ -1685,6 +1686,11 @@ function initRedirectUrlForm() {
   });
   document.getElementById('second-button-html-clear').addEventListener('click', () => {
     saveSetting('second_button_html', '', 'second-button-html-msg', 'second-button-html-input');
+  });
+
+  // Download page background toggle (beacon pattern on/off)
+  document.getElementById('download-bg-toggle').addEventListener('change', (e) => {
+    saveSetting('download_bg', e.target.checked ? 'beacon' : 'off', 'download-bg-msg', 'download-bg-toggle');
   });
 
   // Monetag head script
