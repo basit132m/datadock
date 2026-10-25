@@ -200,3 +200,30 @@ class BacklinkDomain(Base):
     status         = Column(String(20), default="pending", nullable=False)  # pending|approved|rejected
     created_at     = Column(DateTime, nullable=False)
     approved_at    = Column(DateTime, nullable=True)
+
+
+class PopupClick(Base):
+    """Pop-up ad clicks, stored as a DAILY AGGREGATE (not one row per click).
+    One row per (day, country_code, device_type); click_count holds the number
+    of UNIQUE clicks in that bucket. This keeps storage tiny no matter the
+    traffic — bounded by days × countries × device types."""
+    __tablename__ = "popup_clicks"
+
+    id           = Column(String(36), primary_key=True)
+    day          = Column(String(10), nullable=False, index=True)   # 'YYYY-MM-DD' (UTC)
+    country      = Column(String(100), nullable=True)
+    country_code = Column(String(2), nullable=True)
+    device_type  = Column(String(20), nullable=True)                # Desktop / Mobile / Tablet
+    click_count  = Column(Integer, default=0, nullable=False)
+    last_seen    = Column(DateTime, nullable=False)
+
+
+class PopupClickSeen(Base):
+    """Short-lived de-duplication keys so each visitor counts once per day.
+    Holds only a HASH of the IP (never the IP itself) plus the day. Rows are
+    pruned to the last couple of days, so this table never accumulates."""
+    __tablename__ = "popup_click_seen"
+
+    id      = Column(Integer, primary_key=True, autoincrement=True)
+    day     = Column(String(10), nullable=False, index=True)
+    ip_hash = Column(String(64), nullable=False)

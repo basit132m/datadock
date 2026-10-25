@@ -356,12 +356,35 @@
       setTimeout(() => { dlBtn.innerHTML = origHTML; dlBtn.disabled = false; }, 3000);
     }
 
+    // Count a pop-up click once per visitor per UTC day. localStorage stops
+    // repeat beacons from the same browser; the server also de-dups by IP/day.
+    function recordPopupClick() {
+      let send = true;
+      try {
+        const key = 'ddpc_' + new Date().toISOString().slice(0, 10);
+        if (localStorage.getItem(key)) { send = false; }
+        else {
+          localStorage.setItem(key, '1');
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const k = localStorage.key(i);
+            if (k && k.indexOf('ddpc_') === 0 && k !== key) localStorage.removeItem(k);
+          }
+        }
+      } catch (_) {}
+      if (!send) return;
+      try {
+        if (navigator.sendBeacon) navigator.sendBeacon('/api/popup/click');
+        else fetch('/api/popup/click', { method: 'POST', keepalive: true });
+      } catch (_) {}
+    }
+
     // ── Pop-up ad: first click ANYWHERE on the page opens the popup URL ─────
     let popupClickEvent = null; // the Event that triggered the popup
     if (popupUrl) {
       document.addEventListener('click', function popupHandler(e) {
         popupClickEvent = e;
         document.removeEventListener('click', popupHandler, true);
+        recordPopupClick();                       // track this pop-up click
         window.open(popupUrl, '_blank', 'noopener,noreferrer');
       }, true); // capture phase — fires before any element handler
     }

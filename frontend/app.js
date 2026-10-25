@@ -2333,6 +2333,130 @@ async function loadReferrersPage() {
     </table>`;
 }
 
+// ── Pop-up Clicks ─────────────────────────────────────────────────────────────
+
+let popTimeChart   = null;
+let popDeviceChart = null;
+let popActiveDays  = 7;   // number of days, or 'today' / 'yesterday'
+
+async function loadPopupPage() {
+  document.querySelectorAll('#pop-period-tabs .dl-period-btn').forEach(b => {
+    b.classList.toggle('active', String(b.dataset.days) === String(popActiveDays));
+  });
+  ['pop-stat-total','pop-stat-countries','pop-stat-avg'].forEach(id => {
+    document.getElementById(id).textContent = '…';
+  });
+  ['pop-countries','pop-devices'].forEach(id => {
+    document.getElementById(id).innerHTML = dlEmpty('Loading…');
+  });
+
+  const single = (popActiveDays === 'today' || popActiveDays === 'yesterday');
+  const query  = single ? `day=${popActiveDays}` : `days=${popActiveDays}`;
+  let data;
+  try {
+    data = await apiFetch('GET', `/api/analytics/popup?${query}`);
+  } catch (e) {
+    ['pop-countries','pop-devices'].forEach(id => {
+      document.getElementById(id).innerHTML = dlEmpty('Failed to load data.');
+    });
+    return;
+  }
+
+  const total = data.total_clicks || 0;
+  document.getElementById('pop-stat-total').textContent     = total.toLocaleString();
+  document.getElementById('pop-stat-countries').textContent = (data.top_countries || []).length.toLocaleString();
+  const avg = (!single && popActiveDays > 0) ? (total / popActiveDays).toFixed(1) : total.toLocaleString();
+  document.getElementById('pop-stat-avg').textContent = avg;
+
+  // Clicks over time — line chart (hidden for single-day views)
+  const timeCard = document.getElementById('pop-time-chart').closest('.card');
+  if (popTimeChart) { popTimeChart.destroy(); popTimeChart = null; }
+  if (single || !(data.per_day || []).length) {
+    if (timeCard) timeCard.style.display = single ? 'none' : '';
+  } else {
+    if (timeCard) timeCard.style.display = '';
+    const ctx = document.getElementById('pop-time-chart').getContext('2d');
+    popTimeChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: data.per_day.map(d => d.date),
+        datasets: [{
+          label: 'Pop-up clicks',
+          data: data.per_day.map(d => d.count),
+          borderColor: '#a855f7',
+          backgroundColor: 'rgba(168,85,247,.12)',
+          fill: true, tension: 0.4,
+          pointRadius: popActiveDays <= 7 ? 4 : 2,
+          pointBackgroundColor: '#a855f7',
+        }],
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+        scales: {
+          y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: 'rgba(0,0,0,.04)' } },
+          x: { grid: { display: false }, ticks: { maxTicksLimit: popActiveDays <= 7 ? 7 : 10 } },
+        },
+      },
+    });
+  }
+
+  // Device doughnut
+  const devices = data.devices || [];
+  const devCtx = document.getElementById('pop-device-chart').getContext('2d');
+  if (popDeviceChart) { popDeviceChart.destroy(); popDeviceChart = null; }
+  if (devices.length) {
+    const DEVICE_COLORS = { Desktop: '#a855f7', Mobile: '#059669', Tablet: '#d97706', Unknown: '#94a3b8' };
+    popDeviceChart = new Chart(devCtx, {
+      type: 'doughnut',
+      data: {
+        labels: devices.map(d => d.type),
+        datasets: [{
+          data: devices.map(d => d.count),
+          backgroundColor: devices.map(d => DEVICE_COLORS[d.type] || '#94a3b8'),
+          borderWidth: 3, borderColor: '#fff',
+        }],
+      },
+      options: {
+        responsive: true, cutout: '62%',
+        plugins: { legend: { position: 'bottom', labels: { font: { size: 12, family: 'Inter' }, padding: 12 } } },
+      },
+    });
+  }
+
+  // Top countries
+  const countriesEl = document.getElementById('pop-countries');
+  const countries = data.top_countries || [];
+  if (!countries.length) {
+    countriesEl.innerHTML = dlEmpty(single ? `No pop-up clicks ${popActiveDays}.` : 'No pop-up clicks yet for this period.');
+  } else {
+    const max = countries[0].count || 1;
+    countriesEl.innerHTML = countries.map(c => `
+      <div class="dl-row">
+        <span class="dl-flag">${countryFlag(c.country_code)}</span>
+        <span class="dl-row-label">${escHtml(c.country || 'Unknown')}</span>
+        <div class="dl-bar-wrap"><div class="dl-bar" style="width:${Math.round(c.count / max * 100)}%"></div></div>
+        <span class="dl-row-count">${c.count.toLocaleString()}</span>
+      </div>`).join('');
+  }
+
+  // Devices list
+  const devEl = document.getElementById('pop-devices');
+  if (!devices.length) {
+    devEl.innerHTML = dlEmpty(single ? `No pop-up clicks ${popActiveDays}.` : 'No pop-up clicks yet for this period.');
+  } else {
+    const maxD = devices[0].count || 1;
+    const DEV_ICONS = { Desktop: 'fa-desktop', Mobile: 'fa-mobile-screen', Tablet: 'fa-tablet-screen-button', Unknown: 'fa-circle-question' };
+    devEl.innerHTML = devices.map(d => `
+      <div class="dl-row">
+        <span class="dl-os-icon"><i class="fa-solid ${DEV_ICONS[d.type] || 'fa-circle-question'}"></i></span>
+        <span class="dl-row-label">${escHtml(d.type)}</span>
+        <div class="dl-bar-wrap"><div class="dl-bar dl-bar-os" style="width:${Math.round(d.count / maxD * 100)}%"></div></div>
+        <span class="dl-row-count">${d.count.toLocaleString()}</span>
+      </div>`).join('');
+  }
+}
+
 // ── Access Requests ───────────────────────────────────────────────────────────
 
 let reqActiveFilter = '';
@@ -3779,7 +3903,7 @@ async function deleteBacklink(id, label) {
 
 // ── Page navigation ───────────────────────────────────────────────────────────
 
-const ADMIN_PAGES = ['dashboard', 'ads', 'storage', 'downloads', 'team', 'requests', 'duplicates', 'filemanager', 'cleanup', 'filereports', 'backlinks', 'referrers'];
+const ADMIN_PAGES = ['dashboard', 'ads', 'storage', 'downloads', 'team', 'requests', 'duplicates', 'filemanager', 'cleanup', 'filereports', 'backlinks', 'referrers', 'popup'];
 // 'support' is visible to both roles — intentionally not in ADMIN_PAGES
 
 function applyRoleUI() {
@@ -3811,6 +3935,7 @@ function showPage(page) {
   if (page === 'storage')   loadStoragePage();
   if (page === 'downloads')  loadDownloadsPage();
   if (page === 'referrers')  loadReferrersPage();
+  if (page === 'popup')      loadPopupPage();
   if (page === 'team')       loadTeamPage();
   if (page === 'requests')   loadRequestsPage();
   if (page === 'support')    loadSupportPage();
@@ -3900,6 +4025,14 @@ function initApp() {
       const v = btn.dataset.days;
       refActiveDays = (v === 'today' || v === 'yesterday') ? v : parseInt(v);
       loadReferrersPage();
+    });
+  });
+
+  document.querySelectorAll('#pop-period-tabs .dl-period-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const v = btn.dataset.days;
+      popActiveDays = (v === 'today' || v === 'yesterday') ? v : parseInt(v);
+      loadPopupPage();
     });
   });
 

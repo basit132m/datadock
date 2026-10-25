@@ -29,7 +29,7 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from database import get_db, init_db
-from models import AccessRequest, Ad, ApiKey, BacklinkDomain, DownloadEvent, DownloadToken, FileReport, Part, Referrer, SiteSetting, StorageProvider, SupportMessage, SupportReply, Upload
+from models import AccessRequest, Ad, ApiKey, BacklinkDomain, DownloadEvent, DownloadToken, FileReport, Part, PopupClick, PopupClickSeen, Referrer, SiteSetting, StorageProvider, SupportMessage, SupportReply, Upload
 from storage import B2Storage, BunnyStorage, S3Storage
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -310,6 +310,60 @@ async def _log_referrer(share_id: str, domain: str) -> None:
         db.close()
 
 
+_POPUP_SEEN_RETENTION_DAYS = 2
+
+async def _log_popup_click(ip: str, ua: str) -> None:
+    """Count ONE unique pop-up click into the daily aggregate.
+    Unique per (IP, UTC day): a hashed-IP de-dup row prevents double counting,
+    so repeat clicks by the same visitor on the same day are ignored. Storage
+    stays tiny — the aggregate keeps one row per (day, country, device), and the
+    de-dup table is pruned to the last couple of days so it never accumulates."""
+    from database import SessionLocal
+    from sqlalchemy import text as _t
+    os_name, device_type = _parse_ua(ua)
+    country, country_code = _geolocate(ip)
+    now = datetime.utcnow()
+    day_str = now.strftime("%Y-%m-%d")
+    ip_hash = hashlib.sha256(f"{API_KEY}|{ip}|{day_str}".encode()).hexdigest()
+    db = SessionLocal()
+    try:
+        # De-dup: the UNIQUE(day, ip_hash) index makes the 2nd click per visitor
+        # per day fail to insert — those are not counted.
+        try:
+            db.add(PopupClickSeen(day=day_str, ip_hash=ip_hash))
+            db.commit()
+        except Exception:
+            db.rollback()
+            return  # already counted this visitor today
+        # Increment the daily aggregate bucket (atomic update; insert if absent).
+        params = {"now": now, "day": day_str, "cc": country_code, "dev": device_type}
+        upd = ("UPDATE popup_clicks SET click_count = click_count + 1, last_seen = :now "
+               "WHERE day = :day AND country_code = :cc AND device_type = :dev")
+        if db.execute(_t(upd), params).rowcount == 0:
+            try:
+                db.add(PopupClick(
+                    id=str(uuid.uuid4()), day=day_str, country=country,
+                    country_code=country_code, device_type=device_type,
+                    click_count=1, last_seen=now,
+                ))
+                db.commit()
+            except Exception:
+                db.rollback()  # lost insert race with the other worker — retry update
+                db.execute(_t(upd), params)
+                db.commit()
+        else:
+            db.commit()
+        # Prune old de-dup rows roughly 1 in 64 requests so the table stays small.
+        if uuid.uuid4().int & 63 == 0:
+            cutoff = (now.date() - timedelta(days=_POPUP_SEEN_RETENTION_DAYS)).strftime("%Y-%m-%d")
+            db.execute(_t("DELETE FROM popup_click_seen WHERE day < :c"), {"c": cutoff})
+            db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+
 def _gen_worker_token(file_key: str, filename: str, content_type: str,
                       token_type: str = "r2", url: Optional[str] = None) -> str:
     """Return a short-lived HMAC-SHA256-signed token for the Cloudflare Worker.
@@ -473,6 +527,7 @@ _rl_buckets: dict = {}  # (rule, ip) -> deque[monotonic timestamps]
 _RL_RULES = [
     ("POST /api/access-requests", 5,    3600),  # access-request form
     ("POST /api/reports",         5,    3600),  # file reports
+    ("POST /api/popup/click",     30,   60),    # pop-up click beacon
     ("POST /api/support",         30,   3600),  # support messages
     ("POST /api/f/",              60,   60),    # download token mint
     ("GET /api/public/",          240,  60),    # browse search / stats
@@ -2106,6 +2161,74 @@ async def get_referrer_analytics(
         "total_visits": total_visits,
         "unique_domains": unique_domains,
         "top_domains": [{"domain": r.domain, "count": r.total} for r in top_domains],
+    }
+
+
+@app.post("/api/popup/click", include_in_schema=False)
+async def record_popup_click(request: Request, background_tasks: BackgroundTasks):
+    """Public beacon from the download page — counts one pop-up ad click.
+    Fire-and-forget: returns immediately, dedup + aggregation run in background."""
+    ip = _client_ip(request)
+    ua = request.headers.get("User-Agent", "")
+    background_tasks.add_task(_log_popup_click, ip, ua)
+    return Response(status_code=204)
+
+
+@app.get("/api/analytics/popup")
+async def get_popup_analytics(
+    days: int = Query(7, ge=1, le=90),
+    day: Optional[str] = Query(None, pattern="^(today|yesterday)$"),
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    """Pop-up click analytics (unique per visitor per day) — read entirely from
+    the small daily-aggregate table, with geo + device breakdown."""
+    if day:
+        now = datetime.utcnow()
+        target = now.date() if day == "today" else (now.date() - timedelta(days=1))
+        flt = [PopupClick.day == target.strftime("%Y-%m-%d")]
+    else:
+        since = (datetime.utcnow().date() - timedelta(days=days - 1)).strftime("%Y-%m-%d")
+        flt = [PopupClick.day >= since]
+
+    total = db.query(func.coalesce(func.sum(PopupClick.click_count), 0)).filter(*flt).scalar() or 0
+
+    per_day = []
+    if not day:
+        today = datetime.utcnow().date()
+        sums = dict(
+            db.query(PopupClick.day, func.sum(PopupClick.click_count))
+              .filter(*flt).group_by(PopupClick.day).all()
+        )
+        for i in range(days - 1, -1, -1):
+            d = today - timedelta(days=i)
+            per_day.append({"date": d.strftime("%b %d"),
+                            "count": int(sums.get(d.strftime("%Y-%m-%d"), 0) or 0)})
+
+    country_rows = (
+        db.query(PopupClick.country, PopupClick.country_code,
+                 func.sum(PopupClick.click_count).label("cnt"))
+        .filter(*flt)
+        .group_by(PopupClick.country, PopupClick.country_code)
+        .order_by(func.sum(PopupClick.click_count).desc())
+        .limit(15).all()
+    )
+    top_countries = [{"country": r.country or "Unknown", "country_code": r.country_code or "??",
+                      "count": int(r.cnt)} for r in country_rows]
+
+    device_rows = (
+        db.query(PopupClick.device_type, func.sum(PopupClick.click_count).label("cnt"))
+        .filter(*flt)
+        .group_by(PopupClick.device_type)
+        .order_by(func.sum(PopupClick.click_count).desc()).all()
+    )
+    devices = [{"type": r.device_type or "Unknown", "count": int(r.cnt)} for r in device_rows]
+
+    return {
+        "total_clicks": int(total),
+        "per_day": per_day,
+        "top_countries": top_countries,
+        "devices": devices,
     }
 
 
