@@ -390,36 +390,7 @@
     let popupClickEvent = null; // the Event that triggered the popup
     let popupDecision = null;   // {mode:'direct'|'script'|'none', url?}
 
-    // Inject the pop-up ad <script>(s) so the self-firing tag arms, BUT first wrap
-    // addEventListener so we record every click-type listener the tag registers.
-    // After the pop-up fires once (first click), we strip those listeners so the
-    // tag can't fire again on later clicks — leaving the download button's own ad
-    // free to work on the next click. The download-button code is NOT touched.
-    const _POPUP_EVT = ['click','mousedown','mouseup','pointerdown','pointerup',
-                        'touchstart','touchend','auxclick','contextmenu'];
-    let   _popupCaptured = [];
-    let   _popupPatching = false;
-    const _realDocAdd = document.addEventListener;
-    const _realWinAdd = window.addEventListener;
-    function _patchAddEventListener() {
-      _popupPatching = true;
-      document.addEventListener = function (type, fn, opts) {
-        if (_popupPatching && _POPUP_EVT.indexOf(type) !== -1) _popupCaptured.push({ t: document, type, fn, opts });
-        return _realDocAdd.call(document, type, fn, opts);
-      };
-      window.addEventListener = function (type, fn, opts) {
-        if (_popupPatching && _POPUP_EVT.indexOf(type) !== -1) _popupCaptured.push({ t: window, type, fn, opts });
-        return _realWinAdd.call(window, type, fn, opts);
-      };
-    }
-    function _stripPopupScriptListeners() {
-      _popupPatching = false;
-      document.addEventListener = _realDocAdd;
-      window.addEventListener = _realWinAdd;
-      _popupCaptured.forEach(c => { try { c.t.removeEventListener(c.type, c.fn, c.opts); } catch (_) {} });
-      _popupCaptured = [];
-    }
-
+    // Inject only the <script>(s) from an HTML blob so a self-firing ad tag arms.
     function runPopupScript(html) {
       try {
         const tmp = document.createElement('div');
@@ -440,10 +411,7 @@
         .then(r => r.ok ? r.json() : null)
         .then(d => {
           popupDecision = d || null;
-          if (d && d.mode === 'script' && popupScript) {
-            _patchAddEventListener();   // start recording the tag's click listeners
-            runPopupScript(popupScript);
-          }
+          if (d && d.mode === 'script' && popupScript) runPopupScript(popupScript);
         })
         .catch(() => {});
 
@@ -453,10 +421,7 @@
         recordPopupClick();                       // track this pop-up click
         const d = popupDecision;
         if (d && d.mode === 'script') {
-          // The script tag opens its own pop-under on THIS click. Right after this
-          // click finishes, strip its listeners so it won't fire again — so the
-          // next click is free for the download button's own ad.
-          setTimeout(_stripPopupScriptListeners, 0);
+          // the injected script tag opens its own pop-under on the click(s)
         } else if (d && d.mode === 'direct' && d.url) {
           window.open(d.url, '_blank', 'noopener,noreferrer');
         } else if (popupUrl) {
