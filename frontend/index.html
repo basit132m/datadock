@@ -282,6 +282,58 @@
       </div>
 
       <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-header"><i class="fa-solid fa-arrows-rotate" style="color:#a855f7"></i> Pop-up — Script Ad &amp; Rotation</div>
+        <div style="padding:1rem 1.25rem">
+          <p style="color:var(--muted);font-size:.875rem;margin:0 0 1rem 0">
+            Rotate the pop-up between the <strong>Direct link above</strong> and a <strong>script ad</strong>, across
+            visitors. Example: 2 direct : 1 script → visitor&nbsp;1 &amp; 2 get the direct link, visitor&nbsp;3 gets the
+            script, then it repeats. Leave the script blank to always use the direct link.
+          </p>
+          <label style="display:block;font-size:.8125rem;font-weight:600;margin-bottom:.35rem;color:var(--muted)">
+            <i class="fa-solid fa-code"></i> Pop-up Script Ad (full &lt;script&gt; tag — self-firing pop-under)
+          </label>
+          <textarea id="popup-script-input" rows="5"
+            placeholder="&lt;script&gt;/* paste the full pop-under ad tag here */&lt;/script&gt;"
+            style="width:100%;box-sizing:border-box;font-family:monospace;font-size:.8rem"></textarea>
+          <div style="display:flex;gap:1.25rem;align-items:center;flex-wrap:wrap;margin-top:.85rem">
+            <label style="font-size:.85rem;font-weight:600;color:var(--muted)">
+              Direct clicks / cycle
+              <input id="popup-direct-count-input" type="number" min="0" max="999" value="2"
+                style="width:70px;margin-left:.4rem;padding:.3rem .5rem" />
+            </label>
+            <label style="font-size:.85rem;font-weight:600;color:var(--muted)">
+              Script clicks / cycle
+              <input id="popup-script-count-input" type="number" min="0" max="999" value="1"
+                style="width:70px;margin-left:.4rem;padding:.3rem .5rem" />
+            </label>
+          </div>
+          <div style="display:flex;gap:.75rem;align-items:center;margin-top:.85rem">
+            <button id="popup-rotation-save" class="btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save rotation</button>
+            <span id="popup-rotation-msg" class="ad-form-msg"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-header"><i class="fa-solid fa-earth-americas" style="color:#0ea5e9"></i> Pop-up — Geo-locked Direct Links</div>
+        <div style="padding:1rem 1.25rem">
+          <p style="color:var(--muted);font-size:.875rem;margin:0 0 .85rem 0">
+            Force visitors from specific countries to a specific direct link (bypasses the rotation above). One rule
+            per line as <code>COUNTRY_CODE=URL</code> using 2-letter ISO codes. Example:
+            <code>PK=https://pk-offer.example</code>.
+          </p>
+          <textarea id="popup-geo-rules-input" rows="4"
+            placeholder="PK=https://pakistan-offer.example&#10;IN=https://india-offer.example"
+            style="width:100%;box-sizing:border-box;font-family:monospace;font-size:.82rem"></textarea>
+          <div style="display:flex;gap:.75rem;align-items:center;margin-top:.6rem">
+            <button id="popup-geo-save" class="btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save geo rules</button>
+            <button id="popup-geo-clear" class="btn-sm"><i class="fa-solid fa-xmark"></i> Clear</button>
+            <span id="popup-geo-msg" class="ad-form-msg"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:1.5rem">
         <div class="card-header"><i class="fa-solid fa-mobile-screen-button" style="color:#3ddc84"></i> Pop-up Ad URL — Mobile (Android &amp; iPhone)</div>
         <div style="padding:1rem 1.25rem">
           <p style="color:var(--muted);font-size:.875rem;margin:0 0 1rem 0">

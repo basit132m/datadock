@@ -218,6 +218,7 @@
     const isMobile      = /android/i.test(_ua) || isIOS;
     const popupUrlMobile = settings.popup_url_android || null;
     const popupUrl      = (isMobile && popupUrlMobile) ? popupUrlMobile : (settings.popup_url || null);
+    const popupScript   = (settings.popup_script || '').trim() || null;  // script ad for the pop-up rotation
     const monetagHead   = settings.monetag_head   || null;
     const monetagBanner = settings.monetag_banner || null;
     const monetagSide   = settings.monetag_side   || null;
@@ -380,14 +381,53 @@
       } catch (_) {}
     }
 
-    // ── Pop-up ad: first click ANYWHERE on the page opens the popup URL ─────
+    // ── Pop-up ad: direct-link ⇄ script-ad rotation (+ geo lock) ────────────
+    // The server decides what THIS visit does (geo-locked direct link, or the
+    // next slot in the admin's direct/script rotation). For a 'script' decision
+    // we inject the pop-up script so it self-fires on the click; for 'direct' we
+    // open the URL ourselves. The first click is always tracked. (Download-button
+    // logic is untouched — it still keys off popupClickEvent.)
     let popupClickEvent = null; // the Event that triggered the popup
-    if (popupUrl) {
+    let popupDecision = null;   // {mode:'direct'|'script'|'none', url?}
+
+    // Inject only the <script>(s) from an HTML blob so a self-firing ad tag arms.
+    function runPopupScript(html) {
+      try {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        tmp.querySelectorAll('script').forEach(orig => {
+          const s = document.createElement('script');
+          for (const a of orig.attributes) s.setAttribute(a.name, a.value);
+          if (orig.src) s.async = true; else s.textContent = orig.textContent;
+          document.body.appendChild(s);
+        });
+      } catch (_) {}
+    }
+
+    if (popupUrl || popupScript) {
+      // Ask the server which mode to use for this visit, and arm the script early
+      // if that's the decision (it needs a moment to load its config before the click).
+      fetch('/api/popup/decision')
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          popupDecision = d || null;
+          if (d && d.mode === 'script' && popupScript) runPopupScript(popupScript);
+        })
+        .catch(() => {});
+
       document.addEventListener('click', function popupHandler(e) {
         popupClickEvent = e;
         document.removeEventListener('click', popupHandler, true);
         recordPopupClick();                       // track this pop-up click
-        window.open(popupUrl, '_blank', 'noopener,noreferrer');
+        const d = popupDecision;
+        if (d && d.mode === 'script') {
+          // the injected script tag opens its own pop-under on this click — nothing to do
+        } else if (d && d.mode === 'direct' && d.url) {
+          window.open(d.url, '_blank', 'noopener,noreferrer');
+        } else if (popupUrl) {
+          // decision not ready / unavailable → fall back to the plain direct link
+          window.open(popupUrl, '_blank', 'noopener,noreferrer');
+        }
       }, true); // capture phase — fires before any element handler
     }
 

@@ -1581,6 +1581,10 @@ async function loadRedirectUrlSetting() {
     document.getElementById('ad-button-code-input').value  = s.ad_button_code  || '';
     document.getElementById('second-button-html-input').value = s.second_button_html || '';
     document.getElementById('download-bg-toggle').checked = (s.download_bg || 'beacon') !== 'off';
+    document.getElementById('popup-script-input').value       = s.popup_script || '';
+    document.getElementById('popup-direct-count-input').value = (s.popup_direct_count != null && s.popup_direct_count !== '') ? s.popup_direct_count : '2';
+    document.getElementById('popup-script-count-input').value = (s.popup_script_count != null && s.popup_script_count !== '') ? s.popup_script_count : '1';
+    document.getElementById('popup-geo-rules-input').value     = s.popup_geo_rules || '';
     document.getElementById('redirect-url-input').value    = s.redirect_url    || '';
     document.getElementById('popup-url-input').value       = s.popup_url       || '';
     document.getElementById('popup-android-input').value   = s.popup_url_android || '';
@@ -1605,6 +1609,10 @@ async function saveSetting(field, value, msgId, inputId) {
     monetag_head:   document.getElementById('monetag-head-input').value.trim()   || null,
     monetag_banner: document.getElementById('monetag-banner-input').value.trim() || null,
     monetag_side:   document.getElementById('monetag-side-input').value.trim()   || null,
+    popup_script:        document.getElementById('popup-script-input').value.trim()       || null,
+    popup_direct_count:  document.getElementById('popup-direct-count-input').value.trim() || null,
+    popup_script_count:  document.getElementById('popup-script-count-input').value.trim() || null,
+    popup_geo_rules:     document.getElementById('popup-geo-rules-input').value.trim()     || null,
     [field]:        value || null,
   };
   try {
@@ -1691,6 +1699,19 @@ function initRedirectUrlForm() {
   // Download page background toggle (beacon pattern on/off)
   document.getElementById('download-bg-toggle').addEventListener('change', (e) => {
     saveSetting('download_bg', e.target.checked ? 'beacon' : 'off', 'download-bg-msg', 'download-bg-toggle');
+  });
+
+  // Pop-up rotation (script ad + direct/script cycle counts)
+  document.getElementById('popup-rotation-save').addEventListener('click', () => {
+    saveSetting('popup_script', document.getElementById('popup-script-input').value.trim(), 'popup-rotation-msg', 'popup-script-input');
+  });
+
+  // Pop-up geo-locked direct links
+  document.getElementById('popup-geo-save').addEventListener('click', () => {
+    saveSetting('popup_geo_rules', document.getElementById('popup-geo-rules-input').value.trim(), 'popup-geo-msg', 'popup-geo-rules-input');
+  });
+  document.getElementById('popup-geo-clear').addEventListener('click', () => {
+    saveSetting('popup_geo_rules', '', 'popup-geo-msg', 'popup-geo-rules-input');
   });
 
   // Monetag head script

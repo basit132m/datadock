@@ -64,6 +64,7 @@ _import_progress:   dict = {}    # upload_id -> progress dict
 _storage_cache:     dict = {}    # provider_id -> S3Storage instance
 _geo_cache:         dict = {}    # ip -> (country, country_code)
 _geoip_reader             = None  # geoip2 Reader singleton
+_popup_rot:         int  = 0     # pop-up rotation counter (direct <-> script)
 _recent_downloads:  dict = {}    # (ip, upload_id) -> last download datetime
 _landing_tpl:       str  = ""    # landing.html cached template
 
@@ -2174,6 +2175,69 @@ async def record_popup_click(request: Request, background_tasks: BackgroundTasks
     return Response(status_code=204)
 
 
+def _parse_popup_geo_rules(raw: str) -> dict:
+    """Parse admin geo rules (one 'CC=url' per line) into {COUNTRY_CODE: url}."""
+    rules = {}
+    for line in (raw or "").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        cc, url = line.split("=", 1)
+        cc = cc.strip().upper()
+        url = url.strip()
+        if len(cc) == 2 and url.startswith(("http://", "https://")):
+            rules[cc] = url
+    return rules
+
+
+@app.get("/api/popup/decision", include_in_schema=False)
+async def popup_decision(request: Request, db: Session = Depends(get_db)):
+    """Decide what the download-page pop-up should do for THIS visit.
+    - Geo lock: visitors from a configured country always get that country's
+      direct link (bypasses rotation).
+    - Otherwise rotate between the direct link and the script ad on the admin's
+      cycle (e.g. 2 direct : 1 script), rotating across visitors.
+    Returns {"mode": "direct"|"script"|"none", "url": <for direct>}."""
+    ip = _client_ip(request)
+    ua = request.headers.get("User-Agent", "")
+    _os, device = _parse_ua(ua)
+    is_mobile = device in ("Mobile", "Tablet")
+
+    direct_desktop = (_get_setting(db, "popup_url") or "").strip()
+    direct_mobile  = (_get_setting(db, "popup_url_android") or "").strip()
+    direct_url = direct_mobile if (is_mobile and direct_mobile) else direct_desktop
+    has_script = bool((_get_setting(db, "popup_script") or "").strip())
+
+    # 1) Geo lock takes priority
+    _country, cc = _geolocate(ip)
+    rules = _parse_popup_geo_rules(_get_setting(db, "popup_geo_rules"))
+    if cc and cc.upper() in rules:
+        return {"mode": "direct", "url": rules[cc.upper()]}
+
+    # 2) Rotation between direct and script
+    try:
+        dcount = max(0, int(_get_setting(db, "popup_direct_count") or 2))
+    except (TypeError, ValueError):
+        dcount = 2
+    try:
+        scount = max(0, int(_get_setting(db, "popup_script_count") or 1))
+    except (TypeError, ValueError):
+        scount = 1
+
+    if direct_url and has_script and (dcount + scount) > 0:
+        global _popup_rot
+        pos = _popup_rot % (dcount + scount)
+        _popup_rot = (_popup_rot + 1) % 1_000_000
+        if pos < dcount:
+            return {"mode": "direct", "url": direct_url}
+        return {"mode": "script"}
+    if has_script and not direct_url:
+        return {"mode": "script"}
+    if direct_url:
+        return {"mode": "direct", "url": direct_url}
+    return {"mode": "none"}
+
+
 @app.get("/api/analytics/popup")
 async def get_popup_analytics(
     days: int = Query(7, ge=1, le=90),
@@ -3631,6 +3695,11 @@ async def get_public_settings(db: Session = Depends(get_db)):
         "ad_button_code":  _get_setting(db, "ad_button_code"),
         "second_button_html": _get_setting(db, "second_button_html"),
         "download_bg":     _get_setting(db, "download_bg"),
+        # Pop-up rotation + geo (direct link <-> script ad)
+        "popup_script":        _get_setting(db, "popup_script"),
+        "popup_direct_count":  _get_setting(db, "popup_direct_count"),
+        "popup_script_count":  _get_setting(db, "popup_script_count"),
+        "popup_geo_rules":     _get_setting(db, "popup_geo_rules"),
         "max_file_size_gb": _max_gb_value(db),
         "uploads_paused":  _uploads_paused(db),
     }
@@ -3648,6 +3717,10 @@ class UpdateSettingsIn(BaseModel):
     ad_button_code: Optional[str] = None
     second_button_html: Optional[str] = None
     download_bg:    Optional[str] = None
+    popup_script:        Optional[str] = None
+    popup_direct_count:  Optional[str] = None
+    popup_script_count:  Optional[str] = None
+    popup_geo_rules:     Optional[str] = None
     max_file_size_gb: Optional[float] = None
     uploads_paused: Optional[bool] = None
 
@@ -3655,7 +3728,9 @@ class UpdateSettingsIn(BaseModel):
 _TEXT_SETTING_KEYS = ("redirect_url", "popup_url", "popup_url_android",
                       "monetag_head", "monetag_banner", "monetag_side",
                       "download_hint", "download_click_script", "ad_button_code",
-                      "second_button_html", "download_bg")
+                      "second_button_html", "download_bg",
+                      "popup_script", "popup_direct_count", "popup_script_count",
+                      "popup_geo_rules")
 
 
 @app.post("/api/admin/settings")
