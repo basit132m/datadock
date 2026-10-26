@@ -4644,7 +4644,7 @@ async def public_stats(db: Session = Depends(get_db)):
 
 # ── Do-follow backlinks ───────────────────────────────────────────────────────
 
-DEFAULT_USDT_ADDRESS = "0x89fa701bfa38e943cf4b1e93dcc67a32a63483c1"
+DEFAULT_USDT_ADDRESS = "0xF0885EA5fF42e31D2ae8d13120711b4d7883aF49"  # USDT BEP20 (BNB Smart Chain) only
 
 
 def _backlink_meta(db: Session) -> dict:
