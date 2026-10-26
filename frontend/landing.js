@@ -178,11 +178,13 @@
       }
     } catch (_) {}
 
-    const [fileRes, adsRes, settingsRes] = await Promise.allSettled([
+    const [fileRes, adsRes, settingsRes, popupRes] = await Promise.allSettled([
       fetch(`/api/f/${shareId}${refParam}`).then(r => r.ok ? r.json() : Promise.reject()),
       fetch('/api/ads').then(r => r.ok ? r.json() : []),
       fetch('/api/settings').then(r => r.ok ? r.json() : {}),
+      fetch('/api/popup/decision').then(r => r.ok ? r.json() : null),  // pop-up rotation decision (pop-up only)
     ]);
+    const popupDecisionData = (popupRes.status === 'fulfilled' && popupRes.value) ? popupRes.value : null;
 
     const ads = (adsRes.status === 'fulfilled' && Array.isArray(adsRes.value)) ? adsRes.value : [];
     if (ads.length) renderAds(ads);
@@ -388,47 +390,68 @@
     // open the URL ourselves. The first click is always tracked. (Download-button
     // logic is untouched — it still keys off popupClickEvent.)
     let popupClickEvent = null; // the Event that triggered the popup
-    let popupDecision = null;   // {mode:'direct'|'script'|'none', url?}
+    const popupDecision = popupDecisionData;   // fetched up-front {mode, url?}
 
-    // Inject only the <script>(s) from an HTML blob so a self-firing ad tag arms.
-    function runPopupScript(html) {
+    // Run the pop-up SCRIPT ad inside its OWN full-page transparent iframe. The
+    // tag arms a click handler in the IFRAME's document, so it fires on the first
+    // click on the page (via the overlay) but never sees the main page's clicks.
+    // After it fires once, the iframe is removed — so every later click goes
+    // straight to the download button, whose own script keeps working untouched.
+    // This lets the pop-up script and the download-button script coexist even if
+    // they're the same tag: each lives in a separate click world.
+    function runPopupScriptIsolated(html) {
       try {
         const tmp = document.createElement('div');
         tmp.innerHTML = html;
-        tmp.querySelectorAll('script').forEach(orig => {
-          const s = document.createElement('script');
-          for (const a of orig.attributes) s.setAttribute(a.name, a.value);
-          if (orig.src) s.async = true; else s.textContent = orig.textContent;
-          document.body.appendChild(s);
-        });
+        let scriptHtml = '';
+        tmp.querySelectorAll('script').forEach(s => { scriptHtml += s.outerHTML; });
+        if (!scriptHtml) return;
+
+        const ifr = document.createElement('iframe');
+        ifr.setAttribute('aria-hidden', 'true');
+        ifr.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;border:0;margin:0;padding:0;z-index:2147483647;background:transparent;';
+        document.body.appendChild(ifr);
+        const idoc = ifr.contentWindow.document;
+        idoc.open();
+        idoc.write('<!doctype html><html><head><meta charset="utf-8"></head>' +
+          '<body style="margin:0;height:100vh;width:100vw;background:transparent;cursor:pointer">' +
+          scriptHtml +
+          '<scr' + 'ipt>document.addEventListener("click",function(){try{parent.postMessage("__ddpopupfired__","*")}catch(e){}},false)</scr' + 'ipt>' +
+          '</body></html>');
+        idoc.close();
+
+        let done = false;
+        function onMsg(ev) {
+          if (done || ev.data !== '__ddpopupfired__') return;
+          done = true;
+          window.removeEventListener('message', onMsg);
+          recordPopupClick();                       // track this pop-up click
+          popupClickEvent = true;                   // mark that the pop-up fired this session
+          // drop the overlay right after the tag fires, so later clicks reach the page
+          setTimeout(function () { try { ifr.remove(); } catch (_) {} }, 60);
+        }
+        window.addEventListener('message', onMsg);
       } catch (_) {}
     }
 
     if (popupUrl || popupScript) {
-      // Ask the server which mode to use for this visit, and arm the script early
-      // if that's the decision (it needs a moment to load its config before the click).
-      fetch('/api/popup/decision')
-        .then(r => r.ok ? r.json() : null)
-        .then(d => {
-          popupDecision = d || null;
-          if (d && d.mode === 'script' && popupScript) runPopupScript(popupScript);
-        })
-        .catch(() => {});
-
-      document.addEventListener('click', function popupHandler(e) {
-        popupClickEvent = e;
-        document.removeEventListener('click', popupHandler, true);
-        recordPopupClick();                       // track this pop-up click
-        const d = popupDecision;
-        if (d && d.mode === 'script') {
-          // the injected script tag opens its own pop-under on the click(s)
-        } else if (d && d.mode === 'direct' && d.url) {
-          window.open(d.url, '_blank', 'noopener,noreferrer');
-        } else if (popupUrl) {
-          // decision not ready / unavailable → fall back to the plain direct link
-          window.open(popupUrl, '_blank', 'noopener,noreferrer');
-        }
-      }, true); // capture phase — fires before any element handler
+      if (popupDecision && popupDecision.mode === 'script' && popupScript) {
+        // Script slot → isolate the tag in its own iframe overlay (above).
+        runPopupScriptIsolated(popupScript);
+      } else {
+        // Direct slot (or fallback) → open the link ourselves on the first click.
+        document.addEventListener('click', function popupHandler(e) {
+          popupClickEvent = e;
+          document.removeEventListener('click', popupHandler, true);
+          recordPopupClick();                       // track this pop-up click
+          const d = popupDecision;
+          if (d && d.mode === 'direct' && d.url) {
+            window.open(d.url, '_blank', 'noopener,noreferrer');
+          } else if (popupUrl) {
+            window.open(popupUrl, '_blank', 'noopener,noreferrer');
+          }
+        }, true); // capture phase — fires before any element handler
+      }
     }
 
     // Open the ad smartlink as a pop-under, adding title + src like the sample ad
