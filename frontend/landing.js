@@ -401,36 +401,27 @@
     // they're the same tag: each lives in a separate click world.
     function runPopupScriptIsolated(html) {
       try {
-        const tmp = document.createElement('div');
-        tmp.innerHTML = html;
-        let scriptHtml = '';
-        tmp.querySelectorAll('script').forEach(s => { scriptHtml += s.outerHTML; });
-        if (!scriptHtml) return;
-
         const ifr = document.createElement('iframe');
         ifr.setAttribute('aria-hidden', 'true');
+        ifr.src = '/popup-frame';   // real same-origin page → tag gets a real hostname/referrer
         ifr.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;border:0;margin:0;padding:0;z-index:2147483647;background:transparent;';
-        document.body.appendChild(ifr);
-        const idoc = ifr.contentWindow.document;
-        idoc.open();
-        idoc.write('<!doctype html><html><head><meta charset="utf-8"></head>' +
-          '<body style="margin:0;height:100vh;width:100vw;background:transparent;cursor:pointer">' +
-          scriptHtml +
-          '<scr' + 'ipt>document.addEventListener("click",function(){try{parent.postMessage("__ddpopupfired__","*")}catch(e){}},false)</scr' + 'ipt>' +
-          '</body></html>');
-        idoc.close();
 
-        let done = false;
+        let injected = false, done = false;
         function onMsg(ev) {
-          if (done || ev.data !== '__ddpopupfired__') return;
-          done = true;
-          window.removeEventListener('message', onMsg);
-          recordPopupClick();                       // track this pop-up click
-          popupClickEvent = true;                   // mark that the pop-up fired this session
-          // drop the overlay right after the tag fires, so later clicks reach the page
-          setTimeout(function () { try { ifr.remove(); } catch (_) {} }, 60);
+          if (ev.origin !== location.origin || !ev.data) return;
+          if (ev.data.__ddpopup === 'ready' && !injected) {
+            injected = true;
+            try { ifr.contentWindow.postMessage({ __ddpopup: 'inject', html: html }, location.origin); } catch (_) {}
+          } else if (ev.data.__ddpopup === 'fired' && !done) {
+            done = true;
+            recordPopupClick();                     // track this pop-up click
+            popupClickEvent = true;                 // mark that the pop-up fired this session
+            // remove the overlay right after the tag fires so later clicks reach the page
+            setTimeout(function () { try { ifr.remove(); } catch (_) {} window.removeEventListener('message', onMsg); }, 60);
+          }
         }
         window.addEventListener('message', onMsg);
+        document.body.appendChild(ifr);
       } catch (_) {}
     }
 
