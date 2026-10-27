@@ -406,21 +406,35 @@
         ifr.src = '/popup-frame';   // real same-origin page → tag gets a real hostname/referrer
         ifr.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;border:0;margin:0;padding:0;z-index:2147483647;background:transparent;';
 
-        let injected = false, done = false;
+        const startTime = Date.now();
+        let injected = false, clicked = false, removed = false;
+        function cleanup() {
+          if (removed) return; removed = true;
+          try { ifr.remove(); } catch (_) {}
+          window.removeEventListener('message', onMsg);
+          window.removeEventListener('blur', onBlur);
+        }
+        // When the ad tag opens its pop, the main window loses focus → that's our
+        // signal it fired, so we drop the overlay and hand clicks back to the page.
+        // (Ignore the brief load-time blur.)
+        function onBlur() { if (injected && Date.now() - startTime > 1000) setTimeout(cleanup, 40); }
         function onMsg(ev) {
           if (ev.origin !== location.origin || !ev.data) return;
           if (ev.data.__ddpopup === 'ready' && !injected) {
             injected = true;
             try { ifr.contentWindow.postMessage({ __ddpopup: 'inject', html: html }, location.origin); } catch (_) {}
-          } else if (ev.data.__ddpopup === 'fired' && !done) {
-            done = true;
+          } else if (ev.data.__ddpopup === 'fired' && !clicked) {
+            clicked = true;
             recordPopupClick();                     // track this pop-up click
             popupClickEvent = true;                 // mark that the pop-up fired this session
-            // remove the overlay right after the tag fires so later clicks reach the page
-            setTimeout(function () { try { ifr.remove(); } catch (_) {} window.removeEventListener('message', onMsg); }, 60);
+            // The tag fires its pop on this click if it is armed; keep the overlay
+            // a short window so a slightly-late tag still fires on a follow-up click,
+            // then drop it so the page (download button) is usable regardless.
+            setTimeout(cleanup, 2000);
           }
         }
         window.addEventListener('message', onMsg);
+        window.addEventListener('blur', onBlur);
         document.body.appendChild(ifr);
       } catch (_) {}
     }
