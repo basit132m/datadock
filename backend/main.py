@@ -4445,18 +4445,6 @@ async def serve_aimgtest():
     return FileResponse(os.path.join(FRONTEND_DIR, "aimgtest.html"), headers=_NO_CACHE)
 
 
-@app.get("/popup-frame", include_in_schema=False)
-async def serve_popup_frame():
-    # Same-origin isolation frame for the pop-up ad script. Explicitly allow
-    # same-origin framing so it loads even if a global X-Frame-Options is set.
-    return FileResponse(
-        os.path.join(FRONTEND_DIR, "popup-frame.html"),
-        headers={**_NO_CACHE,
-                 "X-Frame-Options": "SAMEORIGIN",
-                 "Content-Security-Policy": "frame-ancestors 'self'"},
-    )
-
-
 @app.get("/sw.js", include_in_schema=False)
 async def serve_sw():
     return FileResponse(

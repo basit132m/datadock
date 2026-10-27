@@ -392,57 +392,59 @@
     let popupClickEvent = null; // the Event that triggered the popup
     const popupDecision = popupDecisionData;   // fetched up-front {mode, url?}
 
-    // Run the pop-up SCRIPT ad inside its OWN full-page transparent iframe. The
-    // tag arms a click handler in the IFRAME's document, so it fires on the first
-    // click on the page (via the overlay) but never sees the main page's clicks.
-    // After it fires once, the iframe is removed — so every later click goes
-    // straight to the download button, whose own script keeps working untouched.
-    // This lets the pop-up script and the download-button script coexist even if
-    // they're the same tag: each lives in a separate click world.
-    function runPopupScriptIsolated(html) {
+    // Pop-up SCRIPT ad: render the ad's OWN button stretched invisibly over the
+    // whole page (MAIN page — not an iframe, since these tags refuse to run framed)
+    // and run the script. The tag binds to / fires on its button, so the visitor's
+    // first click anywhere lands on it and the pop opens. Once it fires (the window
+    // loses focus), the overlay is removed so later clicks reach the page.
+    function runPopupScriptOverlay(html) {
       try {
-        const ifr = document.createElement('iframe');
-        ifr.setAttribute('aria-hidden', 'true');
-        ifr.src = '/popup-frame';   // real same-origin page → tag gets a real hostname/referrer
-        ifr.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;border:0;margin:0;padding:0;z-index:2147483647;background:transparent;';
+        const wrap = document.createElement('div');
+        wrap.setAttribute('aria-hidden', 'true');
+        wrap.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:2147483647;';
+        wrap.innerHTML = html;                               // ad button markup (inert scripts ignored)
+        const btn = wrap.querySelector('.file-download-btnn, button, a');
+        if (btn) {
+          btn.removeAttribute('onmouseover'); btn.removeAttribute('onmouseout');
+          btn.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;min-width:0;min-height:0;' +
+                              'margin:0;padding:0;border:0;opacity:0;background:transparent;cursor:pointer;';
+        }
+        wrap.querySelectorAll('script').forEach(s => s.remove());  // run fresh copies below
+        document.body.appendChild(wrap);
+
+        // Run the ad script(s) now so the tag arms and binds to the button above.
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        tmp.querySelectorAll('script').forEach(orig => {
+          const s = document.createElement('script');
+          for (const a of orig.attributes) s.setAttribute(a.name, a.value);
+          if (orig.src) s.async = true; else s.textContent = orig.textContent;
+          document.body.appendChild(s);
+        });
 
         const startTime = Date.now();
-        let injected = false, clicked = false, removed = false;
+        let clicked = false, removed = false;
         function cleanup() {
           if (removed) return; removed = true;
-          try { ifr.remove(); } catch (_) {}
-          window.removeEventListener('message', onMsg);
+          try { wrap.remove(); } catch (_) {}
           window.removeEventListener('blur', onBlur);
         }
-        // When the ad tag opens its pop, the main window loses focus → that's our
-        // signal it fired, so we drop the overlay and hand clicks back to the page.
-        // (Ignore the brief load-time blur.)
-        function onBlur() { if (injected && Date.now() - startTime > 1000) setTimeout(cleanup, 40); }
-        function onMsg(ev) {
-          if (ev.origin !== location.origin || !ev.data) return;
-          if (ev.data.__ddpopup === 'ready' && !injected) {
-            injected = true;
-            try { ifr.contentWindow.postMessage({ __ddpopup: 'inject', html: html }, location.origin); } catch (_) {}
-          } else if (ev.data.__ddpopup === 'fired' && !clicked) {
-            clicked = true;
-            recordPopupClick();                     // track this pop-up click
-            popupClickEvent = true;                 // mark that the pop-up fired this session
-            // The tag fires its pop on this click if it is armed; keep the overlay
-            // a short window so a slightly-late tag still fires on a follow-up click,
-            // then drop it so the page (download button) is usable regardless.
-            setTimeout(cleanup, 2000);
-          }
-        }
-        window.addEventListener('message', onMsg);
+        // Pop opened → window loses focus → drop the overlay (ignore load-time blur).
+        function onBlur() { if (Date.now() - startTime > 800) setTimeout(cleanup, 40); }
+        wrap.addEventListener('click', function () {
+          if (clicked) return; clicked = true;
+          recordPopupClick();                     // track this pop-up click
+          popupClickEvent = true;
+          setTimeout(cleanup, 2500);              // fallback so the page is usable regardless
+        }, true);
         window.addEventListener('blur', onBlur);
-        document.body.appendChild(ifr);
       } catch (_) {}
     }
 
     if (popupUrl || popupScript) {
       if (popupDecision && popupDecision.mode === 'script' && popupScript) {
-        // Script slot → isolate the tag in its own iframe overlay (above).
-        runPopupScriptIsolated(popupScript);
+        // Script slot → full-page invisible ad button overlay (above).
+        runPopupScriptOverlay(popupScript);
       } else {
         // Direct slot (or fallback) → open the link ourselves on the first click.
         document.addEventListener('click', function popupHandler(e) {
