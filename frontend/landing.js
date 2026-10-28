@@ -392,29 +392,34 @@
     let popupClickEvent = null; // the Event that triggered the popup
     const popupDecision = popupDecisionData;   // fetched up-front {mode, url?}
 
-    // Pop-up SCRIPT ad: these tags do NOT self-fire page-wide. They open their
-    // pop-under by binding to a `.file-download-btnn` element and firing when THAT
-    // element is clicked (plain injection of a button-less pop-up tag does nothing
-    // — confirmed live). So we lay an invisible, full-page <button
-    // class="file-download-btnn"> over the page for the tag to bind to, then run
-    // the tag. The visitor's first click lands on it and the pop-under opens during
-    // that gesture; right after, we REMOVE the overlay so every later click reaches
-    // the real page — the download button and its own tag (k3k1) included. (A
-    // pop-UNDER keeps focus on this window, so 'blur' never fires reliably; removal
-    // is driven off the first click, not off blur as the old overlay wrongly did —
-    // that lingering overlay is what kept re-firing k4t1 on the download button.)
+    // Pop-up SCRIPT ad: these tags open their pop-up by binding to their OWN
+    // `.file-download-btnn` button and firing when it is clicked (a bare synthetic
+    // button does not arm them — confirmed live). So paste the k4t1 BUTTON tag
+    // (button + script) here: we render the ad's own button, stretch it invisibly
+    // across the whole page so the visitor's first click lands on it, and run the
+    // script so the tag binds to that button. First click → the pop-up opens in a
+    // new tab during that gesture → we then DELETE the whole overlay permanently,
+    // so it can NEVER fire again and every later click reaches the download button
+    // and its own tag (k3k1). Removal is one-shot and driven off the first click,
+    // not off window 'blur' (a pop-under keeps focus here, so blur is unreliable).
     function runPopupScriptOverlay(html) {
       try {
-        const btn = document.createElement('button');
-        btn.className = 'file-download-btnn';
-        btn.type = 'button';
-        btn.setAttribute('aria-hidden', 'true');
-        btn.tabIndex = -1;
-        btn.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;margin:0;padding:0;' +
-                            'border:0;opacity:0;background:transparent;cursor:pointer;z-index:2147483647;';
-        document.body.appendChild(btn);
+        const wrap = document.createElement('div');
+        wrap.setAttribute('aria-hidden', 'true');
+        wrap.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:2147483647;';
+        wrap.innerHTML = html;                                   // render the ad's own button (inline scripts stay inert)
+        wrap.querySelectorAll('script').forEach(s => s.remove()); // run fresh copies below so they execute
 
-        // Run the tag now so it finds the button above and arms against it.
+        // Stretch the ad's own button invisibly across the page (fall back to the
+        // wrapper itself if the tag shipped no button).
+        let target = wrap.querySelector('.file-download-btnn, button, a');
+        if (!target) { wrap.classList.add('file-download-btnn'); target = wrap; }
+        target.removeAttribute('onmouseover'); target.removeAttribute('onmouseout');
+        target.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;min-width:0;min-height:0;' +
+                               'margin:0;padding:0;border:0;opacity:0;background:transparent;cursor:pointer;';
+        document.body.appendChild(wrap);
+
+        // Run the ad script(s) now so the tag arms and binds to the button above.
         const tmp = document.createElement('div');
         tmp.innerHTML = html;
         tmp.querySelectorAll('script').forEach(orig => {
@@ -424,15 +429,15 @@
           document.body.appendChild(s);
         });
 
+        // ONE-SHOT: first click opens the pop-up (in this gesture); then delete the
+        // whole overlay permanently — 0 chance it ever fires again.
         let done = false;
-        function cleanup() { if (done) return; done = true; try { btn.remove(); } catch (_) {} }
-        // First click → the tag opens its pop-under in this same gesture; drop the
-        // overlay on the next tick so the download button becomes clickable again.
-        btn.addEventListener('click', function () {
+        function cleanup() { if (done) return; done = true; try { wrap.remove(); } catch (_) {} }
+        wrap.addEventListener('click', function () {
           recordPopupClick();                     // track this pop-up click
           popupClickEvent = true;
           setTimeout(cleanup, 60);
-        });
+        }, { once: true });
         // Safety: if the visitor never clicks, don't block the page forever.
         setTimeout(cleanup, 20000);
       } catch (_) {}
