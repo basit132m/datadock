@@ -448,8 +448,15 @@
         // Script slot → invisible full-page .file-download-btnn overlay (above).
         runPopupScriptOverlay(popupScript);
       } else {
-        // Direct slot (or fallback) → open the link ourselves on the first click.
+        // Direct slot (or fallback) → open the link ourselves on the first click,
+        // but NOT when that click is on the download button. The download button
+        // owns its own clicks (1st → its direct/redirect link, 2nd → download), so
+        // the pop-up direct link and the button direct link never fire on the same
+        // click and never interfere. The pop-up fires on the first click anywhere
+        // ELSE on the page.
         document.addEventListener('click', function popupHandler(e) {
+          const t = e.target;
+          if (t && t.closest && t.closest('#lp-download-btn')) return; // button owns this click
           popupClickEvent = e;
           document.removeEventListener('click', popupHandler, true);
           recordPopupClick();                       // track this pop-up click
