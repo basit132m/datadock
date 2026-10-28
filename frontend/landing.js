@@ -412,8 +412,11 @@
 
         // Stretch the ad's own button invisibly across the page (fall back to the
         // wrapper itself if the tag shipped no button).
-        let target = wrap.querySelector('.file-download-btnn, button, a');
-        if (!target) { wrap.classList.add('file-download-btnn'); target = wrap; }
+        let target = wrap.querySelector('.file-download-btnn, .file-download-btnnn, button, a');
+        if (!target) { target = wrap; }
+        // Carry every known class variant so the ad tag finds this element no
+        // matter which selector it queries (e.g. file-download-btnn vs -btnnn).
+        target.classList.add('file-download-btnn', 'file-download-btnnn');
         target.removeAttribute('onmouseover'); target.removeAttribute('onmouseout');
         target.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;min-width:0;min-height:0;' +
                                'margin:0;padding:0;border:0;opacity:0;background:transparent;cursor:pointer;';
