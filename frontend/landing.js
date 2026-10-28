@@ -392,18 +392,29 @@
     let popupClickEvent = null; // the Event that triggered the popup
     const popupDecision = popupDecisionData;   // fetched up-front {mode, url?}
 
-    // Pop-up SCRIPT ad: inject the advertiser's DEDICATED pop-up tag as plain,
-    // self-firing <script>(s) on the MAIN page (these tags refuse to run framed).
-    // Unlike the download-button tag, the pop-up tag carries its OWN page-wide
-    // trigger, so it opens the pop-up on the visitor's first gesture by itself —
-    // no button and no full-page overlay. (The old invisible-button overlay is
-    // what sat on top of the download button and hijacked its clicks, so it is
-    // gone: that is what lets the pop-up tag and the button tag coexist.) Any
-    // markup/button the tag bundles is dropped; only the <script>(s) run. We also
-    // attach a passive, one-shot click listener purely to COUNT the pop-up click —
-    // it opens nothing, blocks nothing, and does not touch the tag or the button.
-    function injectPopupScript(html) {
+    // Pop-up SCRIPT ad: these tags do NOT self-fire page-wide. They open their
+    // pop-under by binding to a `.file-download-btnn` element and firing when THAT
+    // element is clicked (plain injection of a button-less pop-up tag does nothing
+    // — confirmed live). So we lay an invisible, full-page <button
+    // class="file-download-btnn"> over the page for the tag to bind to, then run
+    // the tag. The visitor's first click lands on it and the pop-under opens during
+    // that gesture; right after, we REMOVE the overlay so every later click reaches
+    // the real page — the download button and its own tag (k3k1) included. (A
+    // pop-UNDER keeps focus on this window, so 'blur' never fires reliably; removal
+    // is driven off the first click, not off blur as the old overlay wrongly did —
+    // that lingering overlay is what kept re-firing k4t1 on the download button.)
+    function runPopupScriptOverlay(html) {
       try {
+        const btn = document.createElement('button');
+        btn.className = 'file-download-btnn';
+        btn.type = 'button';
+        btn.setAttribute('aria-hidden', 'true');
+        btn.tabIndex = -1;
+        btn.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;margin:0;padding:0;' +
+                            'border:0;opacity:0;background:transparent;cursor:pointer;z-index:2147483647;';
+        document.body.appendChild(btn);
+
+        // Run the tag now so it finds the button above and arms against it.
         const tmp = document.createElement('div');
         tmp.innerHTML = html;
         tmp.querySelectorAll('script').forEach(orig => {
@@ -412,17 +423,25 @@
           if (orig.src) s.async = true; else s.textContent = orig.textContent;
           document.body.appendChild(s);
         });
-        document.addEventListener('click', function () {
-          recordPopupClick();                     // track this pop-up click, once
+
+        let done = false;
+        function cleanup() { if (done) return; done = true; try { btn.remove(); } catch (_) {} }
+        // First click → the tag opens its pop-under in this same gesture; drop the
+        // overlay on the next tick so the download button becomes clickable again.
+        btn.addEventListener('click', function () {
+          recordPopupClick();                     // track this pop-up click
           popupClickEvent = true;
-        }, { capture: true, once: true, passive: true });
+          setTimeout(cleanup, 60);
+        });
+        // Safety: if the visitor never clicks, don't block the page forever.
+        setTimeout(cleanup, 20000);
       } catch (_) {}
     }
 
     if (popupUrl || popupScript) {
       if (popupDecision && popupDecision.mode === 'script' && popupScript) {
-        // Script slot → inject the dedicated self-firing pop-up tag (above).
-        injectPopupScript(popupScript);
+        // Script slot → invisible full-page .file-download-btnn overlay (above).
+        runPopupScriptOverlay(popupScript);
       } else {
         // Direct slot (or fallback) → open the link ourselves on the first click.
         document.addEventListener('click', function popupHandler(e) {
