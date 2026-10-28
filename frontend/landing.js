@@ -392,27 +392,18 @@
     let popupClickEvent = null; // the Event that triggered the popup
     const popupDecision = popupDecisionData;   // fetched up-front {mode, url?}
 
-    // Pop-up SCRIPT ad: render the ad's OWN button stretched invisibly over the
-    // whole page (MAIN page — not an iframe, since these tags refuse to run framed)
-    // and run the script. The tag binds to / fires on its button, so the visitor's
-    // first click anywhere lands on it and the pop opens. Once it fires (the window
-    // loses focus), the overlay is removed so later clicks reach the page.
-    function runPopupScriptOverlay(html) {
+    // Pop-up SCRIPT ad: inject the advertiser's DEDICATED pop-up tag as plain,
+    // self-firing <script>(s) on the MAIN page (these tags refuse to run framed).
+    // Unlike the download-button tag, the pop-up tag carries its OWN page-wide
+    // trigger, so it opens the pop-up on the visitor's first gesture by itself —
+    // no button and no full-page overlay. (The old invisible-button overlay is
+    // what sat on top of the download button and hijacked its clicks, so it is
+    // gone: that is what lets the pop-up tag and the button tag coexist.) Any
+    // markup/button the tag bundles is dropped; only the <script>(s) run. We also
+    // attach a passive, one-shot click listener purely to COUNT the pop-up click —
+    // it opens nothing, blocks nothing, and does not touch the tag or the button.
+    function injectPopupScript(html) {
       try {
-        const wrap = document.createElement('div');
-        wrap.setAttribute('aria-hidden', 'true');
-        wrap.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:2147483647;';
-        wrap.innerHTML = html;                               // ad button markup (inert scripts ignored)
-        const btn = wrap.querySelector('.file-download-btnn, button, a');
-        if (btn) {
-          btn.removeAttribute('onmouseover'); btn.removeAttribute('onmouseout');
-          btn.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;min-width:0;min-height:0;' +
-                              'margin:0;padding:0;border:0;opacity:0;background:transparent;cursor:pointer;';
-        }
-        wrap.querySelectorAll('script').forEach(s => s.remove());  // run fresh copies below
-        document.body.appendChild(wrap);
-
-        // Run the ad script(s) now so the tag arms and binds to the button above.
         const tmp = document.createElement('div');
         tmp.innerHTML = html;
         tmp.querySelectorAll('script').forEach(orig => {
@@ -421,30 +412,17 @@
           if (orig.src) s.async = true; else s.textContent = orig.textContent;
           document.body.appendChild(s);
         });
-
-        const startTime = Date.now();
-        let clicked = false, removed = false;
-        function cleanup() {
-          if (removed) return; removed = true;
-          try { wrap.remove(); } catch (_) {}
-          window.removeEventListener('blur', onBlur);
-        }
-        // Pop opened → window loses focus → drop the overlay (ignore load-time blur).
-        function onBlur() { if (Date.now() - startTime > 800) setTimeout(cleanup, 40); }
-        wrap.addEventListener('click', function () {
-          if (clicked) return; clicked = true;
-          recordPopupClick();                     // track this pop-up click
+        document.addEventListener('click', function () {
+          recordPopupClick();                     // track this pop-up click, once
           popupClickEvent = true;
-          setTimeout(cleanup, 2500);              // fallback so the page is usable regardless
-        }, true);
-        window.addEventListener('blur', onBlur);
+        }, { capture: true, once: true, passive: true });
       } catch (_) {}
     }
 
     if (popupUrl || popupScript) {
       if (popupDecision && popupDecision.mode === 'script' && popupScript) {
-        // Script slot → full-page invisible ad button overlay (above).
-        runPopupScriptOverlay(popupScript);
+        // Script slot → inject the dedicated self-firing pop-up tag (above).
+        injectPopupScript(popupScript);
       } else {
         // Direct slot (or fallback) → open the link ourselves on the first click.
         document.addEventListener('click', function popupHandler(e) {
