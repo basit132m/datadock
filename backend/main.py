@@ -193,28 +193,55 @@ def _get_geoip_reader():
     return _geoip_reader
 
 
+def _geolocate_api(ip: str) -> tuple:
+    """Best-effort geolocation via a free HTTPS API (no key), used only when the
+    local GeoLite2 DB is missing or has no match. Short timeout; returns
+    ('Unknown', '??') on any failure. BLOCKING — call off the event loop."""
+    import urllib.request
+    for url, pick in (
+        ("https://ipwho.is/{ip}?fields=success,country,country_code",
+         lambda d: (d.get("country"), d.get("country_code")) if d.get("success") else (None, None)),
+        ("http://ip-api.com/json/{ip}?fields=status,country,countryCode",
+         lambda d: (d.get("country"), d.get("countryCode")) if d.get("status") == "success" else (None, None)),
+    ):
+        try:
+            req = urllib.request.Request(url.format(ip=ip), headers={"User-Agent": "datadock/1.0"})
+            with urllib.request.urlopen(req, timeout=2.5) as r:
+                data = json.loads(r.read().decode("utf-8", "ignore"))
+            name, cc = pick(data)
+            if cc:
+                return (name or "Unknown", cc.upper())
+        except Exception:
+            continue
+    return ("Unknown", "??")
+
+
 def _geolocate(ip: str) -> tuple:
-    """Return (country, country_code) using the local MaxMind GeoLite2 DB.
-    Falls back to ('Unknown', '??') if the DB is missing or the IP is private.
-    Results are cached in memory — no rate limits, no network calls."""
+    """Return (country, country_code). Tries the local MaxMind GeoLite2 DB first,
+    then a free HTTPS API when the DB is missing or has no match (so geo features
+    like pop-up geo-locking still work without the local DB). Results are cached
+    in memory. Note the API path blocks on the network — in async request handlers
+    call this via asyncio.to_thread so it never blocks the event loop."""
     if not ip or ip in ("127.0.0.1", "::1", ""):
         return "Local", "??"
     if ip in _geo_cache:
         return _geo_cache[ip]
+    result = None
     reader = _get_geoip_reader()
-    if reader is None:
-        return "Unknown", "??"
-    try:
-        response = reader.country(ip)
-        result = (
-            response.country.name or "Unknown",
-            response.country.iso_code or "??",
-        )
-    except Exception:
-        result = ("Unknown", "??")
-    if len(_geo_cache) > 20_000:   # cap memory growth
-        _geo_cache.clear()
-    _geo_cache[ip] = result
+    if reader is not None:
+        try:
+            response = reader.country(ip)
+            cc = response.country.iso_code
+            if cc:
+                result = (response.country.name or "Unknown", cc.upper())
+        except Exception:
+            result = None
+    if result is None:                      # DB missing or no match → API fallback
+        result = _geolocate_api(ip)
+    if result[1] and result[1] != "??":     # only cache resolved results (retry failures)
+        if len(_geo_cache) > 20_000:        # cap memory growth
+            _geo_cache.clear()
+        _geo_cache[ip] = result
     return result
 
 
@@ -2213,11 +2240,13 @@ async def popup_decision(request: Request, db: Session = Depends(get_db)):
     direct_url = direct_mobile if (is_mobile and direct_mobile) else direct_desktop
     has_script = bool((_get_setting(db, "popup_script") or "").strip())
 
-    # 1) Geo lock takes priority
-    _country, cc = _geolocate(ip)
+    # 1) Geo lock takes priority. Geolocation may hit the network (API fallback
+    # when the local DB is missing), so run it off the event loop.
     rules = _parse_popup_geo_rules(_get_setting(db, "popup_geo_rules"))
-    if cc and cc.upper() in rules:
-        return {"mode": "direct", "url": rules[cc.upper()]}
+    if rules:
+        _country, cc = await asyncio.to_thread(_geolocate, ip)
+        if cc and cc.upper() in rules:
+            return {"mode": "direct", "url": rules[cc.upper()]}
 
     # 2) Rotation between direct and script
     try:
