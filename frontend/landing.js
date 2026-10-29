@@ -163,8 +163,49 @@
     return a;
   }
 
+  // Best-effort ad-blocker detection: a bait element with ad-ish class names is
+  // hidden or removed by blockers' cosmetic filters. Resolves true if a blocker
+  // appears active. Used so a 'script' pop-up slot can fall back to the direct
+  // link when the ad tag would be blocked — so the click is never wasted.
+  function detectAdblock() {
+    return new Promise(resolve => {
+      try {
+        const bait = document.createElement('div');
+        bait.className = 'adsbox ad-banner ad-placement pub_300x250 ads ad';
+        bait.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:2px;height:2px;';
+        (document.body || document.documentElement).appendChild(bait);
+        setTimeout(() => {
+          let blocked = false;
+          try {
+            const cs = getComputedStyle(bait);
+            blocked = bait.offsetHeight === 0 || bait.clientHeight === 0 ||
+                      cs.display === 'none' || cs.visibility === 'hidden' ||
+                      !bait.offsetParent;
+          } catch (_) {}
+          try { bait.remove(); } catch (_) {}
+          resolve(!!blocked);
+        }, 120);
+      } catch (_) { resolve(false); }
+    });
+  }
+
   // ── Main init ──────────────────────────────────────────────────────────────
   async function init() {
+    // Buffer the very first eligible click so a click made WHILE the page is still
+    // loading its settings is never wasted — we replay it once the pop-up is ready.
+    // (The pop-up is wired only after several fetches resolve; without this, an
+    // early click would hit no handler at all.) Clicks on the download button are
+    // excluded — the button owns its own clicks.
+    let _earlyClick = null, _popupDelivered = false, _popupTakeover = false;
+    function _earlyCapture(e) {
+      if (_popupTakeover || _earlyClick) return;
+      const t = e.target;
+      if (t && t.closest && t.closest('#lp-download-btn')) return;
+      _earlyClick = e;
+    }
+    document.addEventListener('click', _earlyCapture, true);
+    const _adblockP = detectAdblock();   // runs concurrently with the fetches below
+
     // Capture the real referrer from document.referrer (set by the browser when
     // navigating from an external page) and pass it to the API. The fetch() call
     // itself would only show our own domain as Referer, so we send it explicitly.
@@ -444,39 +485,71 @@
         let done = false;
         function cleanup() { if (done) return; done = true; try { wrap.remove(); } catch (_) {} }
         wrap.addEventListener('click', function () {
+          _popupDelivered = true;                 // the script pop-up fired on this click
           recordPopupClick('script');             // track this pop-up click (script ad)
           popupClickEvent = true;
           setTimeout(cleanup, 60);
         }, { once: true });
         // Safety: if the visitor never clicks, don't block the page forever.
         setTimeout(cleanup, 20000);
-      } catch (_) {}
+        return true;                              // overlay injected OK
+      } catch (_) { return false; }               // injection failed → caller falls back
     }
 
+    // ── Pop-up delivery (direct ⇄ script rotation) — never waste a click ─────────
+    // One pop-up per visit, and the visitor's first eligible click always opens
+    // SOMETHING. Rules:
+    //  • Clicks on the download button are excluded (the button owns its clicks).
+    //  • A 'script' slot needs the ad network reachable — if an ad-blocker is active
+    //    or no script is set, it falls back to the DIRECT link so nothing is wasted.
+    //  • The direct handler only disarms after a window actually opened; a blocked
+    //    open leaves it armed so the next click retries.
+    //  • A click captured during page load is replayed here.
     if (popupUrl || popupScript) {
-      if (popupDecision && popupDecision.mode === 'script' && popupScript) {
-        // Script slot → invisible full-page .file-download-btnn overlay (above).
-        runPopupScriptOverlay(popupScript);
-      } else {
-        // Direct slot (or fallback) → open the link ourselves on the first click,
-        // but NOT when that click is on the download button. The download button
-        // owns its own clicks (1st → its direct/redirect link, 2nd → download), so
-        // the pop-up direct link and the button direct link never fire on the same
-        // click and never interfere. The pop-up fires on the first click anywhere
-        // ELSE on the page.
-        document.addEventListener('click', function popupHandler(e) {
+      const _directUrl = (popupDecision && popupDecision.url) || popupUrl || null;
+      let _effMode = (popupDecision && popupDecision.mode) ||
+                     (popupScript ? 'script' : (_directUrl ? 'direct' : 'none'));
+      const _adblocked = await _adblockP.catch(() => false);
+      if (_effMode === 'script' && (_adblocked || !popupScript)) {
+        _effMode = _directUrl ? 'direct' : 'none';   // blocked/no-script → direct fallback
+      }
+
+      // Open a direct pop-up URL once; returns false (not delivered) if blocked.
+      function openPopupUrl(mode, url) {
+        if (_popupDelivered || !url) return false;
+        let w = null;
+        try { w = window.open(url, '_blank', 'noopener,noreferrer'); } catch (_) {}
+        if (!w) return false;                        // blocked → allow a retry
+        _popupDelivered = true;
+        recordPopupClick(mode === 'script' ? 'script' : 'direct');
+        return true;
+      }
+      // Arm the first-click handler for the direct link (capture phase).
+      function armDirectPopup(url) {
+        document.addEventListener('click', function h(e) {
+          if (_popupDelivered) { document.removeEventListener('click', h, true); return; }
           const t = e.target;
           if (t && t.closest && t.closest('#lp-download-btn')) return; // button owns this click
           popupClickEvent = e;
-          document.removeEventListener('click', popupHandler, true);
-          recordPopupClick('direct');               // track this pop-up click (direct link)
-          const d = popupDecision;
-          if (d && d.mode === 'direct' && d.url) {
-            window.open(d.url, '_blank', 'noopener,noreferrer');
-          } else if (popupUrl) {
-            window.open(popupUrl, '_blank', 'noopener,noreferrer');
-          }
-        }, true); // capture phase — fires before any element handler
+          if (openPopupUrl('direct', url)) document.removeEventListener('click', h, true);
+        }, true); // fires before any element handler
+      }
+
+      // Hand off from the early buffer to the real handlers.
+      _popupTakeover = true;
+      document.removeEventListener('click', _earlyCapture, true);
+
+      if (_effMode === 'script') {
+        // A click made before the overlay existed can't have fired the script, so
+        // honor it with the direct link instead of losing it.
+        if (_earlyClick && _directUrl) openPopupUrl('direct', _directUrl);
+        if (!_popupDelivered) {
+          const ok = runPopupScriptOverlay(popupScript);
+          if (!ok && _directUrl) armDirectPopup(_directUrl); // injection failed → direct
+        }
+      } else if (_effMode === 'direct' && _directUrl) {
+        // Replay a click captured during load; otherwise arm for the first click.
+        if (!(_earlyClick && openPopupUrl('direct', _directUrl))) armDirectPopup(_directUrl);
       }
     }
 
