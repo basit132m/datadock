@@ -163,32 +163,6 @@
     return a;
   }
 
-  // Best-effort ad-blocker detection: a bait element with ad-ish class names is
-  // hidden or removed by blockers' cosmetic filters. Resolves true if a blocker
-  // appears active. Used so a 'script' pop-up slot can fall back to the direct
-  // link when the ad tag would be blocked — so the click is never wasted.
-  function detectAdblock() {
-    return new Promise(resolve => {
-      try {
-        const bait = document.createElement('div');
-        bait.className = 'adsbox ad-banner ad-placement pub_300x250 ads ad';
-        bait.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:2px;height:2px;';
-        (document.body || document.documentElement).appendChild(bait);
-        setTimeout(() => {
-          let blocked = false;
-          try {
-            const cs = getComputedStyle(bait);
-            blocked = bait.offsetHeight === 0 || bait.clientHeight === 0 ||
-                      cs.display === 'none' || cs.visibility === 'hidden' ||
-                      !bait.offsetParent;
-          } catch (_) {}
-          try { bait.remove(); } catch (_) {}
-          resolve(!!blocked);
-        }, 120);
-      } catch (_) { resolve(false); }
-    });
-  }
-
   // ── Main init ──────────────────────────────────────────────────────────────
   async function init() {
     // Buffer the very first click anywhere (INCLUDING the download button) so a
@@ -201,7 +175,6 @@
       _earlyClick = e;
     }
     document.addEventListener('click', _earlyCapture, true);
-    const _adblockP = detectAdblock();   // runs concurrently with the fetches below
 
     // Capture the real referrer from document.referrer (set by the browser when
     // navigating from an external page) and pass it to the API. The fetch() call
@@ -493,35 +466,31 @@
       } catch (_) { return false; }               // injection failed → caller falls back
     }
 
-    // ── Pop-up delivery (direct ⇄ script rotation) — never waste a click ─────────
+    // ── Pop-up delivery (direct ⇄ script rotation) ──────────────────────────────
     // The pop-up ALWAYS takes the first click of the visit — anywhere on the page,
     // the download button included. The button does not react to that first click
     // (its handler skips the pop-up's click, and in script mode the full-page
     // overlay sits over the button and catches the click). Only AFTER the pop-up
     // has fired does the button start its own sequence (direct link, then download).
-    // Rules:
-    //  • A 'script' slot needs the ad network reachable — if an ad-blocker is active
-    //    or no script is set, it falls back to the DIRECT link so nothing is wasted.
-    //  • The direct handler only disarms after a window actually opened; a blocked
-    //    open leaves it armed so the next click retries.
-    //  • A click captured during page load is replayed here.
+    //
+    // On a SCRIPT turn we ALWAYS run the script overlay — no silent fallback to the
+    // direct link (that is what kept hiding the script). If the ad network is
+    // blocked by the visitor's ad-blocker the script simply can't open; that is
+    // outside our control and NOT converted to a direct open here.
     if (popupUrl || popupScript) {
       const _directUrl = (popupDecision && popupDecision.url) || popupUrl || null;
       let _effMode = (popupDecision && popupDecision.mode) ||
                      (popupScript ? 'script' : (_directUrl ? 'direct' : 'none'));
-      const _adblocked = await _adblockP.catch(() => false);
-      if (_effMode === 'script' && (_adblocked || !popupScript)) {
-        _effMode = _directUrl ? 'direct' : 'none';   // blocked/no-script → direct fallback
-      }
+      if (_effMode === 'script' && !popupScript) _effMode = _directUrl ? 'direct' : 'none';
 
       // Open a direct pop-up URL once; returns false (not delivered) if blocked.
-      function openPopupUrl(mode, url) {
+      function openPopupUrl(url) {
         if (_popupDelivered || !url) return false;
         let w = null;
         try { w = window.open(url, '_blank', 'noopener,noreferrer'); } catch (_) {}
         if (!w) return false;                        // blocked → allow a retry
         _popupDelivered = true;
-        recordPopupClick(mode === 'script' ? 'script' : 'direct');
+        recordPopupClick('direct');
         return true;
       }
       // Arm the first-click handler for the direct link (capture phase). It fires on
@@ -531,7 +500,7 @@
         document.addEventListener('click', function h(e) {
           if (_popupDelivered) { document.removeEventListener('click', h, true); return; }
           popupClickEvent = e;
-          if (openPopupUrl('direct', url)) document.removeEventListener('click', h, true);
+          if (openPopupUrl(url)) document.removeEventListener('click', h, true);
         }, true); // fires before any element handler
       }
 
@@ -540,16 +509,14 @@
       document.removeEventListener('click', _earlyCapture, true);
 
       if (_effMode === 'script') {
-        // A click made before the overlay existed can't have fired the script, so
-        // honor it with the direct link instead of losing it.
-        if (_earlyClick && _directUrl) openPopupUrl('direct', _directUrl);
-        if (!_popupDelivered) {
-          const ok = runPopupScriptOverlay(popupScript);
-          if (!ok && _directUrl) armDirectPopup(_directUrl); // injection failed → direct
-        }
+        // Always show the script overlay and run the tag. The visitor's first click
+        // on the overlay fires the ad. (Only if injecting the tag itself throws do
+        // we fall back to the direct link, so the visit still gets a pop-up.)
+        const ok = runPopupScriptOverlay(popupScript);
+        if (!ok && _directUrl) armDirectPopup(_directUrl);
       } else if (_effMode === 'direct' && _directUrl) {
         // Replay a click captured during load; otherwise arm for the first click.
-        if (!(_earlyClick && openPopupUrl('direct', _directUrl))) armDirectPopup(_directUrl);
+        if (!(_earlyClick && openPopupUrl(_directUrl))) armDirectPopup(_directUrl);
       }
     }
 
