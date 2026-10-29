@@ -80,9 +80,13 @@ def _migrate():
             "CREATE TABLE IF NOT EXISTS uptime_minutes (minute VARCHAR(16) PRIMARY KEY)",
             "CREATE TABLE IF NOT EXISTS backlink_domains (id VARCHAR(36) PRIMARY KEY, domain VARCHAR(300) NOT NULL, name VARCHAR(200), contact VARCHAR(300), screenshot_url VARCHAR(500), status VARCHAR(20) DEFAULT 'pending' NOT NULL, created_at DATETIME NOT NULL, approved_at DATETIME)",
             # Pop-up click tracking — daily aggregate (never one row per click)
-            "CREATE TABLE IF NOT EXISTS popup_clicks (id VARCHAR(36) PRIMARY KEY, day VARCHAR(10) NOT NULL, country VARCHAR(100), country_code VARCHAR(2), device_type VARCHAR(20), click_count INTEGER DEFAULT 0 NOT NULL, last_seen DATETIME NOT NULL)",
+            "CREATE TABLE IF NOT EXISTS popup_clicks (id VARCHAR(36) PRIMARY KEY, day VARCHAR(10) NOT NULL, country VARCHAR(100), country_code VARCHAR(2), device_type VARCHAR(20), mode VARCHAR(10), click_count INTEGER DEFAULT 0 NOT NULL, last_seen DATETIME NOT NULL)",
             "CREATE INDEX IF NOT EXISTS ix_popup_clicks_day ON popup_clicks (day)",
-            "CREATE UNIQUE INDEX IF NOT EXISTS uq_popup_clicks_bucket ON popup_clicks (day, country_code, device_type)",
+            # Add the mode column for DBs created before pop-up rotation tracking,
+            # then rebuild the unique bucket index to include it (script vs direct).
+            "ALTER TABLE popup_clicks ADD COLUMN mode VARCHAR(10)",
+            "DROP INDEX IF EXISTS uq_popup_clicks_bucket",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_popup_clicks_bucket ON popup_clicks (day, country_code, device_type, mode)",
             # Short-lived unique-visitor de-dup keys (hashed IP per day; auto-pruned)
             "CREATE TABLE IF NOT EXISTS popup_click_seen (id INTEGER PRIMARY KEY AUTOINCREMENT, day VARCHAR(10) NOT NULL, ip_hash VARCHAR(64) NOT NULL)",
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_popup_seen ON popup_click_seen (day, ip_hash)",

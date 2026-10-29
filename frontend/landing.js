@@ -361,25 +361,32 @@
       setTimeout(() => { dlBtn.innerHTML = origHTML; dlBtn.disabled = false; }, 3000);
     }
 
-    // Count a pop-up click once per visitor per UTC day. localStorage stops
-    // repeat beacons from the same browser; the server also de-dups by IP/day.
-    function recordPopupClick() {
+    // Count a pop-up click once per visitor per UTC day, SEPARATELY for the
+    // script ad and the direct link (mode). localStorage stops repeat beacons
+    // from the same browser; the server also de-dups by IP/day/mode.
+    function recordPopupClick(mode) {
+      mode = (mode === 'script') ? 'script' : 'direct';
+      const today = new Date().toISOString().slice(0, 10);
       let send = true;
       try {
-        const key = 'ddpc_' + new Date().toISOString().slice(0, 10);
+        const key = 'ddpc_' + today + '_' + mode;
         if (localStorage.getItem(key)) { send = false; }
         else {
           localStorage.setItem(key, '1');
+          // Drop any stale day keys (keep both of today's mode keys).
           for (let i = localStorage.length - 1; i >= 0; i--) {
             const k = localStorage.key(i);
-            if (k && k.indexOf('ddpc_') === 0 && k !== key) localStorage.removeItem(k);
+            if (k && k.indexOf('ddpc_') === 0 && k.indexOf('ddpc_' + today) !== 0) {
+              localStorage.removeItem(k);
+            }
           }
         }
       } catch (_) {}
       if (!send) return;
       try {
-        if (navigator.sendBeacon) navigator.sendBeacon('/api/popup/click');
-        else fetch('/api/popup/click', { method: 'POST', keepalive: true });
+        const url = '/api/popup/click?mode=' + mode;
+        if (navigator.sendBeacon) navigator.sendBeacon(url);
+        else fetch(url, { method: 'POST', keepalive: true });
       } catch (_) {}
     }
 
@@ -437,7 +444,7 @@
         let done = false;
         function cleanup() { if (done) return; done = true; try { wrap.remove(); } catch (_) {} }
         wrap.addEventListener('click', function () {
-          recordPopupClick();                     // track this pop-up click
+          recordPopupClick('script');             // track this pop-up click (script ad)
           popupClickEvent = true;
           setTimeout(cleanup, 60);
         }, { once: true });
@@ -462,7 +469,7 @@
           if (t && t.closest && t.closest('#lp-download-btn')) return; // button owns this click
           popupClickEvent = e;
           document.removeEventListener('click', popupHandler, true);
-          recordPopupClick();                       // track this pop-up click
+          recordPopupClick('direct');               // track this pop-up click (direct link)
           const d = popupDecision;
           if (d && d.mode === 'direct' && d.url) {
             window.open(d.url, '_blank', 'noopener,noreferrer');

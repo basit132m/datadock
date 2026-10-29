@@ -2370,8 +2370,8 @@ async function loadPopupPage() {
   document.querySelectorAll('#pop-period-tabs .dl-period-btn').forEach(b => {
     b.classList.toggle('active', String(b.dataset.days) === String(popActiveDays));
   });
-  ['pop-stat-total','pop-stat-countries','pop-stat-avg'].forEach(id => {
-    document.getElementById(id).textContent = '…';
+  ['pop-stat-total','pop-stat-script','pop-stat-direct','pop-stat-countries','pop-stat-avg'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.textContent = '…';
   });
   ['pop-countries','pop-devices'].forEach(id => {
     document.getElementById(id).innerHTML = dlEmpty('Loading…');
@@ -2391,6 +2391,8 @@ async function loadPopupPage() {
 
   const total = data.total_clicks || 0;
   document.getElementById('pop-stat-total').textContent     = total.toLocaleString();
+  document.getElementById('pop-stat-script').textContent    = (data.script_clicks || 0).toLocaleString();
+  document.getElementById('pop-stat-direct').textContent    = (data.direct_clicks || 0).toLocaleString();
   document.getElementById('pop-stat-countries').textContent = (data.top_countries || []).length.toLocaleString();
   const avg = (!single && popActiveDays > 0) ? (total / popActiveDays).toFixed(1) : total.toLocaleString();
   document.getElementById('pop-stat-avg').textContent = avg;
@@ -2403,23 +2405,31 @@ async function loadPopupPage() {
   } else {
     if (timeCard) timeCard.style.display = '';
     const ctx = document.getElementById('pop-time-chart').getContext('2d');
+    const pr = popActiveDays <= 7 ? 4 : 2;
     popTimeChart = new Chart(ctx, {
       type: 'line',
       data: {
         labels: data.per_day.map(d => d.date),
-        datasets: [{
-          label: 'Pop-up clicks',
-          data: data.per_day.map(d => d.count),
-          borderColor: '#a855f7',
-          backgroundColor: 'rgba(168,85,247,.12)',
-          fill: true, tension: 0.4,
-          pointRadius: popActiveDays <= 7 ? 4 : 2,
-          pointBackgroundColor: '#a855f7',
-        }],
+        datasets: [
+          {
+            label: 'Script ad',
+            data: data.per_day.map(d => d.script || 0),
+            borderColor: '#6366f1',
+            backgroundColor: 'rgba(99,102,241,.12)',
+            fill: true, tension: 0.4, pointRadius: pr, pointBackgroundColor: '#6366f1',
+          },
+          {
+            label: 'Direct link',
+            data: data.per_day.map(d => d.direct || 0),
+            borderColor: '#059669',
+            backgroundColor: 'rgba(5,150,105,.12)',
+            fill: true, tension: 0.4, pointRadius: pr, pointBackgroundColor: '#059669',
+          },
+        ],
       },
       options: {
         responsive: true,
-        plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+        plugins: { legend: { display: true, position: 'bottom', labels: { font: { size: 12, family: 'Inter' }, padding: 12 } }, tooltip: { mode: 'index', intersect: false } },
         scales: {
           y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: 'rgba(0,0,0,.04)' } },
           x: { grid: { display: false }, ticks: { maxTicksLimit: popActiveDays <= 7 ? 7 : 10 } },

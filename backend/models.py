@@ -214,6 +214,7 @@ class PopupClick(Base):
     country      = Column(String(100), nullable=True)
     country_code = Column(String(2), nullable=True)
     device_type  = Column(String(20), nullable=True)                # Desktop / Mobile / Tablet
+    mode         = Column(String(10), nullable=True)                # 'script' or 'direct' (ad shown)
     click_count  = Column(Integer, default=0, nullable=False)
     last_seen    = Column(DateTime, nullable=False)
 

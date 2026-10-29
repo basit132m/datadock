@@ -313,38 +313,42 @@ async def _log_referrer(share_id: str, domain: str) -> None:
 
 _POPUP_SEEN_RETENTION_DAYS = 2
 
-async def _log_popup_click(ip: str, ua: str) -> None:
+async def _log_popup_click(ip: str, ua: str, mode: str = "direct") -> None:
     """Count ONE unique pop-up click into the daily aggregate.
-    Unique per (IP, UTC day): a hashed-IP de-dup row prevents double counting,
-    so repeat clicks by the same visitor on the same day are ignored. Storage
-    stays tiny — the aggregate keeps one row per (day, country, device), and the
-    de-dup table is pruned to the last couple of days so it never accumulates."""
+    Unique per (IP, UTC day, mode): a hashed-IP de-dup row prevents double
+    counting, so repeat clicks by the same visitor on the same day are ignored —
+    but the SCRIPT ad and the DIRECT link are tracked independently (one visitor
+    can count once for each kind in a day). Storage stays tiny — the aggregate
+    keeps one row per (day, country, device, mode), and the de-dup table is pruned
+    to the last couple of days so it never accumulates."""
     from database import SessionLocal
     from sqlalchemy import text as _t
+    mode = mode if mode in ("script", "direct") else "direct"
     os_name, device_type = _parse_ua(ua)
     country, country_code = _geolocate(ip)
     now = datetime.utcnow()
     day_str = now.strftime("%Y-%m-%d")
-    ip_hash = hashlib.sha256(f"{API_KEY}|{ip}|{day_str}".encode()).hexdigest()
+    ip_hash = hashlib.sha256(f"{API_KEY}|{ip}|{day_str}|{mode}".encode()).hexdigest()
     db = SessionLocal()
     try:
-        # De-dup: the UNIQUE(day, ip_hash) index makes the 2nd click per visitor
-        # per day fail to insert — those are not counted.
+        # De-dup: the UNIQUE(day, ip_hash) index makes the 2nd click of the SAME
+        # mode per visitor per day fail to insert — those are not counted. The
+        # mode is baked into ip_hash, so script and direct are counted separately.
         try:
             db.add(PopupClickSeen(day=day_str, ip_hash=ip_hash))
             db.commit()
         except Exception:
             db.rollback()
-            return  # already counted this visitor today
+            return  # already counted this visitor today (for this mode)
         # Increment the daily aggregate bucket (atomic update; insert if absent).
-        params = {"now": now, "day": day_str, "cc": country_code, "dev": device_type}
+        params = {"now": now, "day": day_str, "cc": country_code, "dev": device_type, "mode": mode}
         upd = ("UPDATE popup_clicks SET click_count = click_count + 1, last_seen = :now "
-               "WHERE day = :day AND country_code = :cc AND device_type = :dev")
+               "WHERE day = :day AND country_code = :cc AND device_type = :dev AND mode = :mode")
         if db.execute(_t(upd), params).rowcount == 0:
             try:
                 db.add(PopupClick(
                     id=str(uuid.uuid4()), day=day_str, country=country,
-                    country_code=country_code, device_type=device_type,
+                    country_code=country_code, device_type=device_type, mode=mode,
                     click_count=1, last_seen=now,
                 ))
                 db.commit()
@@ -2171,7 +2175,8 @@ async def record_popup_click(request: Request, background_tasks: BackgroundTasks
     Fire-and-forget: returns immediately, dedup + aggregation run in background."""
     ip = _client_ip(request)
     ua = request.headers.get("User-Agent", "")
-    background_tasks.add_task(_log_popup_click, ip, ua)
+    mode = request.query_params.get("mode", "direct")
+    background_tasks.add_task(_log_popup_click, ip, ua, mode)
     return Response(status_code=204)
 
 
@@ -2257,17 +2262,33 @@ async def get_popup_analytics(
 
     total = db.query(func.coalesce(func.sum(PopupClick.click_count), 0)).filter(*flt).scalar() or 0
 
+    # Split by what was shown: the SCRIPT ad vs the DIRECT link.
+    mode_rows = (
+        db.query(PopupClick.mode, func.sum(PopupClick.click_count))
+          .filter(*flt).group_by(PopupClick.mode).all()
+    )
+    by_mode = {(m or "direct"): int(c or 0) for m, c in mode_rows}
+    script_clicks = by_mode.get("script", 0)
+    direct_clicks = int(total) - script_clicks  # everything not script (incl. legacy NULL)
+
     per_day = []
     if not day:
         today = datetime.utcnow().date()
-        sums = dict(
-            db.query(PopupClick.day, func.sum(PopupClick.click_count))
-              .filter(*flt).group_by(PopupClick.day).all()
+        # Per day, per mode → stacked script/direct over time.
+        rows = (
+            db.query(PopupClick.day, PopupClick.mode, func.sum(PopupClick.click_count))
+              .filter(*flt).group_by(PopupClick.day, PopupClick.mode).all()
         )
+        by_day = {}
+        for dd, mm, cc in rows:
+            slot = by_day.setdefault(dd, {"script": 0, "direct": 0})
+            slot["script" if mm == "script" else "direct"] += int(cc or 0)
         for i in range(days - 1, -1, -1):
             d = today - timedelta(days=i)
+            slot = by_day.get(d.strftime("%Y-%m-%d"), {"script": 0, "direct": 0})
             per_day.append({"date": d.strftime("%b %d"),
-                            "count": int(sums.get(d.strftime("%Y-%m-%d"), 0) or 0)})
+                            "count": slot["script"] + slot["direct"],
+                            "script": slot["script"], "direct": slot["direct"]})
 
     country_rows = (
         db.query(PopupClick.country, PopupClick.country_code,
@@ -2290,6 +2311,8 @@ async def get_popup_analytics(
 
     return {
         "total_clicks": int(total),
+        "script_clicks": int(script_clicks),
+        "direct_clicks": int(direct_clicks),
         "per_day": per_day,
         "top_countries": top_countries,
         "devices": devices,
