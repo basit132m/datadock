@@ -191,16 +191,13 @@
 
   // ── Main init ──────────────────────────────────────────────────────────────
   async function init() {
-    // Buffer the very first eligible click so a click made WHILE the page is still
-    // loading its settings is never wasted — we replay it once the pop-up is ready.
-    // (The pop-up is wired only after several fetches resolve; without this, an
-    // early click would hit no handler at all.) Clicks on the download button are
-    // excluded — the button owns its own clicks.
+    // Buffer the very first click anywhere (INCLUDING the download button) so a
+    // click made WHILE the page is still loading its settings is never wasted — we
+    // replay it once the pop-up is ready. The pop-up always takes the first click
+    // of the visit; the download button only starts its own sequence afterwards.
     let _earlyClick = null, _popupDelivered = false, _popupTakeover = false;
     function _earlyCapture(e) {
       if (_popupTakeover || _earlyClick) return;
-      const t = e.target;
-      if (t && t.closest && t.closest('#lp-download-btn')) return;
       _earlyClick = e;
     }
     document.addEventListener('click', _earlyCapture, true);
@@ -497,9 +494,12 @@
     }
 
     // ── Pop-up delivery (direct ⇄ script rotation) — never waste a click ─────────
-    // One pop-up per visit, and the visitor's first eligible click always opens
-    // SOMETHING. Rules:
-    //  • Clicks on the download button are excluded (the button owns its clicks).
+    // The pop-up ALWAYS takes the first click of the visit — anywhere on the page,
+    // the download button included. The button does not react to that first click
+    // (its handler skips the pop-up's click, and in script mode the full-page
+    // overlay sits over the button and catches the click). Only AFTER the pop-up
+    // has fired does the button start its own sequence (direct link, then download).
+    // Rules:
     //  • A 'script' slot needs the ad network reachable — if an ad-blocker is active
     //    or no script is set, it falls back to the DIRECT link so nothing is wasted.
     //  • The direct handler only disarms after a window actually opened; a blocked
@@ -524,12 +524,12 @@
         recordPopupClick(mode === 'script' ? 'script' : 'direct');
         return true;
       }
-      // Arm the first-click handler for the direct link (capture phase).
+      // Arm the first-click handler for the direct link (capture phase). It fires on
+      // a click ANYWHERE, the download button included — popupClickEvent is set so
+      // the button's own handler skips this same click (the pop-up owns click #1).
       function armDirectPopup(url) {
         document.addEventListener('click', function h(e) {
           if (_popupDelivered) { document.removeEventListener('click', h, true); return; }
-          const t = e.target;
-          if (t && t.closest && t.closest('#lp-download-btn')) return; // button owns this click
           popupClickEvent = e;
           if (openPopupUrl('direct', url)) document.removeEventListener('click', h, true);
         }, true); // fires before any element handler
