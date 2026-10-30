@@ -100,15 +100,31 @@ def _landing_template() -> str:
     return _landing_tpl
 
 
+def _public_base(fallback: str = "") -> str:
+    """Canonical public origin for SEO URLs. Prefer SITE_URL; upgrade http→https
+    (the site is served over HTTPS, and canonicals/sitemaps must be consistent)."""
+    base = (os.getenv("SITE_URL", "") or fallback).rstrip("/")
+    if base.startswith("http://"):
+        base = "https://" + base[len("http://"):]
+    return base
+
+
 def _build_og_html(share_id: str, upload, base_url: str) -> str:
-    """Render landing.html with full SEO meta tags injected into <head>."""
+    """Render landing.html with SEO meta tags AND the real file content rendered
+    server-side (filename H1, type, size, date, counts). Without this the body is
+    a JS loading spinner, so crawlers see an empty/placeholder page and skip it —
+    server-rendering gives every download page real, unique, indexable content."""
     tpl = _landing_template()
 
     ext      = os.path.splitext(upload.filename or "")[1].lower()
     ext_label = ext.lstrip(".").upper() or "FILE"
     filename  = upload.filename or "File"
     size      = _fmt_bytes(upload.file_size or 0)
-    page_url  = f"{base_url}/f/{share_id}"
+    base      = _public_base(base_url)
+    page_url  = f"{base}/f/{share_id}"
+    date_str  = upload.completed_at.strftime("%b %d, %Y") if upload.completed_at else "—"
+    downloads = int(upload.downloads or 0)
+    views     = int(upload.views or 0)
 
     # Escape for HTML attribute context
     esc_name  = _html.escape(filename)
@@ -119,10 +135,20 @@ def _build_og_html(share_id: str, upload, base_url: str) -> str:
     )
 
     is_image = ext in _OG_IMAGE_EXTS
-    og_image = (f"{base_url}/api/f/{share_id}/preview" if is_image
-                else f"{base_url}/logo.webp")
+    og_image = (f"{base}/api/f/{share_id}/preview" if is_image
+                else f"{base}/logo.webp")
     og_img_alt = _html.escape(f"Preview of {filename}" if is_image else "DataDock")
     tw_card    = "summary_large_image" if is_image else "summary"
+
+    # Breadcrumb structured data (safe, matches the visible page).
+    ld = json.dumps({
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {"@type": "ListItem", "position": 1, "name": "DataDock", "item": base or "/"},
+            {"@type": "ListItem", "position": 2, "name": filename, "item": page_url},
+        ],
+    }, ensure_ascii=False)
 
     seo_block = (
         f'<title>{esc_title}</title>\n'
@@ -142,9 +168,34 @@ def _build_og_html(share_id: str, upload, base_url: str) -> str:
         f'    <meta name="twitter:title"            content="{esc_name}" />\n'
         f'    <meta name="twitter:description"      content="{esc_desc}" />\n'
         f'    <meta name="twitter:image"            content="{og_image}" />\n'
-        f'    <meta name="twitter:image:alt"        content="{og_img_alt}" />'
+        f'    <meta name="twitter:image:alt"        content="{og_img_alt}" />\n'
+        f'    <script type="application/ld+json">{ld}</script>'
     )
-    return tpl.replace("<title>DataDock – Download</title>", seo_block, 1)
+
+    html = tpl.replace("<title>DataDock – Download</title>", seo_block, 1)
+
+    # Server-render the real content into the body: show the file card immediately
+    # (hide the loading spinner) and fill the real values, so the page is NOT an
+    # empty JS shell to crawlers. JS still runs and re-fills the same fields.
+    html = html.replace('<div id="lc-loading" class="lp-state">',
+                        '<div id="lc-loading" class="lp-state" hidden>', 1)
+    html = html.replace('<div id="lc-card" class="lp-card" hidden>',
+                        '<div id="lc-card" class="lp-card">', 1)
+    html = html.replace('<div class="lp-ext-chip" id="lp-type">FILE</div>',
+                        f'<div class="lp-ext-chip" id="lp-type">{_html.escape(ext_label)}</div>', 1)
+    html = html.replace('<h1 class="lp-filename" id="lp-filename">filename.zip</h1>',
+                        f'<h1 class="lp-filename" id="lp-filename">{esc_name}</h1>', 1)
+    html = html.replace('<span class="lp-meta-val" id="lp-size">—</span>',
+                        f'<span class="lp-meta-val" id="lp-size">{_html.escape(size)}</span>', 1)
+    html = html.replace('<span class="lp-meta-val" id="lp-date">—</span>',
+                        f'<span class="lp-meta-val" id="lp-date">{_html.escape(date_str)}</span>', 1)
+    html = html.replace('<span class="lp-meta-val" id="lp-downloads">0</span>',
+                        f'<span class="lp-meta-val" id="lp-downloads">{downloads}</span>', 1)
+    html = html.replace('<span class="lp-meta-val" id="lp-views">0</span>',
+                        f'<span class="lp-meta-val" id="lp-views">{views}</span>', 1)
+    html = html.replace('<span class="lp-dl-size" id="lp-dl-size">—</span>',
+                        f'<span class="lp-dl-size" id="lp-dl-size">{_html.escape(size)}</span>', 1)
+    return html
 
 GEOIP_DB_PATH      = os.getenv("GEOIP_DB_PATH", "/app/backend/data/GeoLite2-Country.mmdb")
 DEDUP_WINDOW_SECS  = 3600  # same IP + same file within 1 hour = duplicate

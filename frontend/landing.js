@@ -227,6 +227,7 @@
 
     if (fileRes.status !== 'fulfilled') {
       document.getElementById('lc-loading').hidden = true;
+      document.getElementById('lc-card').hidden = true;   // hide any server-rendered card
       document.getElementById('lc-error').hidden = false;
       return;
     }
@@ -234,6 +235,7 @@
     // Retired file — show a "max downloads reached, come back tomorrow" notice
     if (fileRes.value && fileRes.value.state === 'quota_reached') {
       document.getElementById('lc-loading').hidden = true;
+      document.getElementById('lc-card').hidden = true;   // hide any server-rendered card
       if (fileRes.value.filename) {
         document.getElementById('lc-quota-filename').textContent = fileRes.value.filename;
       }
