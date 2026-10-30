@@ -2571,7 +2571,9 @@ async function loadRotationPage() {
     <div style="margin-top:.6rem;font-size:.88rem">${
       d.your_locked_url
         ? `<span style="color:var(--success);font-weight:600"><i class="fa-solid fa-lock"></i> Geo-locked</span> — your pop-up always opens:<br><span style="font-family:monospace;color:var(--muted)">${escHtml(d.your_locked_url)}</span>`
-        : `<span style="color:var(--muted)"><i class="fa-solid fa-unlock"></i> Not geo-locked — you follow the normal direct/script rotation above.</span>`
+        : (d.geo_rules.length
+            ? `<span style="color:var(--warning,#d97706);font-weight:600"><i class="fa-solid fa-unlock"></i> Not geo-locked.</span> ${d.geo_rules.length} geo rule(s) are set (${d.geo_rules.map(r => escHtml(r.country_code)).join(', ')}), but <strong>none for ${cc ? escHtml(cc) : 'your country'}</strong>, so you follow the normal direct/script rotation.`
+            : `<span style="color:var(--warning,#d97706);font-weight:600"><i class="fa-solid fa-unlock"></i> No geo rules are configured.</span> To force a country to a link, add a rule like <code>${cc ? escHtml(cc) : 'PK'}=https://…</code> in <strong>Ads → Pop-up — Geo-locked Direct Links</strong> (not the Pop-up Ad URL field).`)
     }</div>
     ${(!cc) ? '<div style="margin-top:.6rem;font-size:.8rem;color:var(--warning,#d97706)">Country is Unknown — geolocation did not resolve your IP, so geo rules can\'t match. (Private/local IP, or the geo database/API is unavailable.)</div>' : ''}`;
 }
