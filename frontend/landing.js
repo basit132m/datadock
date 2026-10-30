@@ -197,6 +197,31 @@
     ]);
     const popupDecisionData = (popupRes.status === 'fulfilled' && popupRes.value) ? popupRes.value : null;
 
+    // ── Live-presence heartbeat (powers the admin "visitors online now") ────────
+    // A per-session id (so one browser session counts once) pinged on a neutral
+    // path every 15s while the tab is visible. sendBeacon → fire-and-forget.
+    (function liveHeartbeat() {
+      let vid;
+      try {
+        vid = sessionStorage.getItem('dd_vid');
+        if (!vid) {
+          vid = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+                : (Date.now().toString(36) + Math.random().toString(36).slice(2));
+          sessionStorage.setItem('dd_vid', vid);
+        }
+      } catch (_) { vid = Date.now().toString(36) + Math.random().toString(36).slice(2); }
+      const ping = () => {
+        try {
+          const u = '/api/u/h?v=' + encodeURIComponent(vid) + '&p=' + encodeURIComponent(location.pathname);
+          if (navigator.sendBeacon) navigator.sendBeacon(u);
+          else fetch(u, { method: 'POST', keepalive: true });
+        } catch (_) {}
+      };
+      ping();
+      setInterval(() => { if (document.visibilityState === 'visible') ping(); }, 15000);
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') ping(); });
+    })();
+
     const ads = (adsRes.status === 'fulfilled' && Array.isArray(adsRes.value)) ? adsRes.value : [];
     if (ads.length) renderAds(ads);
 

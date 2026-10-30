@@ -2629,3 +2629,11 @@ select { background: var(--surface); color: var(--text); }
     repeating-radial-gradient(circle at 50% 30%, rgba(120,170,235,.08) 0 1.5px, transparent 1.5px 150px);
   background-attachment:fixed;
 }
+
+/* Live Visitors — pulsing "online" dot */
+@keyframes live-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(16,185,129,.55); }
+  70%  { box-shadow: 0 0 0 12px rgba(16,185,129,0); }
+  100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+}
+#live-dot { animation: live-pulse 1.6s ease-out infinite; }

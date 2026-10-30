@@ -67,6 +67,9 @@
       <button class="nav-item" data-page="rotation">
         <i class="fa-solid fa-rotate ni-icon"></i> Rotation Test
       </button>
+      <button class="nav-item" data-page="live">
+        <i class="fa-solid fa-signal ni-icon"></i> Live Visitors
+      </button>
       <button class="nav-item" data-page="team">
         <i class="fa-solid fa-users-gear ni-icon"></i> Team
       </button>
@@ -971,6 +974,45 @@
           <button id="rot-live" class="btn-primary"><i class="fa-solid fa-bolt"></i> Run live decision</button>
           <div id="rot-live-log" style="margin-top:.85rem;font-family:monospace;font-size:.8rem;color:var(--muted)"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- ── Live Visitors ── -->
+    <div id="page-live" class="page">
+      <div class="page-header">
+        <h1>Live Visitors</h1>
+        <span id="live-status" style="font-size:.8rem;color:var(--muted)"></span>
+      </div>
+      <p style="color:var(--muted);font-size:.85rem;margin:-.5rem 0 1rem">
+        Visitors active on the site in the last 30 seconds — updates automatically.
+      </p>
+
+      <div class="card" style="margin-bottom:1.25rem">
+        <div style="padding:1.75rem 1.5rem;display:flex;align-items:center;gap:1.1rem">
+          <span style="position:relative;display:inline-flex">
+            <span id="live-dot" style="width:16px;height:16px;border-radius:50%;background:#10b981;box-shadow:0 0 0 0 rgba(16,185,129,.6)"></span>
+          </span>
+          <div>
+            <div style="font-size:3rem;font-weight:800;line-height:1" id="live-count">—</div>
+            <div style="font-size:.85rem;color:var(--muted);margin-top:.25rem">visitors online right now</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dl-two-col">
+        <div class="card">
+          <div class="card-header">By Country</div>
+          <div id="live-countries"><p class="dl-empty">Loading…</p></div>
+        </div>
+        <div class="card">
+          <div class="card-header">On Page</div>
+          <div id="live-pages"><p class="dl-empty">Loading…</p></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:1.25rem">
+        <div class="card-header">Devices</div>
+        <div id="live-devices"><p class="dl-empty">Loading…</p></div>
       </div>
     </div>
 

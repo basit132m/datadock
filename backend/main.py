@@ -441,6 +441,36 @@ async def _log_popup_click(ip: str, ua: str, mode: str = "direct") -> None:
         db.close()
 
 
+async def _log_presence(vid: str, page: str, ip: str, ua: str) -> None:
+    """Record/refresh one live-visitor session (heartbeat). Upsert keyed by the
+    client's session id so one browser session counts once; the row is pruned a
+    couple of minutes after the last heartbeat, so the table only ever holds
+    currently-active visitors."""
+    from database import SessionLocal
+    from sqlalchemy import text as _t
+    _os, device = _parse_ua(ua)
+    country, cc = _geolocate(ip)          # allow_api=False → fast, no network on the hot path
+    now = datetime.utcnow()
+    db = SessionLocal()
+    try:
+        db.execute(_t(
+            "INSERT INTO live_presence (vid, last_seen, page, country, country_code, device) "
+            "VALUES (:vid, :now, :page, :country, :cc, :dev) "
+            "ON CONFLICT(vid) DO UPDATE SET last_seen=:now, page=:page, "
+            "country=:country, country_code=:cc, device=:dev"
+        ), {"vid": vid, "now": now, "page": page[:200], "country": country, "cc": cc, "dev": device})
+        db.commit()
+        # Opportunistically prune stale sessions (~1 in 16 heartbeats).
+        if uuid.uuid4().int & 15 == 0:
+            cutoff = now - timedelta(seconds=120)
+            db.execute(_t("DELETE FROM live_presence WHERE last_seen < :c"), {"c": cutoff})
+            db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+
 def _gen_worker_token(file_key: str, filename: str, content_type: str,
                       token_type: str = "r2", url: Optional[str] = None) -> str:
     """Return a short-lived HMAC-SHA256-signed token for the Cloudflare Worker.
@@ -606,6 +636,7 @@ _RL_RULES = [
     ("POST /api/reports",         5,    3600),  # file reports
     ("POST /api/u/e",             30,   60),    # pop-up click beacon (neutral path; ad-blocker-safe)
     ("POST /api/popup/click",     30,   60),    # legacy alias of the above
+    ("POST /api/u/h",             120,  60),    # live-presence heartbeat (~1 per 15s per tab)
     ("POST /api/support",         30,   3600),  # support messages
     ("POST /api/f/",              60,   60),    # download token mint
     ("GET /api/public/",          240,  60),    # browse search / stats
@@ -2258,6 +2289,55 @@ async def record_popup_click(request: Request, background_tasks: BackgroundTasks
     mode = request.query_params.get("mode", "direct")
     background_tasks.add_task(_log_popup_click, ip, ua, mode)
     return Response(status_code=204)
+
+
+@app.post("/api/u/h", include_in_schema=False)
+async def live_heartbeat(request: Request, background_tasks: BackgroundTasks):
+    """Live-presence heartbeat from an open public page (neutral path so it isn't
+    ad-blocked). Fire-and-forget upsert keyed by the client's session id."""
+    vid = (request.query_params.get("v", "") or "")[:64]
+    page = request.query_params.get("p", "") or ""
+    if vid:
+        ip = _client_ip(request)
+        ua = request.headers.get("User-Agent", "")
+        background_tasks.add_task(_log_presence, vid, page, ip, ua)
+    return Response(status_code=204)
+
+
+@app.get("/api/admin/live")
+async def live_visitors(db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Snapshot of visitors active in the last 30s (Google-Analytics-style
+    'online now'), with country / page / device breakdowns. Also prunes stale rows."""
+    from sqlalchemy import text as _t
+    now = datetime.utcnow()
+    active_cut = now - timedelta(seconds=30)
+    try:
+        db.execute(_t("DELETE FROM live_presence WHERE last_seen < :c"),
+                   {"c": now - timedelta(seconds=120)})
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    rows = db.execute(_t(
+        "SELECT country, country_code, page, device FROM live_presence WHERE last_seen > :c"
+    ), {"c": active_cut}).fetchall()
+
+    active = len(rows)
+    from collections import Counter
+    c_country, c_page, c_device = Counter(), Counter(), Counter()
+    for country, cc, page, device in rows:
+        c_country[(country or "Unknown", cc or "??")] += 1
+        c_page[page or "/"] += 1
+        c_device[device or "Unknown"] += 1
+
+    return {
+        "active": active,
+        "server_time": now.isoformat() + "Z",
+        "by_country": [{"country": k[0], "country_code": k[1], "count": v}
+                       for k, v in c_country.most_common(12)],
+        "by_page": [{"page": k, "count": v} for k, v in c_page.most_common(12)],
+        "by_device": [{"device": k, "count": v} for k, v in c_device.most_common(6)],
+    }
 
 
 def _parse_popup_geo_rules(raw: str) -> dict:

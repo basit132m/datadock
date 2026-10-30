@@ -90,6 +90,10 @@ def _migrate():
             # Short-lived unique-visitor de-dup keys (hashed IP per day; auto-pruned)
             "CREATE TABLE IF NOT EXISTS popup_click_seen (id INTEGER PRIMARY KEY AUTOINCREMENT, day VARCHAR(10) NOT NULL, ip_hash VARCHAR(64) NOT NULL)",
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_popup_seen ON popup_click_seen (day, ip_hash)",
+            # Live presence — one row per active visitor session, upserted by a
+            # heartbeat and pruned after ~2 min. Bounded by CONCURRENT visitors.
+            "CREATE TABLE IF NOT EXISTS live_presence (vid VARCHAR(64) PRIMARY KEY, last_seen DATETIME NOT NULL, page VARCHAR(200), country VARCHAR(100), country_code VARCHAR(2), device VARCHAR(20))",
+            "CREATE INDEX IF NOT EXISTS ix_live_presence_seen ON live_presence (last_seen)",
         ]:
             try:
                 conn.execute(text(sql))

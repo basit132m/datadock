@@ -2609,6 +2609,81 @@ async function rotRunLive() {
   log.innerHTML = `${t} — ${mode}${url}` + (log.innerHTML ? '<br>' + log.innerHTML : '');
 }
 
+// ── Live Visitors ──────────────────────────────────────────────────────────────
+let _liveTimer = null;
+
+function stopLivePolling() {
+  if (_liveTimer) { clearInterval(_liveTimer); _liveTimer = null; }
+}
+
+async function loadLivePage() {
+  stopLivePolling();
+  await refreshLive();
+  _liveTimer = setInterval(refreshLive, 4000);   // GA-style live refresh
+}
+
+async function refreshLive() {
+  let d;
+  try {
+    d = await apiFetch('GET', '/api/admin/live');
+  } catch (e) {
+    const st = document.getElementById('live-status');
+    if (st) st.textContent = 'Failed to update';
+    return;
+  }
+  document.getElementById('live-count').textContent = (d.active || 0).toLocaleString();
+  const st = document.getElementById('live-status');
+  if (st) st.textContent = 'Updated ' + new Date().toLocaleTimeString();
+
+  // Countries
+  const cEl = document.getElementById('live-countries');
+  const countries = d.by_country || [];
+  if (!countries.length) {
+    cEl.innerHTML = dlEmpty('No one online right now.');
+  } else {
+    const max = countries[0].count || 1;
+    cEl.innerHTML = countries.map(c => `
+      <div class="dl-row">
+        <span class="dl-flag">${countryFlag(c.country_code)}</span>
+        <span class="dl-row-label">${escHtml(c.country || 'Unknown')}</span>
+        <div class="dl-bar-wrap"><div class="dl-bar" style="width:${Math.round(c.count / max * 100)}%"></div></div>
+        <span class="dl-row-count">${c.count.toLocaleString()}</span>
+      </div>`).join('');
+  }
+
+  // Pages
+  const pEl = document.getElementById('live-pages');
+  const pages = d.by_page || [];
+  if (!pages.length) {
+    pEl.innerHTML = dlEmpty('—');
+  } else {
+    const maxP = pages[0].count || 1;
+    pEl.innerHTML = pages.map(p => `
+      <div class="dl-row">
+        <span class="dl-row-label" title="${escHtml(p.page)}" style="font-family:monospace;font-size:.8rem">${escHtml(p.page || '/')}</span>
+        <div class="dl-bar-wrap"><div class="dl-bar dl-bar-os" style="width:${Math.round(p.count / maxP * 100)}%"></div></div>
+        <span class="dl-row-count">${p.count.toLocaleString()}</span>
+      </div>`).join('');
+  }
+
+  // Devices
+  const dEl = document.getElementById('live-devices');
+  const devices = d.by_device || [];
+  if (!devices.length) {
+    dEl.innerHTML = dlEmpty('—');
+  } else {
+    const maxD = devices[0].count || 1;
+    const DEV_ICONS = { Desktop: 'fa-desktop', Mobile: 'fa-mobile-screen', Tablet: 'fa-tablet-screen-button', Unknown: 'fa-circle-question' };
+    dEl.innerHTML = devices.map(x => `
+      <div class="dl-row">
+        <span class="dl-os-icon"><i class="fa-solid ${DEV_ICONS[x.device] || 'fa-circle-question'}"></i></span>
+        <span class="dl-row-label">${escHtml(x.device)}</span>
+        <div class="dl-bar-wrap"><div class="dl-bar" style="width:${Math.round(x.count / maxD * 100)}%"></div></div>
+        <span class="dl-row-count">${x.count.toLocaleString()}</span>
+      </div>`).join('');
+  }
+}
+
 // ── Access Requests ───────────────────────────────────────────────────────────
 
 let reqActiveFilter = '';
@@ -4055,7 +4130,7 @@ async function deleteBacklink(id, label) {
 
 // ── Page navigation ───────────────────────────────────────────────────────────
 
-const ADMIN_PAGES = ['dashboard', 'ads', 'storage', 'downloads', 'team', 'requests', 'duplicates', 'filemanager', 'cleanup', 'filereports', 'backlinks', 'referrers', 'popup', 'rotation'];
+const ADMIN_PAGES = ['dashboard', 'ads', 'storage', 'downloads', 'team', 'requests', 'duplicates', 'filemanager', 'cleanup', 'filereports', 'backlinks', 'referrers', 'popup', 'rotation', 'live'];
 // 'support' is visible to both roles — intentionally not in ADMIN_PAGES
 
 function applyRoleUI() {
@@ -4073,6 +4148,7 @@ function showPage(page) {
   // Redirect members away from admin-only pages
   if (userRole !== 'admin' && ADMIN_PAGES.includes(page)) page = 'upload';
   if (!document.getElementById(`page-${page}`)) page = 'dashboard';
+  stopLivePolling();   // stop the Live Visitors auto-refresh when leaving that page
   // Remember the page in the URL so a reload comes back here
   if (location.hash !== '#' + page) history.replaceState(null, '', '#' + page);
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -4089,6 +4165,7 @@ function showPage(page) {
   if (page === 'referrers')  loadReferrersPage();
   if (page === 'popup')      loadPopupPage();
   if (page === 'rotation')   loadRotationPage();
+  if (page === 'live')       loadLivePage();
   if (page === 'team')       loadTeamPage();
   if (page === 'requests')   loadRequestsPage();
   if (page === 'support')    loadSupportPage();
