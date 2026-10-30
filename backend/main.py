@@ -140,7 +140,8 @@ def _build_og_html(share_id: str, upload, base_url: str) -> str:
     og_img_alt = _html.escape(f"Preview of {filename}" if is_image else "DataDock")
     tw_card    = "summary_large_image" if is_image else "summary"
 
-    # Breadcrumb structured data (safe, matches the visible page).
+    # Breadcrumb structured data (matches the visible page). Escape '<', '>' and
+    # '&' so a filename containing e.g. "</script>" can't break out of the tag.
     ld = json.dumps({
         "@context": "https://schema.org",
         "@type": "BreadcrumbList",
@@ -148,7 +149,7 @@ def _build_og_html(share_id: str, upload, base_url: str) -> str:
             {"@type": "ListItem", "position": 1, "name": "DataDock", "item": base or "/"},
             {"@type": "ListItem", "position": 2, "name": filename, "item": page_url},
         ],
-    }, ensure_ascii=False)
+    }, ensure_ascii=False).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 
     seo_block = (
         f'<title>{esc_title}</title>\n'
