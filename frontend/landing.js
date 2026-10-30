@@ -395,7 +395,10 @@
       } catch (_) {}
       if (!send) return;
       try {
-        const url = '/api/popup/click?mode=' + mode;
+        // Neutral path — the old /api/popup/click was blocked by ad-blockers
+        // (the words 'popup'/'click' match privacy filters), which silently
+        // stopped tracking for visitors running a blocker.
+        const url = '/api/u/e?mode=' + mode;
         if (navigator.sendBeacon) navigator.sendBeacon(url);
         else fetch(url, { method: 'POST', keepalive: true });
       } catch (_) {}

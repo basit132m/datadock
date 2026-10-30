@@ -193,6 +193,48 @@ def _get_geoip_reader():
     return _geoip_reader
 
 
+def _download_geoip_db() -> bool:
+    """Best-effort: if no local IP-to-Country DB is present, download the FREE
+    db-ip.com 'IP to Country Lite' database (MaxMind-DB format, readable by geoip2,
+    NO license key required) to GEOIP_DB_PATH. This makes pop-up geo-locking and
+    the analytics country breakdown work out of the box, with no per-request API
+    calls. Returns True if a usable DB is in place. Safe to call repeatedly."""
+    import os, gzip, urllib.request
+    from datetime import date
+    path = GEOIP_DB_PATH
+    try:
+        if os.path.exists(path) and os.path.getsize(path) > 100_000:
+            return True                       # already have a DB (GeoLite2 or db-ip)
+    except Exception:
+        pass
+    y, m = date.today().year, date.today().month
+    months = []
+    for _ in range(3):                        # current month + two previous (CDN lag)
+        months.append(f"{y:04d}-{m:02d}")
+        m -= 1
+        if m == 0:
+            m, y = 12, y - 1
+    for ym in months:
+        url = f"https://download.db-ip.com/free/dbip-country-lite-{ym}.mmdb.gz"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "datadock/1.0"})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                data = gzip.decompress(r.read())
+            if len(data) < 100_000:
+                continue
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            tmp = path + ".tmp"
+            with open(tmp, "wb") as f:
+                f.write(data)
+            os.replace(tmp, path)             # atomic swap
+            global _geoip_reader
+            _geoip_reader = None              # force re-open with the new file
+            return True
+        except Exception:
+            continue
+    return False
+
+
 def _geolocate_api(ip: str) -> tuple:
     """Best-effort geolocation via a free HTTPS API (no key), used only when the
     local GeoLite2 DB is missing or has no match. Short timeout; returns
@@ -216,12 +258,13 @@ def _geolocate_api(ip: str) -> tuple:
     return ("Unknown", "??")
 
 
-def _geolocate(ip: str) -> tuple:
-    """Return (country, country_code). Tries the local MaxMind GeoLite2 DB first,
-    then a free HTTPS API when the DB is missing or has no match (so geo features
-    like pop-up geo-locking still work without the local DB). Results are cached
-    in memory. Note the API path blocks on the network — in async request handlers
-    call this via asyncio.to_thread so it never blocks the event loop."""
+def _geolocate(ip: str, allow_api: bool = False) -> tuple:
+    """Return (country, country_code) from the local MaxMind GeoLite2 DB.
+    When allow_api=True and the DB is missing or has no match, fall back to a
+    free HTTPS API so geo features (pop-up geo-locking) still work without the
+    local DB. The API path BLOCKS on the network, so pass allow_api=True ONLY
+    off the event loop (e.g. asyncio.to_thread); the hot tracking paths call this
+    with allow_api=False so they never block. Results are cached in memory."""
     if not ip or ip in ("127.0.0.1", "::1", ""):
         return "Local", "??"
     if ip in _geo_cache:
@@ -236,8 +279,10 @@ def _geolocate(ip: str) -> tuple:
                 result = (response.country.name or "Unknown", cc.upper())
         except Exception:
             result = None
-    if result is None:                      # DB missing or no match → API fallback
+    if result is None and allow_api:        # DB missing or no match → API fallback
         result = _geolocate_api(ip)
+    if result is None:
+        result = ("Unknown", "??")
     if result[1] and result[1] != "??":     # only cache resolved results (retry failures)
         if len(_geo_cache) > 20_000:        # cap memory growth
             _geo_cache.clear()
@@ -559,7 +604,8 @@ _rl_buckets: dict = {}  # (rule, ip) -> deque[monotonic timestamps]
 _RL_RULES = [
     ("POST /api/access-requests", 5,    3600),  # access-request form
     ("POST /api/reports",         5,    3600),  # file reports
-    ("POST /api/popup/click",     30,   60),    # pop-up click beacon
+    ("POST /api/u/e",             30,   60),    # pop-up click beacon (neutral path; ad-blocker-safe)
+    ("POST /api/popup/click",     30,   60),    # legacy alias of the above
     ("POST /api/support",         30,   3600),  # support messages
     ("POST /api/f/",              60,   60),    # download token mint
     ("GET /api/public/",          240,  60),    # browse search / stats
@@ -682,6 +728,9 @@ async def _startup():
     init_db()
     _seed_master_key()
     asyncio.create_task(_uptime_heartbeat_loop())
+    # Fetch a free local IP-to-Country DB in the background if none is present, so
+    # geo-locking + country analytics work without per-request API calls.
+    asyncio.create_task(asyncio.to_thread(_download_geoip_db))
 
 
 _APP_START = datetime.utcnow()
@@ -2196,9 +2245,13 @@ async def get_referrer_analytics(
     }
 
 
-@app.post("/api/popup/click", include_in_schema=False)
+@app.post("/api/u/e", include_in_schema=False)
+@app.post("/api/popup/click", include_in_schema=False)  # legacy alias (kept for cached pages)
 async def record_popup_click(request: Request, background_tasks: BackgroundTasks):
     """Public beacon from the download page — counts one pop-up ad click.
+    Served at a NEUTRAL path (/api/u/e): the old /api/popup/click path was blocked
+    by ad-blockers (the words 'popup'/'click' match privacy filters), which silently
+    stopped pop-up click tracking for visitors running a blocker.
     Fire-and-forget: returns immediately, dedup + aggregation run in background."""
     ip = _client_ip(request)
     ua = request.headers.get("User-Agent", "")
@@ -2244,7 +2297,7 @@ async def popup_decision(request: Request, db: Session = Depends(get_db)):
     # when the local DB is missing), so run it off the event loop.
     rules = _parse_popup_geo_rules(_get_setting(db, "popup_geo_rules"))
     if rules:
-        _country, cc = await asyncio.to_thread(_geolocate, ip)
+        _country, cc = await asyncio.to_thread(_geolocate, ip, True)  # allow_api off the loop
         if cc and cc.upper() in rules:
             return {"mode": "direct", "url": rules[cc.upper()]}
 
