@@ -486,14 +486,16 @@
                      (popupScript ? 'script' : (_directUrl ? 'direct' : 'none'));
       if (_effMode === 'script' && !popupScript) _effMode = _directUrl ? 'direct' : 'none';
 
-      // Open a direct pop-up URL once; returns false (not delivered) if blocked.
+      // Open a direct pop-up URL once and COUNT it. Called only from inside a real
+      // click handler (a user gesture), so the open succeeds. We must NOT gate the
+      // count on window.open's return value: with 'noopener' the browser always
+      // returns null even on success, which previously stopped direct clicks from
+      // being counted. So count first, then open.
       function openPopupUrl(url) {
         if (_popupDelivered || !url) return false;
-        let w = null;
-        try { w = window.open(url, '_blank', 'noopener,noreferrer'); } catch (_) {}
-        if (!w) return false;                        // blocked → allow a retry
-        _popupDelivered = true;
-        recordPopupClick('direct');
+        _popupDelivered = true;                      // one pop-up per visit
+        recordPopupClick('direct');                  // count it (we're in a user gesture)
+        try { window.open(url, '_blank', 'noopener,noreferrer'); } catch (_) {}
         return true;
       }
       // Arm the first-click handler for the direct link (capture phase). It fires on
@@ -518,8 +520,8 @@
         const ok = runPopupScriptOverlay(popupScript);
         if (!ok && _directUrl) armDirectPopup(_directUrl);
       } else if (_effMode === 'direct' && _directUrl) {
-        // Replay a click captured during load; otherwise arm for the first click.
-        if (!(_earlyClick && openPopupUrl(_directUrl))) armDirectPopup(_directUrl);
+        // Open + count the direct link on the first real click (a user gesture).
+        armDirectPopup(_directUrl);
       }
     }
 
