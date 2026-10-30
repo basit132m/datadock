@@ -459,11 +459,16 @@ async def _log_presence(vid: str, page: str, ip: str, ua: str) -> None:
             "ON CONFLICT(vid) DO UPDATE SET last_seen=:now, page=:page, "
             "country=:country, country_code=:cc, device=:dev"
         ), {"vid": vid, "now": now, "page": page[:200], "country": country, "cc": cc, "dev": device})
+        # Count this session in the current UTC minute (for the per-minute chart).
+        db.execute(_t("INSERT OR IGNORE INTO live_minute_seen (minute, vid) VALUES (:m, :vid)"),
+                   {"m": now.strftime("%Y-%m-%dT%H:%M"), "vid": vid})
         db.commit()
-        # Opportunistically prune stale sessions (~1 in 16 heartbeats).
+        # Opportunistically prune stale rows (~1 in 16 heartbeats).
         if uuid.uuid4().int & 15 == 0:
-            cutoff = now - timedelta(seconds=120)
-            db.execute(_t("DELETE FROM live_presence WHERE last_seen < :c"), {"c": cutoff})
+            db.execute(_t("DELETE FROM live_presence WHERE last_seen < :c"),
+                       {"c": now - timedelta(seconds=120)})
+            db.execute(_t("DELETE FROM live_minute_seen WHERE minute < :m"),
+                       {"m": (now - timedelta(minutes=35)).strftime("%Y-%m-%dT%H:%M")})
             db.commit()
     except Exception:
         db.rollback()
@@ -2330,9 +2335,21 @@ async def live_visitors(db: Session = Depends(get_db), _=Depends(require_admin))
         c_page[page or "/"] += 1
         c_device[device or "Unknown"] += 1
 
+    # Per-minute distinct visitors for the last 30 minutes (realtime chart).
+    since = (now - timedelta(minutes=29)).strftime("%Y-%m-%dT%H:%M")
+    mcounts = dict(db.execute(_t(
+        "SELECT minute, COUNT(*) FROM live_minute_seen WHERE minute >= :s GROUP BY minute"
+    ), {"s": since}).fetchall())
+    per_minute = []
+    for i in range(29, -1, -1):
+        m = now - timedelta(minutes=i)
+        per_minute.append({"label": m.strftime("%H:%M"),
+                           "count": int(mcounts.get(m.strftime("%Y-%m-%dT%H:%M"), 0) or 0)})
+
     return {
         "active": active,
         "server_time": now.isoformat() + "Z",
+        "per_minute": per_minute,
         "by_country": [{"country": k[0], "country_code": k[1], "count": v}
                        for k, v in c_country.most_common(12)],
         "by_page": [{"page": k, "count": v} for k, v in c_page.most_common(12)],

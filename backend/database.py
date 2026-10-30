@@ -94,6 +94,10 @@ def _migrate():
             # heartbeat and pruned after ~2 min. Bounded by CONCURRENT visitors.
             "CREATE TABLE IF NOT EXISTS live_presence (vid VARCHAR(64) PRIMARY KEY, last_seen DATETIME NOT NULL, page VARCHAR(200), country VARCHAR(100), country_code VARCHAR(2), device VARCHAR(20))",
             "CREATE INDEX IF NOT EXISTS ix_live_presence_seen ON live_presence (last_seen)",
+            # Distinct active sessions per minute (for the realtime per-minute chart);
+            # pruned to the last ~35 min, so it stays tiny.
+            "CREATE TABLE IF NOT EXISTS live_minute_seen (minute VARCHAR(16) NOT NULL, vid VARCHAR(64) NOT NULL, PRIMARY KEY (minute, vid))",
+            "CREATE INDEX IF NOT EXISTS ix_live_minute ON live_minute_seen (minute)",
         ]:
             try:
                 conn.execute(text(sql))

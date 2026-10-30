@@ -984,35 +984,43 @@
         <span id="live-status" style="font-size:.8rem;color:var(--muted)"></span>
       </div>
       <p style="color:var(--muted);font-size:.85rem;margin:-.5rem 0 1rem">
-        Visitors active on the site in the last 30 seconds — updates automatically.
+        Realtime activity on the site — updates automatically every few seconds.
       </p>
 
+      <!-- Hero: big number + per-minute bar chart (GA Realtime style) -->
       <div class="card" style="margin-bottom:1.25rem">
-        <div style="padding:1.75rem 1.5rem;display:flex;align-items:center;gap:1.1rem">
-          <span style="position:relative;display:inline-flex">
-            <span id="live-dot" style="width:16px;height:16px;border-radius:50%;background:#10b981;box-shadow:0 0 0 0 rgba(16,185,129,.6)"></span>
-          </span>
-          <div>
-            <div style="font-size:3rem;font-weight:800;line-height:1" id="live-count">—</div>
-            <div style="font-size:.85rem;color:var(--muted);margin-top:.25rem">visitors online right now</div>
+        <div style="padding:1.5rem;display:flex;gap:1.75rem;flex-wrap:wrap;align-items:flex-start">
+          <div style="display:flex;align-items:center;gap:.9rem;min-width:220px">
+            <span style="position:relative;display:inline-flex">
+              <span id="live-dot" style="width:14px;height:14px;border-radius:50%;background:#10b981"></span>
+            </span>
+            <div>
+              <div style="font-size:3.25rem;font-weight:800;line-height:1" id="live-count">—</div>
+              <div style="font-size:.8rem;color:var(--muted);margin-top:.3rem;text-transform:uppercase;letter-spacing:.04em">Active visitors right now</div>
+            </div>
+          </div>
+          <div style="flex:1;min-width:300px">
+            <div style="font-size:.78rem;color:var(--muted);margin-bottom:.4rem">Active visitors per minute (last 30 min)</div>
+            <canvas id="live-minute-chart" height="90"></canvas>
           </div>
         </div>
       </div>
 
-      <div class="dl-two-col">
-        <div class="card">
-          <div class="card-header">By Country</div>
-          <div id="live-countries"><p class="dl-empty">Loading…</p></div>
+      <div class="dl-charts-row">
+        <div class="card chart-card dl-chart-main">
+          <div class="card-header">Top Pages</div>
+          <div id="live-pages" style="padding:.5rem .25rem"><p class="dl-empty">Loading…</p></div>
         </div>
-        <div class="card">
-          <div class="card-header">On Page</div>
-          <div id="live-pages"><p class="dl-empty">Loading…</p></div>
+        <div class="card chart-card dl-chart-side">
+          <div class="card-header">Devices</div>
+          <div class="dl-device-wrap"><canvas id="live-device-chart"></canvas></div>
+          <div id="live-devices" style="padding:.25rem"></div>
         </div>
       </div>
 
       <div class="card" style="margin-top:1.25rem">
-        <div class="card-header">Devices</div>
-        <div id="live-devices"><p class="dl-empty">Loading…</p></div>
+        <div class="card-header">Locations</div>
+        <div id="live-countries"><p class="dl-empty">Loading…</p></div>
       </div>
     </div>
 

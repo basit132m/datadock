@@ -2609,17 +2609,20 @@ async function rotRunLive() {
   log.innerHTML = `${t} — ${mode}${url}` + (log.innerHTML ? '<br>' + log.innerHTML : '');
 }
 
-// ── Live Visitors ──────────────────────────────────────────────────────────────
+// ── Live Visitors (Google-Analytics-style realtime) ─────────────────────────────
 let _liveTimer = null;
+let liveMinuteChart = null, liveDeviceChart = null;
 
 function stopLivePolling() {
   if (_liveTimer) { clearInterval(_liveTimer); _liveTimer = null; }
+  if (liveMinuteChart) { liveMinuteChart.destroy(); liveMinuteChart = null; }
+  if (liveDeviceChart) { liveDeviceChart.destroy(); liveDeviceChart = null; }
 }
 
 async function loadLivePage() {
   stopLivePolling();
   await refreshLive();
-  _liveTimer = setInterval(refreshLive, 4000);   // GA-style live refresh
+  _liveTimer = setInterval(refreshLive, 5000);   // GA-style live refresh
 }
 
 async function refreshLive() {
@@ -2635,7 +2638,81 @@ async function refreshLive() {
   const st = document.getElementById('live-status');
   if (st) st.textContent = 'Updated ' + new Date().toLocaleTimeString();
 
-  // Countries
+  // Per-minute bar chart (last 30 min) — update in place for a smooth GA feel.
+  const pm = d.per_minute || [];
+  const labels = pm.map(x => x.label);
+  const data = pm.map(x => x.count);
+  const canvas = document.getElementById('live-minute-chart');
+  if (canvas) {
+    if (liveMinuteChart) {
+      liveMinuteChart.data.labels = labels;
+      liveMinuteChart.data.datasets[0].data = data;
+      liveMinuteChart.update('none');
+    } else {
+      liveMinuteChart = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: { labels, datasets: [{
+          data, backgroundColor: '#10b981', hoverBackgroundColor: '#059669',
+          borderRadius: 2, barPercentage: 0.8, categoryPercentage: 0.9,
+        }] },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false },
+            tooltip: { callbacks: { title: items => items[0].label,
+              label: it => `${it.parsed.y} visitor${it.parsed.y === 1 ? '' : 's'}` } } },
+          scales: {
+            y: { beginAtZero: true, ticks: { precision: 0, maxTicksLimit: 4 }, grid: { color: 'rgba(0,0,0,.04)' } },
+            x: { grid: { display: false }, ticks: { maxTicksLimit: 6, font: { size: 10 } } },
+          },
+          animation: { duration: 300 },
+        },
+      });
+    }
+  }
+
+  // Devices doughnut + list
+  const devices = d.by_device || [];
+  const devCanvas = document.getElementById('live-device-chart');
+  const DEVICE_COLORS = { Desktop: '#6366f1', Mobile: '#10b981', Tablet: '#f59e0b', Unknown: '#94a3b8' };
+  if (devCanvas) {
+    if (devices.length && liveDeviceChart) {
+      liveDeviceChart.data.labels = devices.map(x => x.device);
+      liveDeviceChart.data.datasets[0].data = devices.map(x => x.count);
+      liveDeviceChart.data.datasets[0].backgroundColor = devices.map(x => DEVICE_COLORS[x.device] || '#94a3b8');
+      liveDeviceChart.update('none');
+    } else if (devices.length) {
+      liveDeviceChart = new Chart(devCanvas.getContext('2d'), {
+        type: 'doughnut',
+        data: { labels: devices.map(x => x.device), datasets: [{
+          data: devices.map(x => x.count),
+          backgroundColor: devices.map(x => DEVICE_COLORS[x.device] || '#94a3b8'),
+          borderWidth: 3, borderColor: '#fff',
+        }] },
+        options: { responsive: true, cutout: '62%', animation: { duration: 300 },
+          plugins: { legend: { position: 'bottom', labels: { font: { size: 11, family: 'Inter' }, padding: 10 } } } },
+      });
+    } else if (liveDeviceChart) {
+      liveDeviceChart.destroy(); liveDeviceChart = null;
+    }
+  }
+  document.getElementById('live-devices').innerHTML = devices.length ? '' : dlEmpty('No one online right now.');
+
+  // Top pages
+  const pEl = document.getElementById('live-pages');
+  const pages = d.by_page || [];
+  if (!pages.length) {
+    pEl.innerHTML = dlEmpty('No one online right now.');
+  } else {
+    const maxP = pages[0].count || 1;
+    pEl.innerHTML = pages.map(p => `
+      <div class="dl-row">
+        <span class="dl-row-label" title="${escHtml(p.page)}" style="font-family:monospace;font-size:.8rem">${escHtml(p.page || '/')}</span>
+        <div class="dl-bar-wrap"><div class="dl-bar" style="width:${Math.round(p.count / maxP * 100)}%"></div></div>
+        <span class="dl-row-count">${p.count.toLocaleString()}</span>
+      </div>`).join('');
+  }
+
+  // Locations (countries)
   const cEl = document.getElementById('live-countries');
   const countries = d.by_country || [];
   if (!countries.length) {
@@ -2648,38 +2725,6 @@ async function refreshLive() {
         <span class="dl-row-label">${escHtml(c.country || 'Unknown')}</span>
         <div class="dl-bar-wrap"><div class="dl-bar" style="width:${Math.round(c.count / max * 100)}%"></div></div>
         <span class="dl-row-count">${c.count.toLocaleString()}</span>
-      </div>`).join('');
-  }
-
-  // Pages
-  const pEl = document.getElementById('live-pages');
-  const pages = d.by_page || [];
-  if (!pages.length) {
-    pEl.innerHTML = dlEmpty('—');
-  } else {
-    const maxP = pages[0].count || 1;
-    pEl.innerHTML = pages.map(p => `
-      <div class="dl-row">
-        <span class="dl-row-label" title="${escHtml(p.page)}" style="font-family:monospace;font-size:.8rem">${escHtml(p.page || '/')}</span>
-        <div class="dl-bar-wrap"><div class="dl-bar dl-bar-os" style="width:${Math.round(p.count / maxP * 100)}%"></div></div>
-        <span class="dl-row-count">${p.count.toLocaleString()}</span>
-      </div>`).join('');
-  }
-
-  // Devices
-  const dEl = document.getElementById('live-devices');
-  const devices = d.by_device || [];
-  if (!devices.length) {
-    dEl.innerHTML = dlEmpty('—');
-  } else {
-    const maxD = devices[0].count || 1;
-    const DEV_ICONS = { Desktop: 'fa-desktop', Mobile: 'fa-mobile-screen', Tablet: 'fa-tablet-screen-button', Unknown: 'fa-circle-question' };
-    dEl.innerHTML = devices.map(x => `
-      <div class="dl-row">
-        <span class="dl-os-icon"><i class="fa-solid ${DEV_ICONS[x.device] || 'fa-circle-question'}"></i></span>
-        <span class="dl-row-label">${escHtml(x.device)}</span>
-        <div class="dl-bar-wrap"><div class="dl-bar" style="width:${Math.round(x.count / maxD * 100)}%"></div></div>
-        <span class="dl-row-count">${x.count.toLocaleString()}</span>
       </div>`).join('');
   }
 }
