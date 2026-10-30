@@ -2494,6 +2494,119 @@ async function loadPopupPage() {
   }
 }
 
+// ── Pop-up Rotation Test ───────────────────────────────────────────────────────
+let _rotWired = false;
+
+async function loadRotationPage() {
+  if (!_rotWired) {
+    _rotWired = true;
+    document.getElementById('rot-refresh').addEventListener('click', loadRotationPage);
+    document.getElementById('rot-cc-test').addEventListener('click', rotTestCountry);
+    document.getElementById('rot-cc-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') rotTestCountry();
+    });
+    document.getElementById('rot-live').addEventListener('click', rotRunLive);
+  }
+  const cfg = document.getElementById('rot-config');
+  const seqEl = document.getElementById('rot-sequence');
+  cfg.innerHTML = '<p class="dl-empty">Loading…</p>';
+  seqEl.innerHTML = '<p class="dl-empty">Loading…</p>';
+
+  let d;
+  try {
+    d = await apiFetch('GET', '/api/admin/popup-rotation');
+  } catch (e) {
+    cfg.innerHTML = '<p class="dl-empty">Failed to load.</p>';
+    return;
+  }
+  _rotData = d;
+
+  // Config summary
+  const yes = '<span style="color:var(--success);font-weight:600">● set</span>';
+  const no  = '<span style="color:var(--muted)">○ not set</span>';
+  const ratio = (d.has_script && d.direct_url)
+    ? `<strong>${d.direct_count} direct : ${d.script_count} script</strong> (cycle of ${d.cycle})`
+    : (d.has_script ? '<strong>script only</strong> (no direct link set)'
+                    : (d.direct_url ? '<strong>direct only</strong> (no script set)' : '—'));
+  cfg.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.8rem">
+      <div><div style="font-size:.78rem;color:var(--muted)">Rotation</div><div>${ratio}</div></div>
+      <div><div style="font-size:.78rem;color:var(--muted)">Direct link (desktop)</div><div>${d.direct_url ? yes : no}</div></div>
+      <div><div style="font-size:.78rem;color:var(--muted)">Direct link (mobile)</div><div>${d.direct_url_mobile ? yes : no}</div></div>
+      <div><div style="font-size:.78rem;color:var(--muted)">Script ad</div><div>${d.has_script ? yes : no}</div></div>
+      <div><div style="font-size:.78rem;color:var(--muted)">Geo rules</div><div>${d.geo_rules.length ? ('<strong>' + d.geo_rules.length + '</strong> countries') : no}</div></div>
+      <div><div style="font-size:.78rem;color:var(--muted)">Live counter (this worker)</div><div><strong>${d.live_counter}</strong></div></div>
+    </div>
+    ${d.geo_rules.length ? '<div style="margin-top:1rem">' + d.geo_rules.map(r =>
+      `<div style="font-size:.82rem;margin:.2rem 0"><span style="font-weight:700">${escHtml(r.country_code)}</span> → <span style="font-family:monospace;color:var(--muted)">${escHtml(r.url)}</span></div>`
+    ).join('') + '</div>' : ''}`;
+
+  // Sequence chips
+  if (!d.sequence.length) {
+    seqEl.innerHTML = '<p class="dl-empty">Nothing configured — set a direct link and/or a script ad on the Ads page.</p>';
+    document.getElementById('rot-seq-legend').innerHTML = '';
+  } else {
+    seqEl.innerHTML = d.sequence.map((m, i) => {
+      const isS = m === 'script';
+      const bg = isS ? 'rgba(99,102,241,.15)' : 'rgba(5,150,105,.15)';
+      const col = isS ? '#4f46e5' : '#059669';
+      const label = isS ? 'Script' : 'Direct';
+      return `<span title="Visitor ${i + 1}" style="display:inline-flex;align-items:center;gap:.3rem;background:${bg};color:${col};font-size:.75rem;font-weight:600;padding:.3rem .55rem;border-radius:6px">${i + 1}. ${label}</span>`;
+    }).join('');
+    const nD = d.sequence.filter(m => m === 'direct').length;
+    const nS = d.sequence.length - nD;
+    document.getElementById('rot-seq-legend').innerHTML =
+      `Of the next ${d.sequence.length} non-geo-locked visitors: <strong style="color:#059669">${nD} direct</strong>, <strong style="color:#4f46e5">${nS} script</strong>. ` +
+      `<span style="color:var(--muted)">Rotation is tracked per server worker, so the live pattern across all visitors interleaves these.</span>`;
+  }
+
+  // Your geolocation
+  const geo = document.getElementById('rot-geo');
+  const cc = d.your_country_code && d.your_country_code !== '??' ? d.your_country_code : null;
+  geo.innerHTML = `
+    <div style="font-size:.9rem">
+      Detected as <strong>${escHtml(d.your_country || 'Unknown')}${cc ? ' (' + escHtml(cc) + ')' : ''}</strong>
+      <span style="color:var(--muted)">· IP ${escHtml(d.your_ip || '—')}</span>
+    </div>
+    <div style="margin-top:.6rem;font-size:.88rem">${
+      d.your_locked_url
+        ? `<span style="color:var(--success);font-weight:600"><i class="fa-solid fa-lock"></i> Geo-locked</span> — your pop-up always opens:<br><span style="font-family:monospace;color:var(--muted)">${escHtml(d.your_locked_url)}</span>`
+        : `<span style="color:var(--muted)"><i class="fa-solid fa-unlock"></i> Not geo-locked — you follow the normal direct/script rotation above.</span>`
+    }</div>
+    ${(!cc) ? '<div style="margin-top:.6rem;font-size:.8rem;color:var(--warning,#d97706)">Country is Unknown — geolocation did not resolve your IP, so geo rules can\'t match. (Private/local IP, or the geo database/API is unavailable.)</div>' : ''}`;
+}
+
+let _rotData = null;
+
+function rotTestCountry() {
+  const el = document.getElementById('rot-cc-result');
+  const cc = (document.getElementById('rot-cc-input').value || '').trim().toUpperCase();
+  if (cc.length !== 2) { el.innerHTML = '<span style="color:var(--muted)">Enter a 2-letter code.</span>'; return; }
+  const rule = (_rotData && _rotData.geo_rules || []).find(r => r.country_code === cc);
+  if (rule) {
+    el.innerHTML = `<span style="color:var(--success);font-weight:600">${cc} is locked</span> → <span style="font-family:monospace">${escHtml(rule.url)}</span>`;
+  } else {
+    el.innerHTML = `<span style="color:var(--muted)">${cc} is not geo-locked — follows the direct/script rotation.</span>`;
+  }
+}
+
+async function rotRunLive() {
+  const log = document.getElementById('rot-live-log');
+  let r;
+  try {
+    r = await apiFetch('GET', '/api/popup/decision');
+  } catch (e) {
+    log.innerHTML = '<span style="color:var(--danger,#dc2626)">Request failed.</span>' + (log.innerHTML ? '<br>' + log.innerHTML : '');
+    return;
+  }
+  const t = new Date().toLocaleTimeString();
+  const mode = r.mode === 'script' ? '<span style="color:#4f46e5;font-weight:600">SCRIPT</span>'
+             : r.mode === 'direct' ? '<span style="color:#059669;font-weight:600">DIRECT</span>'
+             : '<span style="color:var(--muted)">NONE</span>';
+  const url = r.url ? ' → ' + escHtml(r.url) : '';
+  log.innerHTML = `${t} — ${mode}${url}` + (log.innerHTML ? '<br>' + log.innerHTML : '');
+}
+
 // ── Access Requests ───────────────────────────────────────────────────────────
 
 let reqActiveFilter = '';
@@ -3940,7 +4053,7 @@ async function deleteBacklink(id, label) {
 
 // ── Page navigation ───────────────────────────────────────────────────────────
 
-const ADMIN_PAGES = ['dashboard', 'ads', 'storage', 'downloads', 'team', 'requests', 'duplicates', 'filemanager', 'cleanup', 'filereports', 'backlinks', 'referrers', 'popup'];
+const ADMIN_PAGES = ['dashboard', 'ads', 'storage', 'downloads', 'team', 'requests', 'duplicates', 'filemanager', 'cleanup', 'filereports', 'backlinks', 'referrers', 'popup', 'rotation'];
 // 'support' is visible to both roles — intentionally not in ADMIN_PAGES
 
 function applyRoleUI() {
@@ -3973,6 +4086,7 @@ function showPage(page) {
   if (page === 'downloads')  loadDownloadsPage();
   if (page === 'referrers')  loadReferrersPage();
   if (page === 'popup')      loadPopupPage();
+  if (page === 'rotation')   loadRotationPage();
   if (page === 'team')       loadTeamPage();
   if (page === 'requests')   loadRequestsPage();
   if (page === 'support')    loadSupportPage();

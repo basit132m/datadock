@@ -2401,6 +2401,73 @@ async def get_popup_analytics(
     }
 
 
+@app.get("/api/admin/popup-rotation")
+async def popup_rotation_diag(
+    request: Request,
+    cc: Optional[str] = Query(None, max_length=2),
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    """Diagnostic for the pop-up direct/script rotation + geo-lock. Reads the live
+    settings and shows the EXACT upcoming decision pattern WITHOUT advancing the
+    live rotation counter — so an admin can confirm rotation works regardless of
+    their own browser cache. Also reports the caller's geolocation and whether a
+    given country is geo-locked."""
+    direct_desktop = (_get_setting(db, "popup_url") or "").strip()
+    direct_mobile  = (_get_setting(db, "popup_url_android") or "").strip()
+    script_set = (_get_setting(db, "popup_script") or "").strip()
+    has_script = bool(script_set)
+    try:
+        dcount = max(0, int(_get_setting(db, "popup_direct_count") or 2))
+    except (TypeError, ValueError):
+        dcount = 2
+    try:
+        scount = max(0, int(_get_setting(db, "popup_script_count") or 1))
+    except (TypeError, ValueError):
+        scount = 1
+    rules = _parse_popup_geo_rules(_get_setting(db, "popup_geo_rules"))
+
+    # Simulate the upcoming decisions WITHOUT touching the live counter.
+    seq = []
+    cyc = dcount + scount
+    if direct_desktop and has_script and cyc > 0:
+        c = _popup_rot
+        for _i in range(max(cyc * 2, 18)):
+            seq.append("direct" if (c % cyc) < dcount else "script")
+            c += 1
+    elif has_script and not direct_desktop:
+        seq = ["script"] * 18
+    elif direct_desktop:
+        seq = ["direct"] * 18
+
+    # Caller's own geolocation (allow_api off the event loop).
+    ip = _client_ip(request)
+    country, ccode = await asyncio.to_thread(_geolocate, ip, True)
+    your_locked = rules.get((ccode or "").upper())
+
+    cc_test = None
+    if cc:
+        cc_test = {"country_code": cc.upper(), "locked_url": rules.get(cc.upper())}
+
+    return {
+        "configured": bool(direct_desktop or has_script),
+        "direct_url": direct_desktop,
+        "direct_url_mobile": direct_mobile,
+        "has_script": has_script,
+        "direct_count": dcount,
+        "script_count": scount,
+        "cycle": cyc,
+        "geo_rules": [{"country_code": k, "url": v} for k, v in rules.items()],
+        "live_counter": _popup_rot,
+        "sequence": seq,
+        "your_ip": ip,
+        "your_country": country,
+        "your_country_code": ccode,
+        "your_locked_url": your_locked,
+        "cc_test": cc_test,
+    }
+
+
 @app.get("/api/admin/bandwidth")
 async def get_bandwidth_analytics(
     days: int = Query(30, ge=1, le=365),

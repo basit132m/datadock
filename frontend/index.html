@@ -64,6 +64,9 @@
       <button class="nav-item" data-page="popup">
         <i class="fa-solid fa-arrow-up-right-from-square ni-icon"></i> Pop-up Clicks
       </button>
+      <button class="nav-item" data-page="rotation">
+        <i class="fa-solid fa-rotate ni-icon"></i> Rotation Test
+      </button>
       <button class="nav-item" data-page="team">
         <i class="fa-solid fa-users-gear ni-icon"></i> Team
       </button>
@@ -905,6 +908,68 @@
         <div class="card">
           <div class="card-header">Devices</div>
           <div id="pop-devices"><p class="dl-empty">Loading…</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Rotation Test ── -->
+    <div id="page-rotation" class="page">
+      <div class="page-header">
+        <h1>Pop-up Rotation Test</h1>
+        <button id="rot-refresh" class="btn-sm"><i class="fa-solid fa-rotate"></i> Refresh</button>
+      </div>
+      <p style="color:var(--muted);font-size:.85rem;margin:-.5rem 0 1rem">
+        Reads the live rotation settings straight from the server and shows the exact upcoming
+        decision pattern — independent of your browser cache. Use this to confirm the direct ⇄ script
+        rotation and the geo-lock are set up correctly.
+      </p>
+
+      <div class="card" style="margin-bottom:1.25rem">
+        <div class="card-header"><i class="fa-solid fa-sliders" style="color:#a855f7"></i> Current configuration</div>
+        <div id="rot-config" style="padding:1rem 1.25rem"><p class="dl-empty">Loading…</p></div>
+      </div>
+
+      <div class="card" style="margin-bottom:1.25rem">
+        <div class="card-header"><i class="fa-solid fa-arrows-spin" style="color:#6366f1"></i> Upcoming rotation pattern</div>
+        <div style="padding:1rem 1.25rem">
+          <p style="color:var(--muted);font-size:.82rem;margin:0 0 .75rem">
+            The next visitors (who are not geo-locked) will get these pop-ups, in order. This is a
+            preview — it does <strong>not</strong> change anything.
+          </p>
+          <div id="rot-sequence" style="display:flex;flex-wrap:wrap;gap:.4rem"><p class="dl-empty">Loading…</p></div>
+          <div id="rot-seq-legend" style="margin-top:.85rem;font-size:.8rem;color:var(--muted)"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:1.25rem">
+        <div class="card-header"><i class="fa-solid fa-location-dot" style="color:#059669"></i> Your location &amp; geo-lock</div>
+        <div id="rot-geo" style="padding:1rem 1.25rem"><p class="dl-empty">Loading…</p></div>
+      </div>
+
+      <div class="card" style="margin-bottom:1.25rem">
+        <div class="card-header"><i class="fa-solid fa-earth-americas" style="color:#0ea5e9"></i> Test a country code</div>
+        <div style="padding:1rem 1.25rem">
+          <p style="color:var(--muted);font-size:.82rem;margin:0 0 .75rem">
+            Enter a 2-letter country code to see which direct link a visitor from that country would be locked to.
+          </p>
+          <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+            <input id="rot-cc-input" type="text" maxlength="2" placeholder="PK"
+              style="width:90px;text-transform:uppercase;padding:.45rem .6rem" />
+            <button id="rot-cc-test" class="btn-primary"><i class="fa-solid fa-magnifying-glass"></i> Check</button>
+            <span id="rot-cc-result" style="font-size:.85rem"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><i class="fa-solid fa-play" style="color:#f97316"></i> Run a live decision</div>
+        <div style="padding:1rem 1.25rem">
+          <p style="color:var(--muted);font-size:.82rem;margin:0 0 .75rem">
+            Calls the real decision endpoint once, exactly as a visitor's browser does, and shows what it
+            returned. Note: each run advances the live rotation by one step (harmless).
+          </p>
+          <button id="rot-live" class="btn-primary"><i class="fa-solid fa-bolt"></i> Run live decision</button>
+          <div id="rot-live-log" style="margin-top:.85rem;font-family:monospace;font-size:.8rem;color:var(--muted)"></div>
         </div>
       </div>
     </div>
