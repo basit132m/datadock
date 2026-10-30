@@ -4705,18 +4705,21 @@ async def share_page(share_id: str, request: Request, db: Session = Depends(get_
         canonical = _resolve_canonical(share_id, db)
         if canonical and canonical != share_id:
             return RedirectResponse(f"/f/{canonical}", status_code=301)
-    # Hidden (DMCA) file: redirect to the set target, else show the landing shell
+    # Hidden (DMCA) file: redirect to the set target, else the file is gone — serve
+    # the shell with a real 404 so Google treats it as a hard 404, not a Soft 404.
     if upload and upload.hidden:
         if upload.hidden_redirect_url:
             return RedirectResponse(upload.hidden_redirect_url, status_code=302)
-        return FileResponse(os.path.join(FRONTEND_DIR, "landing.html"))
+        return FileResponse(os.path.join(FRONTEND_DIR, "landing.html"), status_code=404)
     upload = (
         db.query(Upload)
         .filter(Upload.share_id == share_id, Upload.status == "completed")
         .first()
     )
+    # Missing / not-yet-completed file: return a genuine 404 (the body still renders
+    # the friendly "file not found" page). A 200 here reads to Google as a Soft 404.
     if not upload:
-        return FileResponse(os.path.join(FRONTEND_DIR, "landing.html"))
+        return FileResponse(os.path.join(FRONTEND_DIR, "landing.html"), status_code=404)
 
     base_url = str(request.base_url).rstrip("/")
     html = _build_og_html(share_id, upload, base_url)
