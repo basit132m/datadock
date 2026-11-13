@@ -1163,6 +1163,65 @@ function initExtLinkForm() {
   document.getElementById('extlink-url-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') create();
   });
+  const refresh = document.getElementById('extlinks-refresh');
+  if (refresh) refresh.addEventListener('click', loadExtLinksPage);
+}
+
+async function loadExtLinksPage() {
+  const el = document.getElementById('extlinks-list');
+  if (!el) return;
+  el.innerHTML = '<p class="dl-empty">Loading…</p>';
+  let rows;
+  try {
+    rows = await apiFetch('GET', '/api/external-links');
+  } catch (e) {
+    el.innerHTML = '<p class="dl-empty">Failed to load.</p>';
+    return;
+  }
+  if (!rows.length) {
+    el.innerHTML = '<p class="dl-empty">No external links yet. Create one on the Upload page.</p>';
+    return;
+  }
+  const origin = location.origin;
+  el.innerHTML = rows.map(r => {
+    const shareFull = origin + (r.share_url || '');
+    const size = r.file_size ? formatBytes(r.file_size) : '—';
+    const date = r.completed_at ? new Date(r.completed_at).toLocaleDateString() : '';
+    return `
+      <div style="display:flex;gap:1rem;align-items:center;padding:.75rem;border-bottom:1px solid var(--border);flex-wrap:wrap">
+        <div style="flex:1;min-width:220px">
+          <div style="font-weight:600">${escHtml(r.filename)}</div>
+          <div style="font-size:.78rem;color:var(--muted);word-break:break-all">
+            <i class="fa-solid fa-arrow-up-right-from-square"></i>
+            <a href="${escHtml(r.external_url)}" target="_blank" rel="noopener nofollow">${escHtml(r.external_url)}</a>
+          </div>
+        </div>
+        <div style="font-size:.8rem;color:var(--muted);min-width:64px">${size}</div>
+        <div style="font-size:.8rem;color:var(--muted);min-width:80px"><i class="fa-solid fa-download"></i> ${(r.downloads || 0).toLocaleString()}</div>
+        <div style="font-size:.8rem;color:var(--muted);min-width:84px">${date}</div>
+        <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+          <button class="btn-sm extlink-copy2" data-url="${escHtml(shareFull)}"><i class="fa-regular fa-copy"></i> Copy link</button>
+          <a class="btn-sm" href="${escHtml(r.share_url || '#')}" target="_blank" rel="noopener"><i class="fa-solid fa-up-right-from-square"></i> Open</a>
+          <button class="btn-sm btn-danger extlink-del" data-id="${escHtml(r.id)}" data-name="${escHtml(r.filename)}"><i class="fa-solid fa-trash"></i></button>
+        </div>
+      </div>`;
+  }).join('');
+  el.querySelectorAll('.extlink-copy2').forEach(b => b.addEventListener('click', () => {
+    navigator.clipboard.writeText(b.dataset.url);
+    const o = b.innerHTML; b.innerHTML = '<i class="fa-solid fa-check"></i> Copied';
+    setTimeout(() => { b.innerHTML = o; }, 1500);
+  }));
+  el.querySelectorAll('.extlink-del').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm(`Delete external link "${b.dataset.name}"? Its DataDock share link will stop working.`)) return;
+    b.disabled = true;
+    try {
+      await apiFetch('DELETE', `/api/files/${b.dataset.id}`);
+      loadExtLinksPage();
+    } catch (e) {
+      alert('Failed to delete.');
+      b.disabled = false;
+    }
+  }));
 }
 
 // ── Storage Providers ─────────────────────────────────────────────────────────
@@ -4234,7 +4293,7 @@ async function deleteBacklink(id, label) {
 
 // ── Page navigation ───────────────────────────────────────────────────────────
 
-const ADMIN_PAGES = ['dashboard', 'ads', 'storage', 'downloads', 'team', 'requests', 'duplicates', 'filemanager', 'cleanup', 'filereports', 'backlinks', 'referrers', 'popup', 'rotation', 'live'];
+const ADMIN_PAGES = ['dashboard', 'ads', 'storage', 'downloads', 'team', 'requests', 'duplicates', 'filemanager', 'cleanup', 'filereports', 'backlinks', 'referrers', 'popup', 'rotation', 'live', 'extlinks'];
 // 'support' is visible to both roles — intentionally not in ADMIN_PAGES
 
 function applyRoleUI() {
@@ -4263,6 +4322,7 @@ function showPage(page) {
   if (page === 'upload')    refreshUploadControls();
   if (page === 'dashboard') loadDashboard();
   if (page === 'files')     loadFileList();
+  if (page === 'extlinks')  loadExtLinksPage();
   if (page === 'ads')       loadAdsPage();
   if (page === 'storage')   loadStoragePage();
   if (page === 'downloads')  loadDownloadsPage();

@@ -46,6 +46,9 @@
       <button class="nav-item" data-page="files">
         <i class="fa-solid fa-folder-open ni-icon"></i> My Files
       </button>
+      <button class="nav-item" data-page="extlinks">
+        <i class="fa-solid fa-link ni-icon"></i> External Links
+      </button>
       <button class="nav-item" data-page="rules">
         <i class="fa-solid fa-scale-balanced ni-icon"></i> Rules
       </button>
@@ -215,6 +218,20 @@
         </div>
         <div id="extlink-error" class="url-import-error"></div>
         <div id="extlink-result"></div>
+      </div>
+    </div>
+
+    <!-- ── External Links ── -->
+    <div id="page-extlinks" class="page">
+      <div class="page-header">
+        <h1>External Links</h1>
+        <button class="btn-sm" id="extlinks-refresh"><i class="fa-solid fa-rotate"></i> Refresh</button>
+      </div>
+      <p style="color:var(--muted);font-size:.85rem;margin:-.5rem 0 1rem">
+        Third-party links shared through DataDock (no files stored). Create new ones on the Upload page.
+      </p>
+      <div class="card">
+        <div id="extlinks-list" style="padding:.5rem"><p class="dl-empty">Loading…</p></div>
       </div>
     </div>
 

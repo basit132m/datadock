@@ -1102,6 +1102,36 @@ async def create_external_link(
             "filename": name}
 
 
+@app.get("/api/external-links")
+async def list_external_links(
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+    auth_key: Optional[ApiKey] = Depends(get_current_key),
+):
+    """List third-party (external) links — kept separate from My Files."""
+    query = db.query(Upload).filter(Upload.status == "completed", Upload.external_url.isnot(None))
+    if auth["role"] != "admin":
+        if auth_key:
+            query = query.filter(Upload.uploaded_by_key_id == auth_key.id)
+        else:
+            return []
+    rows = query.order_by(Upload.completed_at.desc()).all()
+    return [
+        {
+            "id": f.id,
+            "share_id": f.share_id,
+            "filename": f.filename,
+            "file_size": f.file_size,
+            "external_url": f.external_url,
+            "share_url": f"/f/{f.share_id}" if f.share_id else None,
+            "views": f.views or 0,
+            "downloads": f.downloads or 0,
+            "completed_at": f.completed_at.isoformat() if f.completed_at else None,
+        }
+        for f in rows
+    ]
+
+
 _MAX_CHUNK_BYTES = 5 * 1024 * 1024 * 1024  # 5 GB — S3 part size hard limit
 
 
@@ -1250,7 +1280,8 @@ async def list_files(
     all_files: bool = Query(False, alias="all"),
     limit: Optional[int] = Query(None, ge=1, le=500),
 ):
-    query = db.query(Upload).filter(Upload.status == "completed")
+    # External links live on their own page (/api/external-links), not in My Files.
+    query = db.query(Upload).filter(Upload.status == "completed", Upload.external_url.is_(None))
     is_admin = auth["role"] == "admin"
 
     if not is_admin and not all_files:
@@ -1966,11 +1997,12 @@ async def verify_auth(auth=Depends(require_auth)):
 @app.get("/api/stats")
 async def get_stats(db: Session = Depends(get_db), _=Depends(require_admin)):
     # Single query for all three aggregates
+    # External links are tracked on their own page, not counted as stored files.
     agg = db.query(
         func.count(Upload.id),
         func.coalesce(func.sum(Upload.file_size), 0),
         func.coalesce(func.sum(Upload.downloads), 0),
-    ).filter(Upload.status == "completed").one()
+    ).filter(Upload.status == "completed", Upload.external_url.is_(None)).one()
     total_files, total_size, total_downloads = agg
 
     # Single GROUP BY replaces 7 individual daily count queries
