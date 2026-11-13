@@ -1041,6 +1041,66 @@ async def relay_init(
     return {"upload_id": upload.id}
 
 
+class ExternalLinkIn(BaseModel):
+    url: str
+    filename: Optional[str] = None
+    file_size: Optional[int] = None
+
+
+@app.post("/api/external-link")
+async def create_external_link(
+    body: ExternalLinkIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+    auth_key: Optional[ApiKey] = Depends(get_current_key),
+):
+    """Create a DataDock share link whose download button redirects to a THIRD-PARTY
+    URL. Nothing is fetched or stored — only the link is saved, and the normal
+    download page / ad / pop-up flow applies."""
+    _assert_uploads_enabled(auth, db)
+    import mimetypes
+    from urllib.parse import urlparse, unquote
+    url = (body.url or "").strip()
+    if not url.startswith(("http://", "https://")) or len(url) > 1000:
+        raise HTTPException(400, "Enter a valid http(s) link.")
+    name = (body.filename or "").strip()
+    if not name:
+        try:
+            p = urlparse(url)
+            name = unquote(os.path.basename(p.path)) or p.netloc or "Download"
+        except Exception:
+            name = "Download"
+    name = name.replace("\0", "")[:500] or "Download"
+    size = int(body.file_size) if (body.file_size and body.file_size > 0) else 0
+    ctype = mimetypes.guess_type(name)[0] or "application/octet-stream"
+    now = datetime.utcnow()
+    upload = Upload(
+        id=str(uuid.uuid4()),
+        share_id=_share_id(),
+        file_hash="",
+        filename=name,
+        file_size=size,
+        content_type=ctype,
+        b2_upload_id="external",
+        b2_file_key="external",
+        status="completed",
+        views=0,
+        downloads=0,
+        storage_provider_id=None,
+        uploaded_by_key_id=auth_key.id if auth_key else None,
+        external_url=url,
+        created_at=now,
+        completed_at=now,
+    )
+    db.add(upload)
+    db.commit()
+    base = _public_base(str(request.base_url).rstrip("/"))
+    return {"share_id": upload.share_id,
+            "share_url": f"{base}/f/{upload.share_id}",
+            "filename": name}
+
+
 _MAX_CHUNK_BYTES = 5 * 1024 * 1024 * 1024  # 5 GB — S3 part size hard limit
 
 
@@ -2128,7 +2188,11 @@ async def download_file(
             for k in [k for k, v in _recent_downloads.items() if v < cutoff]:
                 del _recent_downloads[k]
 
-    if WORKER_URL and WORKER_SECRET:
+    # External link: nothing is stored on our side — send the visitor to the
+    # third-party URL. Download counting / event logging above still applies.
+    if upload.external_url:
+        download_url = upload.external_url
+    elif WORKER_URL and WORKER_SECRET:
         download_url = _make_worker_redirect(upload, db)
     else:
         download_url = _chained_download_url(upload, db)

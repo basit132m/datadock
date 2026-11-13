@@ -203,6 +203,18 @@
         <div id="import-error" class="url-import-error"></div>
         <div id="import-queue"></div>
       </div>
+
+      <div class="url-import-box">
+        <p class="section-title"><i class="fa-solid fa-arrow-up-right-from-square"></i> Link a third-party file (no storage)</p>
+        <p class="url-import-sub">Paste an external link (e.g. pixeldrain). We do <strong>not</strong> download or store it — you just get a DataDock share link whose download button sends visitors to that link.</p>
+        <div class="url-import-form">
+          <input id="extlink-url-input" type="url" placeholder="https://pixeldrain.com/u/XXXXXXXX" />
+          <input id="extlink-name-input" type="text" placeholder="Display filename (optional)" />
+          <button id="extlink-btn" class="btn-primary"><i class="fa-solid fa-link"></i> Create link</button>
+        </div>
+        <div id="extlink-error" class="url-import-error"></div>
+        <div id="extlink-result"></div>
+      </div>
     </div>
 
     <!-- ── Files ── -->

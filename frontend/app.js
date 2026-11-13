@@ -1106,6 +1106,48 @@ function initImportForm() {
   });
 }
 
+function initExtLinkForm() {
+  const btn = document.getElementById('extlink-btn');
+  if (!btn) return;
+  async function create() {
+    const urlEl  = document.getElementById('extlink-url-input');
+    const nameEl = document.getElementById('extlink-name-input');
+    const errEl  = document.getElementById('extlink-error');
+    const resEl  = document.getElementById('extlink-result');
+    errEl.textContent = ''; resEl.innerHTML = '';
+    const url = urlEl.value.trim();
+    if (!/^https?:\/\//i.test(url)) { errEl.textContent = 'Enter a valid http(s) link.'; return; }
+    btn.disabled = true;
+    try {
+      const r = await apiFetch('POST', '/api/external-link',
+                               { url, filename: nameEl.value.trim() || null });
+      urlEl.value = ''; nameEl.value = '';
+      resEl.innerHTML =
+        `<div class="extlink-done" style="margin-top:.75rem;padding:.75rem 1rem;border:1px solid var(--success);border-radius:8px;background:rgba(5,150,105,.07)">
+           <div style="font-weight:600;color:var(--success);margin-bottom:.35rem"><i class="fa-solid fa-circle-check"></i> Share link created</div>
+           <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+             <a href="${escHtml(r.share_url)}" target="_blank" rel="noopener" style="font-family:monospace;word-break:break-all">${escHtml(r.share_url)}</a>
+             <button class="btn-sm extlink-copy" data-url="${escHtml(r.share_url)}"><i class="fa-regular fa-copy"></i> Copy</button>
+           </div>
+         </div>`;
+      const cp = resEl.querySelector('.extlink-copy');
+      if (cp) cp.addEventListener('click', () => {
+        navigator.clipboard.writeText(cp.dataset.url);
+        cp.innerHTML = '<i class="fa-solid fa-check"></i> Copied';
+        setTimeout(() => { cp.innerHTML = '<i class="fa-regular fa-copy"></i> Copy'; }, 1500);
+      });
+    } catch (e) {
+      errEl.textContent = (e && e.message) || 'Failed to create link.';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  btn.addEventListener('click', create);
+  document.getElementById('extlink-url-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') create();
+  });
+}
+
 // ── Storage Providers ─────────────────────────────────────────────────────────
 
 function providerMeta(endpointUrl) {
@@ -4275,6 +4317,7 @@ function initApp() {
     btn.addEventListener('click', () => showPage(btn.dataset.page));
   });
   initImportForm();
+  initExtLinkForm();
   resumePendingImports();
   initAdForm();
   initRedirectUrlForm();

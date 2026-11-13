@@ -26,6 +26,7 @@ class Upload(Base):
     import_bytes_done = Column(BigInteger, default=0, nullable=True)
     hidden = Column(Integer, default=0, nullable=True)  # 1 = blocked from all public access (DMCA etc.)
     hidden_redirect_url = Column(String(500), nullable=True)  # where a hidden file's share link redirects (optional)
+    external_url = Column(String(1000), nullable=True)  # 3rd-party link: download button redirects here, nothing stored
     created_at = Column(DateTime, nullable=False)
     completed_at = Column(DateTime, nullable=True)
 
