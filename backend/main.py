@@ -2190,7 +2190,8 @@ async def download_file(
 
     # External link: nothing is stored on our side — send the visitor to the
     # third-party URL. Download counting / event logging above still applies.
-    if upload.external_url:
+    is_external = bool(upload.external_url)
+    if is_external:
         download_url = upload.external_url
     elif WORKER_URL and WORKER_SECRET:
         download_url = _make_worker_redirect(upload, db)
@@ -2202,7 +2203,12 @@ async def download_file(
     if not is_dup:
         background_tasks.add_task(_log_download_event, upload.id, upload.filename, ip, ua)
 
-    return RedirectResponse(url=download_url)
+    resp = RedirectResponse(url=download_url)
+    # Never pass SEO authority to a third-party destination: tell crawlers not to
+    # follow or index the outbound redirect (nofollow for external links).
+    if is_external:
+        resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return resp
 
 
 # ── File Preview ─────────────────────────────────────────────────────────────
