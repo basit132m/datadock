@@ -91,7 +91,7 @@
 
   // ── State ─────────────────────────────────────────────────────────────────
   const PAGE_SIZE = 60;
-  const state = { search: '', category: 'all', sort: 'newest', page: 1, view: 'grid' };
+  const state = { search: '', category: 'all', sort: 'newest', page: 1, view: 'list' };
 
   // ── Escape helper ─────────────────────────────────────────────────────────
   function esc(str) {
@@ -231,10 +231,9 @@
     const start = (p - 1) * PAGE_SIZE;
     const end   = start + files.length;
 
-    grid.className = state.view === 'grid' ? 'br-grid br-grid-mode' : 'br-grid br-list-mode';
+    grid.className = 'br-grid br-list-mode';   // list view only
     grid.innerHTML = '';
-    const builder = state.view === 'grid' ? buildGridCard : buildListCard;
-    files.forEach(f => grid.appendChild(builder(f)));
+    files.forEach(f => grid.appendChild(buildListCard(f)));
     grid.hidden = false;
 
     resBar.textContent = `Showing ${(start + 1).toLocaleString()}–${end.toLocaleString()} of ${total.toLocaleString()} file${total !== 1 ? 's' : ''}`;
@@ -309,21 +308,7 @@
     });
   }
 
-  // ── View toggle ───────────────────────────────────────────────────────────
-  document.getElementById('br-view-grid').addEventListener('click', function () {
-    if (state.view === 'grid') return;
-    state.view = 'grid';
-    this.classList.add('br-view-active');
-    document.getElementById('br-view-list').classList.remove('br-view-active');
-    fetchAndRender();
-  });
-  document.getElementById('br-view-list').addEventListener('click', function () {
-    if (state.view === 'list') return;
-    state.view = 'list';
-    this.classList.add('br-view-active');
-    document.getElementById('br-view-grid').classList.remove('br-view-active');
-    fetchAndRender();
-  });
+  // List view only — the grid/list toggle was removed.
 
   // ── Sort ──────────────────────────────────────────────────────────────────
   document.getElementById('br-sort').addEventListener('change', function () {
