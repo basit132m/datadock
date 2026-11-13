@@ -362,13 +362,14 @@
     wrapEl.style.background = type.bg;
     wrapEl.style.color = type.color;
 
+    const sizeText = d.file_size ? fmtBytes(d.file_size) : '—';   // unknown (e.g. external link) → —
     document.getElementById('lp-filename').textContent = d.filename;
-    document.getElementById('lp-size').textContent = fmtBytes(d.file_size);
+    document.getElementById('lp-size').textContent = sizeText;
     document.getElementById('lp-date').textContent = fmtDate(d.completed_at);
     document.getElementById('lp-type').textContent = extLabel(d.filename);
     document.getElementById('lp-views').textContent = (d.views || 0).toLocaleString();
     document.getElementById('lp-downloads').textContent = (d.downloads || 0).toLocaleString();
-    document.getElementById('lp-dl-size').textContent = fmtBytes(d.file_size);
+    document.getElementById('lp-dl-size').textContent = sizeText;
 
     // ── Download button — token-gated, no static href ─────────────────────
     const dlBtn = document.getElementById('lp-download-btn');
@@ -386,12 +387,23 @@
     async function triggerDownload() {
       dlBtn.disabled = true;
       dlBtnState('fa-spinner fa-spin', 'Preparing download…', '');
+      // External link opens in a NEW tab. Open it NOW, inside the click gesture,
+      // so pop-up blockers allow it; point it at the download URL once ready.
+      let extTab = null;
+      if (d.external) { try { extTab = window.open('about:blank', '_blank'); } catch (_) {} }
       try {
         const res = await fetch(`/api/f/${shareId}/token`, { method: 'POST' });
         if (!res.ok) throw new Error('Token error');
         const { token } = await res.json();
-        location.href = `/api/f/${shareId}/download?token=${token}`;
+        const dlUrl = `/api/f/${shareId}/download?token=${token}`;
+        if (d.external) {
+          if (extTab) { try { extTab.location.href = dlUrl; } catch (_) { window.open(dlUrl, '_blank', 'noopener'); } }
+          else { window.open(dlUrl, '_blank', 'noopener'); }   // blocked earlier → best effort
+        } else {
+          location.href = dlUrl;
+        }
       } catch {
+        if (extTab) { try { extTab.close(); } catch (_) {} }
         dlBtnState('fa-circle-exclamation', 'Try again', '');
         setTimeout(() => { dlBtn.innerHTML = origHTML; dlBtn.disabled = false; }, 2500);
         return;

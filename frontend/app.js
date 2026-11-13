@@ -1109,19 +1109,36 @@ function initImportForm() {
 function initExtLinkForm() {
   const btn = document.getElementById('extlink-btn');
   if (!btn) return;
+  // Parse "1.5 GB" / "700mb" / "1048576" into bytes. Returns null if blank/invalid.
+  function parseSize(s) {
+    s = (s || '').trim();
+    if (!s) return null;
+    const m = s.match(/^([\d.]+)\s*(b|kb|mb|gb|tb|kib|mib|gib|tib)?$/i);
+    if (!m) return null;
+    const n = parseFloat(m[1]);
+    if (!isFinite(n) || n < 0) return null;
+    const units = { b: 1, kb: 1e3, mb: 1e6, gb: 1e9, tb: 1e12,
+                    kib: 1024, mib: 1024 ** 2, gib: 1024 ** 3, tib: 1024 ** 4 };
+    const unit = (m[2] || 'b').toLowerCase();
+    return Math.round(n * (units[unit] || 1));
+  }
   async function create() {
     const urlEl  = document.getElementById('extlink-url-input');
     const nameEl = document.getElementById('extlink-name-input');
+    const sizeEl = document.getElementById('extlink-size-input');
     const errEl  = document.getElementById('extlink-error');
     const resEl  = document.getElementById('extlink-result');
     errEl.textContent = ''; resEl.innerHTML = '';
     const url = urlEl.value.trim();
     if (!/^https?:\/\//i.test(url)) { errEl.textContent = 'Enter a valid http(s) link.'; return; }
+    const sizeRaw = sizeEl.value.trim();
+    const fileSize = parseSize(sizeRaw);
+    if (sizeRaw && fileSize === null) { errEl.textContent = 'Size must look like "1.5 GB" or "700 MB".'; return; }
     btn.disabled = true;
     try {
       const r = await apiFetch('POST', '/api/external-link',
-                               { url, filename: nameEl.value.trim() || null });
-      urlEl.value = ''; nameEl.value = '';
+                               { url, filename: nameEl.value.trim() || null, file_size: fileSize });
+      urlEl.value = ''; nameEl.value = ''; sizeEl.value = '';
       resEl.innerHTML =
         `<div class="extlink-done" style="margin-top:.75rem;padding:.75rem 1rem;border:1px solid var(--success);border-radius:8px;background:rgba(5,150,105,.07)">
            <div style="font-weight:600;color:var(--success);margin-bottom:.35rem"><i class="fa-solid fa-circle-check"></i> Share link created</div>

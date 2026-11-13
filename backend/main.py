@@ -119,7 +119,7 @@ def _build_og_html(share_id: str, upload, base_url: str) -> str:
     ext      = os.path.splitext(upload.filename or "")[1].lower()
     ext_label = ext.lstrip(".").upper() or "FILE"
     filename  = upload.filename or "File"
-    size      = _fmt_bytes(upload.file_size or 0)
+    size      = _fmt_bytes(upload.file_size) if upload.file_size else "—"
     base      = _public_base(base_url)
     page_url  = f"{base}/f/{share_id}"
     date_str  = upload.completed_at.strftime("%b %d, %Y") if upload.completed_at else "—"
@@ -129,8 +129,9 @@ def _build_og_html(share_id: str, upload, base_url: str) -> str:
     # Escape for HTML attribute context
     esc_name  = _html.escape(filename)
     esc_title = _html.escape(f"Download {filename} | DataDock")
+    size_desc = f"{size} {ext_label} file" if upload.file_size else f"{ext_label} file"
     esc_desc  = _html.escape(
-        f"Download {filename} — {size} {ext_label} file. "
+        f"Download {filename} — {size_desc}. "
         f"Free, fast, and secure. No account required. Available on DataDock."
     )
 
@@ -2053,6 +2054,7 @@ async def get_share_info(
         "views": upload.views,
         "downloads": upload.downloads or 0,
         "completed_at": upload.completed_at.isoformat() if upload.completed_at else None,
+        "external": bool(upload.external_url),   # third-party link → open in a new tab
     }
 
 
