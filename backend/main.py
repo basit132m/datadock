@@ -5133,27 +5133,30 @@ async def backlinks_request(
     domain: str = Form(..., max_length=300),
     name: str = Form("", max_length=200),
     contact: str = Form("", max_length=300),
-    file: UploadFile = File(...),
+    file: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
 ):
-    """Public: submit a domain + payment screenshot. Creates a pending request."""
+    """Public: submit a domain (payment screenshot optional). Creates a pending request."""
     url = _normalize_domain_url(domain)
-    if file.content_type not in _ALLOWED_IMG_TYPES:
-        raise HTTPException(400, "Payment screenshot must be a JPEG, PNG, GIF, WebP or BMP image")
-    content = await file.read()
-    if len(content) > 10 * 1024 * 1024:
-        raise HTTPException(400, "Screenshot too large — max 10 MB")
-    ext = _IMG_EXT_MAP.get(file.content_type, ".jpg")
-    fname = str(uuid.uuid4()) + ext
-    with open(os.path.join(SUPPORT_MEDIA_DIR, fname), "wb") as f:
-        f.write(content)
+    screenshot_url = None
+    if file is not None and (file.filename or ""):
+        if file.content_type not in _ALLOWED_IMG_TYPES:
+            raise HTTPException(400, "Payment screenshot must be a JPEG, PNG, GIF, WebP or BMP image")
+        content = await file.read()
+        if len(content) > 10 * 1024 * 1024:
+            raise HTTPException(400, "Screenshot too large — max 10 MB")
+        ext = _IMG_EXT_MAP.get(file.content_type, ".jpg")
+        fname = str(uuid.uuid4()) + ext
+        with open(os.path.join(SUPPORT_MEDIA_DIR, fname), "wb") as f:
+            f.write(content)
+        screenshot_url = f"/api/support/media/{fname}"
 
     row = BacklinkDomain(
         id=str(uuid.uuid4()),
         domain=url,
         name=(name or "").strip()[:200] or None,
         contact=(contact or "").strip()[:300] or None,
-        screenshot_url=f"/api/support/media/{fname}",
+        screenshot_url=screenshot_url,
         status="pending",
         created_at=datetime.utcnow(),
     )

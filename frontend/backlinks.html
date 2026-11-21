@@ -109,22 +109,16 @@
     <h2 class="bl-section-title">Add your link</h2>
 
     <div class="bl-steps">
-      <div class="bl-step"><div class="s">1</div><h4>Send the payment</h4><p>Pay <strong id="bl-price-inline">$10</strong> in USDT (BEP20 only) to the address below.</p></div>
-      <div class="bl-step"><div class="s">2</div><h4>Submit the form</h4><p>Enter your <strong>main domain</strong> and upload the payment screenshot.</p></div>
+      <div class="bl-step"><div class="s">1</div><h4>Submit the form</h4><p>Enter your <strong>main domain</strong> and your contact below.</p></div>
+      <div class="bl-step"><div class="s">2</div><h4>We share payment details</h4><p>We reply with the current payment details — <strong id="bl-price-inline">$10</strong> per link.</p></div>
       <div class="bl-step"><div class="s">3</div><h4>We add your link</h4><p>After we confirm the payment, your do-follow link goes live here — for life.</p></div>
     </div>
 
     <div class="bl-pay">
       <div class="row">
         <span class="price" id="bl-price">$10</span> <span>per link</span>
-        <span class="net"><i class="fa-solid fa-coins"></i> USDT · BEP20 only</span>
       </div>
-      <div>Send USDT (BNB Smart Chain / BEP20 network) to this address:</div>
-      <div class="bl-addr">
-        <code id="bl-addr">0xF0885EA5fF42e31D2ae8d13120711b4d7883aF49</code>
-        <button class="bl-copy" id="bl-copy">Copy</button>
-      </div>
-      <div style="font-size:.75rem;opacity:.9;margin-top:.5rem"><i class="fa-solid fa-triangle-exclamation"></i> Only send on the BEP20 (BNB Smart Chain) network. Funds sent on any other network will be lost.</div>
+      <div>Payment details are shared directly after you submit the form below.</div>
     </div>
 
     <form class="bl-form" id="bl-form">
@@ -138,9 +132,9 @@
       <label for="bl-contact">Your contact (Telegram or email, optional)</label>
       <input type="text" id="bl-contact" placeholder="@yourhandle or you@email.com" />
 
-      <label for="bl-file">Payment screenshot *</label>
-      <input type="file" id="bl-file" accept="image/*" required />
-      <div class="hint">Screenshot of your USDT (BEP20) payment. Max 10 MB.</div>
+      <label for="bl-file">Payment screenshot (optional)</label>
+      <input type="file" id="bl-file" accept="image/*" />
+      <div class="hint">If you've already paid, attach the screenshot. Max 10 MB.</div>
 
       <button type="submit" class="bl-submit" id="bl-submit"><i class="fa-solid fa-paper-plane"></i> Submit request</button>
       <div class="bl-msg" id="bl-msg"></div>
@@ -183,7 +177,6 @@
       var price = '$' + (m.price_usd || '10');
       document.getElementById('bl-price').textContent = price;
       document.getElementById('bl-price-inline').textContent = price;
-      if(m.usdt_address) document.getElementById('bl-addr').textContent = m.usdt_address;
 
       var wrap=document.getElementById('bl-domains'), list=d.domains||[];
       document.getElementById('bl-count').textContent = list.length ? '· ' + list.length : '';
@@ -195,10 +188,6 @@
   }
   load();
 
-  document.getElementById('bl-copy').addEventListener('click',function(){
-    var a=document.getElementById('bl-addr').textContent;
-    navigator.clipboard.writeText(a).then(function(){ var b=document.getElementById('bl-copy'); b.textContent='Copied!'; setTimeout(function(){b.textContent='Copy';},1800); });
-  });
 
   document.getElementById('bl-form').addEventListener('submit',function(e){
     e.preventDefault();
@@ -207,12 +196,11 @@
     var file=document.getElementById('bl-file').files[0];
     msg.textContent='';
     if(!domain){ msg.style.color='#dc2626'; msg.textContent='Please enter your domain.'; return; }
-    if(!file){ msg.style.color='#dc2626'; msg.textContent='Please attach your payment screenshot.'; return; }
     var fd=new FormData();
     fd.append('domain',domain);
     fd.append('name',document.getElementById('bl-name').value.trim());
     fd.append('contact',document.getElementById('bl-contact').value.trim());
-    fd.append('file',file);
+    if(file) fd.append('file',file);
     btn.disabled=true; btn.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Submitting…';
     fetch('/api/backlinks/request',{method:'POST',body:fd}).then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j}; }); }).then(function(res){
       if(res.ok){
