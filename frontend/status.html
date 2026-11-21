@@ -3,173 +3,104 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>System Status — DataDock</title>
-<meta name="description" content="Live system status and uptime for DataDock — website, API, database, storage and downloads.">
+<title>Status — DataDock</title>
+<meta name="description" content="Live system status and uptime for DataDock.">
 <meta name="robots" content="index,follow">
 <link rel="icon" href="/favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#eef1f8; --bg2:#f7f9fd;
-    --card:#ffffff; --card-2:#fbfcfe;
-    --text:#0d1324; --muted:#64748b; --faint:#94a3b8;
-    --border:#e7ebf4; --border-2:#eef1f7;
-    --brand:#6366f1; --brand-2:#8b5cf6;
-    --green:#10b981; --green-d:#059669;
-    --amber:#f59e0b; --red:#ef4444;
-    --shadow:0 1px 2px rgba(13,19,36,.04), 0 12px 32px -12px rgba(13,19,36,.12);
-    --shadow-lg:0 2px 4px rgba(13,19,36,.05), 0 30px 60px -24px rgba(13,19,36,.22);
-    --glow:16,185,129;
+    --bg:#ffffff; --panel:#ffffff; --text:#111827; --muted:#6b7280; --faint:#9ca3af;
+    --border:#e5e7eb; --border-strong:#d1d5db;
+    --green:#16a34a; --amber:#d97706; --red:#dc2626; --nodata:#e5e7eb;
+    --accent:#111827;
   }
-  :root[data-ov="degraded"]{--glow:245,158,11}
-  :root[data-ov="down"]{--glow:239,68,68}
   @media (prefers-color-scheme: dark){
     :root{
-      --bg:#070b16; --bg2:#0b1324;
-      --card:#0f1628; --card-2:#121b30;
-      --text:#eaf0fb; --muted:#9aa7bd; --faint:#64748b;
-      --border:#1c2742; --border-2:#192338;
-      --shadow:0 1px 2px rgba(0,0,0,.4), 0 18px 40px -16px rgba(0,0,0,.6);
-      --shadow-lg:0 2px 6px rgba(0,0,0,.5), 0 40px 80px -30px rgba(0,0,0,.75);
+      --bg:#0d1117; --panel:#0f141b; --text:#e6edf3; --muted:#8b949e; --faint:#6e7681;
+      --border:#21262d; --border-strong:#30363d; --nodata:#21262d; --accent:#e6edf3;
     }
   }
   *{box-sizing:border-box}
-  html{-webkit-text-size-adjust:100%}
   body{
-    margin:0;color:var(--text);min-height:100vh;
+    margin:0;background:var(--bg);color:var(--text);
     font-family:'Inter',system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    line-height:1.55;-webkit-font-smoothing:antialiased;
-    background:
-      radial-gradient(1100px 520px at 50% -8%, rgba(var(--glow),.16), transparent 60%),
-      linear-gradient(180deg, var(--bg2), var(--bg));
-    background-attachment:fixed;
+    font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;
   }
-  .wrap{max-width:860px;margin:0 auto;padding:1.6rem 1.15rem 4rem}
+  .wrap{max-width:720px;margin:0 auto;padding:2.5rem 1.25rem 4rem}
   a{color:inherit}
 
   /* Header */
-  .top{display:flex;align-items:center;gap:.7rem;padding:.2rem 0 1.7rem}
-  .top .logo{display:flex;align-items:center;gap:.6rem;text-decoration:none;color:inherit}
-  .top img{height:30px;width:auto;border-radius:8px;display:block}
-  .top .brand{font-weight:800;font-size:1.08rem;letter-spacing:-.02em}
-  .top .brand span{background:linear-gradient(90deg,var(--brand),var(--brand-2));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-  .top .back{margin-left:auto;font-size:.82rem;color:var(--muted);text-decoration:none;font-weight:600;
-    display:inline-flex;align-items:center;gap:.4rem;padding:.45rem .8rem;border:1px solid var(--border);
-    border-radius:999px;background:var(--card);transition:.18s}
-  .top .back:hover{color:var(--brand);border-color:var(--brand);transform:translateY(-1px)}
+  .top{display:flex;align-items:center;gap:.6rem;padding-bottom:2rem}
+  .top img{height:24px;width:auto;display:block}
+  .top .brand{font-weight:600;font-size:1rem;letter-spacing:-.01em}
+  .top .brand .s{color:var(--muted);font-weight:500}
+  .top .back{margin-left:auto;font-size:.85rem;color:var(--muted);text-decoration:none}
+  .top .back:hover{color:var(--text)}
 
-  /* Fade-up entrance */
-  .rise{opacity:0;transform:translateY(14px);animation:rise .6s cubic-bezier(.2,.7,.2,1) forwards}
-  .rise.d1{animation-delay:.05s}.rise.d2{animation-delay:.12s}.rise.d3{animation-delay:.19s}.rise.d4{animation-delay:.26s}
-  @keyframes rise{to{opacity:1;transform:none}}
+  /* Overall status */
+  .status{display:flex;align-items:center;gap:.7rem;border:1px solid var(--border);
+    border-radius:10px;padding:1rem 1.15rem;margin-bottom:1.75rem}
+  .status .dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;background:var(--green)}
+  .status .dot.degraded{background:var(--amber)}
+  .status .dot.down{background:var(--red)}
+  .status h1{margin:0;font-size:1.05rem;font-weight:600;letter-spacing:-.01em}
+  .status .upd{margin-left:auto;font-size:.8rem;color:var(--faint);white-space:nowrap}
 
-  /* Hero banner */
-  .hero{position:relative;overflow:hidden;border-radius:22px;background:var(--card);
-    border:1px solid var(--border);box-shadow:var(--shadow-lg);padding:1.7rem 1.75rem;margin-bottom:1.15rem}
-  .hero::before{content:"";position:absolute;inset:-40% -10% auto -10%;height:260px;pointer-events:none;
-    background:radial-gradient(60% 100% at 25% 0%, rgba(var(--glow),.22), transparent 70%);opacity:.9}
-  .hero-row{position:relative;display:flex;align-items:center;gap:1.1rem}
-  .hero-ic{width:62px;height:62px;border-radius:18px;display:grid;place-items:center;font-size:1.7rem;flex-shrink:0;
-    color:#fff;background:linear-gradient(145deg, rgb(var(--glow)), rgba(var(--glow),.72));
-    box-shadow:0 10px 26px -6px rgba(var(--glow),.6), inset 0 1px 0 rgba(255,255,255,.3)}
-  .hero-tx{min-width:0;flex:1}
-  .hero h1{margin:0;font-size:1.5rem;font-weight:800;letter-spacing:-.03em}
-  .hero p{margin:.2rem 0 0;color:var(--muted);font-size:.92rem}
-  .live{display:inline-flex;align-items:center;gap:.45rem;font-size:.68rem;font-weight:800;text-transform:uppercase;
-    letter-spacing:.09em;color:var(--green-d);background:rgba(var(--glow),.12);padding:.4rem .7rem;border-radius:999px;
-    border:1px solid rgba(var(--glow),.28);flex-shrink:0;align-self:flex-start}
-  .live .pd{width:8px;height:8px;border-radius:50%;background:rgb(var(--glow));box-shadow:0 0 0 0 rgba(var(--glow),.6);animation:pulse 1.9s infinite}
-  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(var(--glow),.55)}70%{box-shadow:0 0 0 9px rgba(var(--glow),0)}100%{box-shadow:0 0 0 0 rgba(var(--glow),0)}}
+  /* Uptime summary */
+  .summary{display:flex;gap:2.25rem;margin-bottom:2.25rem;padding:0 .15rem;flex-wrap:wrap}
+  .summary .item .n{font-size:1.55rem;font-weight:700;letter-spacing:-.02em}
+  .summary .item .l{font-size:.8rem;color:var(--muted);margin-top:.1rem}
 
-  /* Metrics */
-  .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:.9rem;margin-bottom:1.15rem}
-  @media(max-width:620px){.metrics{grid-template-columns:1fr;gap:.75rem}}
-  .metric{position:relative;overflow:hidden;background:var(--card);border:1px solid var(--border);
-    border-radius:18px;padding:1.15rem 1.25rem;box-shadow:var(--shadow)}
-  .metric .mlbl{font-size:.72rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
-    display:flex;align-items:center;gap:.45rem}
-  .metric .mlbl i{color:var(--brand);font-size:.8rem}
-  .metric .mval{font-size:2.1rem;font-weight:900;letter-spacing:-.03em;margin-top:.3rem;line-height:1}
-  .metric .msub{font-size:.76rem;color:var(--faint);margin-top:.35rem}
-  .metric.hl .mval{background:linear-gradient(90deg,var(--green),var(--green-d));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  /* Section */
+  .sec{margin-bottom:2.25rem}
+  .sec-h{display:flex;align-items:baseline;margin-bottom:.9rem}
+  .sec-h h2{margin:0;font-size:.82rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+  .sec-h .r{margin-left:auto;font-size:.82rem;color:var(--muted)}
 
-  /* Cards */
-  .card{background:var(--card);border:1px solid var(--border);border-radius:20px;
-    padding:1.3rem 1.5rem;margin-bottom:1.15rem;box-shadow:var(--shadow)}
-  .card-h{display:flex;align-items:center;gap:.6rem;margin:0 0 .4rem}
-  .card-h h2{margin:0;font-size:1.04rem;font-weight:800;letter-spacing:-.02em}
-  .card-h .cnt{margin-left:auto;font-size:.76rem;font-weight:700;color:var(--green-d);
-    background:rgba(16,185,129,.12);padding:.25rem .6rem;border-radius:999px}
-
-  /* Components */
-  .comp{display:flex;align-items:center;gap:.9rem;padding:.85rem 0;border-top:1px solid var(--border-2)}
-  .comp:first-of-type{border-top:none}
-  .comp .cic{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;flex-shrink:0;
-    background:var(--card-2);border:1px solid var(--border-2);color:var(--muted);font-size:.95rem}
-  .comp .cmid{min-width:0;flex:1}
-  .comp .cname{font-weight:700;font-size:.95rem;letter-spacing:-.01em}
-  .comp .cdesc{color:var(--muted);font-size:.8rem;margin-top:.05rem}
-  .pill{margin-left:auto;display:inline-flex;align-items:center;gap:.45rem;font-weight:700;font-size:.8rem;
-    padding:.34rem .7rem;border-radius:999px;flex-shrink:0;white-space:nowrap}
-  .pill .pd{width:9px;height:9px;border-radius:50%}
-  .pill.operational{color:var(--green-d);background:rgba(16,185,129,.12)}.pill.operational .pd{background:var(--green)}
-  .pill.degraded{color:#b45309;background:rgba(245,158,11,.14)}.pill.degraded .pd{background:var(--amber)}
-  .pill.down{color:#b91c1c;background:rgba(239,68,68,.13)}.pill.down .pd{background:var(--red)}
-  @media (prefers-color-scheme: dark){.pill.degraded{color:#fbbf24}.pill.down{color:#f87171}}
+  /* Services list */
+  .svc{border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .svc .row{display:flex;align-items:center;gap:.9rem;padding:.9rem 1.1rem;border-top:1px solid var(--border)}
+  .svc .row:first-child{border-top:none}
+  .svc .nm{font-weight:500;font-size:.92rem}
+  .svc .ds{font-size:.8rem;color:var(--faint);margin-top:.05rem}
+  .svc .st{margin-left:auto;display:inline-flex;align-items:center;gap:.5rem;font-size:.85rem;font-weight:500;
+    color:var(--muted);white-space:nowrap}
+  .svc .st .d{width:8px;height:8px;border-radius:50%;background:var(--faint)}
+  .svc .st.operational{color:var(--green)}.svc .st.operational .d{background:var(--green)}
+  .svc .st.degraded{color:var(--amber)}.svc .st.degraded .d{background:var(--amber)}
+  .svc .st.down{color:var(--red)}.svc .st.down .d{background:var(--red)}
 
   /* Uptime bars */
-  .bars-top{display:flex;align-items:baseline;gap:.6rem;margin-bottom:.7rem}
-  .bars-top h2{margin:0;font-size:1.04rem;font-weight:800;letter-spacing:-.02em}
-  .bars-top .pct{margin-left:auto;font-size:.95rem;font-weight:800;color:var(--green-d)}
-  .bars{display:flex;gap:3px;align-items:stretch;height:44px}
-  .bar{flex:1 1 0;min-width:0;border-radius:3px;background:var(--border);transition:transform .12s, filter .12s;cursor:default}
-  .bar.op{background:linear-gradient(180deg,var(--green),var(--green-d))}
-  .bar.part{background:linear-gradient(180deg,#fbbf24,var(--amber))}
-  .bar.down{background:linear-gradient(180deg,#f87171,var(--red))}
-  .bar:hover{transform:scaleY(1.08);filter:brightness(1.1)}
-  .bars-ax{display:flex;justify-content:space-between;color:var(--faint);font-size:.74rem;font-weight:600;margin-top:.55rem}
-  .legend{display:flex;gap:1.1rem;flex-wrap:wrap;margin-top:.9rem;padding-top:.9rem;border-top:1px solid var(--border-2)}
-  .legend span{display:inline-flex;align-items:center;gap:.4rem;font-size:.76rem;color:var(--muted);font-weight:600}
-  .legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
-  .lg-op{background:var(--green)}.lg-part{background:var(--amber)}.lg-down{background:var(--red)}.lg-nd{background:var(--border)}
+  .bars{display:flex;gap:2px;align-items:stretch;height:34px}
+  .bar{flex:1 1 0;min-width:0;border-radius:2px;background:var(--nodata)}
+  .bar.op{background:var(--green)}.bar.part{background:var(--amber)}.bar.down{background:var(--red)}
+  .axis{display:flex;justify-content:space-between;color:var(--faint);font-size:.76rem;margin-top:.5rem}
 
-  /* Footer */
-  .foot{text-align:center;color:var(--faint);font-size:.8rem;margin-top:1.8rem;line-height:1.8}
-  .foot .sep{opacity:.5;margin:0 .4rem}
-  .foot a{color:var(--brand);text-decoration:none;font-weight:600}
-  .foot a:hover{text-decoration:underline}
+  .foot{color:var(--faint);font-size:.8rem;border-top:1px solid var(--border);padding-top:1.25rem;margin-top:.5rem;
+    display:flex;gap:.9rem;flex-wrap:wrap;align-items:center}
+  .foot a{color:var(--muted);text-decoration:none}
+  .foot a:hover{color:var(--text)}
+  .foot .sp{flex:1}
+  .loading{color:var(--muted);padding:3rem 0;text-align:center;font-size:.9rem}
 
-  .loading{text-align:center;color:var(--muted);padding:4rem 0;font-size:.95rem}
-  .flash{animation:flash .7s ease}
-  @keyframes flash{0%{color:var(--brand)}100%{}}
-
-  .tip{position:fixed;background:#0b1220;color:#fff;font-size:.73rem;font-weight:600;padding:.42rem .62rem;border-radius:8px;
-    pointer-events:none;opacity:0;transition:opacity .12s;z-index:20;white-space:nowrap;transform:translate(-50%,-125%);
-    box-shadow:0 8px 24px rgba(0,0,0,.3)}
-  .tip::after{content:"";position:absolute;left:50%;top:100%;transform:translateX(-50%);border:5px solid transparent;border-top-color:#0b1220}
+  .tip{position:fixed;background:var(--accent);color:var(--bg);font-size:.75rem;font-weight:500;padding:.35rem .55rem;
+    border-radius:6px;pointer-events:none;opacity:0;transition:opacity .12s;z-index:20;white-space:nowrap;
+    transform:translate(-50%,-125%)}
   @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="top">
-    <a class="logo" href="/">
-      <img src="/logo.webp" alt="DataDock" onerror="this.style.display='none'">
-      <span class="brand">Data<span>Dock</span></span>
-    </a>
-    <a class="back" href="/"><i class="fa-solid fa-arrow-left"></i> Back to site</a>
+    <img src="/logo.webp" alt="DataDock" onerror="this.style.display='none'">
+    <span class="brand">DataDock <span class="s">Status</span></span>
+    <a class="back" href="/">Back to site</a>
   </div>
 
   <div id="content">
-    <div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading status…</div>
-  </div>
-
-  <div class="foot">
-    <span id="foot-since"></span>
-    <div><i class="fa-solid fa-signal" style="font-size:.7rem"></i> <span id="foot-checked">Updating…</span><span class="sep">·</span><a href="/api/status" target="_blank" rel="noopener">Status API</a></div>
+    <div class="loading">Loading status…</div>
   </div>
 </div>
 <div class="tip" id="tip"></div>
@@ -183,83 +114,54 @@ function fmtDate(iso){ try { return new Date(iso + 'T00:00:00').toLocaleDateStri
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
 const OVERALL = {
-  operational: { icon:'fa-circle-check',        title:'All Systems Operational', sub:'Everything is running smoothly.' },
-  degraded:    { icon:'fa-triangle-exclamation',title:'Partial Degradation',     sub:'Some services are experiencing issues.' },
-  down:        { icon:'fa-circle-xmark',         title:'Major Outage',            sub:'One or more core services are down.' },
+  operational: 'All systems operational',
+  degraded:    'Partial degradation',
+  down:        'Major outage',
 };
 const CLABEL = { operational:'Operational', degraded:'Degraded', down:'Down' };
-const CICON = {
-  'Website & API':'fa-globe', 'Database':'fa-database',
-  'File Storage':'fa-box-archive', 'Downloads (CDN)':'fa-bolt',
-};
-function compIcon(name){ return CICON[name] || 'fa-circle-nodes'; }
 
 let shellBuilt = false;
 let lastUpdated = null;
 
 function buildShell(d){
-  const okCount = d.components.filter(c => c.status === 'operational').length;
   $('content').innerHTML = `
-    <div class="hero rise">
-      <div class="hero-row">
-        <div class="hero-ic"><i class="fa-solid" id="ov-icon"></i></div>
-        <div class="hero-tx">
-          <h1 id="ov-title">—</h1>
-          <p id="ov-sub"></p>
-        </div>
-        <div class="live"><span class="pd"></span> Live</div>
-      </div>
+    <div class="status">
+      <span class="dot" id="ov-dot"></span>
+      <h1 id="ov-title">—</h1>
+      <span class="upd" id="ov-upd"></span>
     </div>
 
-    <div class="metrics">
-      <div class="metric hl rise d1">
-        <div class="mlbl"><i class="fa-solid fa-gauge-high"></i> Uptime · 90 days</div>
-        <div class="mval" id="u90">—</div>
-        <div class="msub">Rolling 90-day availability</div>
-      </div>
-      <div class="metric rise d2">
-        <div class="mlbl"><i class="fa-solid fa-calendar-check"></i> Uptime · 30 days</div>
-        <div class="mval" id="u30">—</div>
-        <div class="msub">Last 30 days availability</div>
-      </div>
-      <div class="metric rise d3">
-        <div class="mlbl"><i class="fa-solid fa-layer-group"></i> Services</div>
-        <div class="mval" id="svc">—</div>
-        <div class="msub" id="svc-sub">operational right now</div>
-      </div>
+    <div class="summary">
+      <div class="item"><div class="n" id="u90">—</div><div class="l">Uptime · 90 days</div></div>
+      <div class="item"><div class="n" id="u30">—</div><div class="l">Uptime · 30 days</div></div>
+      <div class="item"><div class="n" id="svc">—</div><div class="l">Services operational</div></div>
     </div>
 
-    <div class="card rise d3">
-      <div class="card-h">
-        <h2>Services</h2>
-        <span class="cnt" id="svc-pill">${okCount}/${d.components.length} up</span>
-      </div>
-      <div id="comp-list"></div>
+    <div class="sec">
+      <div class="sec-h"><h2>Services</h2></div>
+      <div class="svc" id="comp-list"></div>
     </div>
 
-    <div class="card rise d4">
-      <div class="bars-top">
-        <h2>Uptime history</h2>
-        <span class="pct" id="bars-pct">—</span>
-      </div>
+    <div class="sec">
+      <div class="sec-h"><h2>Uptime — last 90 days</h2><span class="r" id="bars-pct">—</span></div>
       <div class="bars" id="bars"></div>
-      <div class="bars-ax"><span>90 days ago</span><span>Today</span></div>
-      <div class="legend">
-        <span><i class="lg-op"></i> Operational</span>
-        <span><i class="lg-part"></i> Partial</span>
-        <span><i class="lg-down"></i> Downtime</span>
-        <span><i class="lg-nd"></i> No data</span>
-      </div>
+      <div class="axis"><span>90 days ago</span><span>Today</span></div>
+    </div>
+
+    <div class="foot">
+      <span id="foot-since"></span>
+      <span class="sp"></span>
+      <span id="foot-checked">Updating…</span>
+      <a href="/api/status" target="_blank" rel="noopener">API</a>
     </div>`;
 
   $('comp-list').innerHTML = d.components.map((c, i) => `
-    <div class="comp">
-      <div class="cic"><i class="fa-solid ${compIcon(c.name)}"></i></div>
-      <div class="cmid">
-        <div class="cname">${esc(c.name)}</div>
-        <div class="cdesc">${esc(c.desc || '')}</div>
+    <div class="row">
+      <div>
+        <div class="nm">${esc(c.name)}</div>
+        <div class="ds">${esc(c.desc || '')}</div>
       </div>
-      <div class="pill" id="pill-${i}"><span class="pd"></span><span id="clabel-${i}"></span></div>
+      <div class="st" id="st-${i}"><span class="d"></span><span id="clabel-${i}"></span></div>
     </div>`).join('');
 
   $('bars').innerHTML = d.daily.map((_, i) => `<div class="bar" id="bar-${i}" data-tip=""></div>`).join('');
@@ -282,25 +184,20 @@ function setText(el, txt){ if (el && el.textContent !== txt){ el.textContent = t
 
 function apply(d){
   if (!shellBuilt) buildShell(d);
-  document.documentElement.setAttribute('data-ov', d.overall || 'operational');
 
-  const ov = OVERALL[d.overall] || OVERALL.operational;
-  $('ov-icon').className = 'fa-solid ' + ov.icon;
-  setText($('ov-title'), ov.title);
-  setText($('ov-sub'), ov.sub);
+  $('ov-dot').className = 'dot ' + (d.overall || 'operational');
+  setText($('ov-title'), OVERALL[d.overall] || OVERALL.operational);
 
-  if (setText($('u90'), fmtPct(d.uptime_90d))) { $('u90').classList.remove('flash'); void $('u90').offsetWidth; $('u90').classList.add('flash'); }
+  setText($('u90'), fmtPct(d.uptime_90d));
   setText($('u30'), fmtPct(d.uptime_30d));
   setText($('bars-pct'), fmtPct(d.uptime_90d) + ' uptime');
 
   const ok = d.components.filter(c => c.status === 'operational').length;
-  const tot = d.components.length;
-  setText($('svc'), ok + '/' + tot);
-  setText($('svc-pill'), ok + '/' + tot + ' up');
+  setText($('svc'), ok + ' / ' + d.components.length);
 
   d.components.forEach((c, i) => {
-    const pill = $('pill-' + i), lb = $('clabel-' + i);
-    if (pill) pill.className = 'pill ' + c.status;
+    const st = $('st-' + i), lb = $('clabel-' + i);
+    if (st) st.className = 'st ' + c.status;
     setText(lb, CLABEL[c.status] || c.status);
   });
 
@@ -330,7 +227,10 @@ function tickAgo(){
   if (!lastUpdated) return;
   const secs = Math.max(0, Math.round((Date.now() - lastUpdated.getTime()) / 1000));
   const ago = secs < 5 ? 'just now' : secs < 60 ? secs + 's ago' : Math.round(secs/60) + 'm ago';
-  $('foot-checked').textContent = 'Updated ' + ago;
+  const txt = 'Updated ' + ago;
+  const upd = $('ov-upd'), fc = $('foot-checked');
+  if (upd) upd.textContent = txt;
+  if (fc) fc.textContent = txt;
 }
 
 function wireTips(){
